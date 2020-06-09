@@ -1,0 +1,340 @@
+/* 
+ * Minimal CSS Reset and Base Style
+ */
+
+html {
+    box-sizing: border-box;
+    background:#eee;
+}
+  
+*, *:before, *:after {
+  box-sizing: inherit;
+}
+
+body {
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: 12pt;
+    line-height: 140%;
+    max-width: 750px;
+    margin: auto;
+    padding: 40px;
+    background:white;
+    border-left: 1px solid lightgrey;
+    border-right: 1px solid lightgrey;
+}
+
+h1 {
+    font-size: 150%;
+    font-weight: bold;
+    text-align: center;
+    border-bottom: none;
+    page-break-after: avoid;
+}
+
+h2 {
+    font-size: 120%;
+    font-weight: bold;
+    margin-top: 40px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid lightgrey;
+    clear: both;
+    page-break-after: avoid;
+}
+
+p, ul, ol {
+    margin: 10px 0;
+}
+
+li {
+    margin-top: 5px;
+}
+
+/* Center all paragraph-images by default */
+p > img:only-child {
+    display: block;
+    margin: 10px auto;
+}
+
+/* Useful for rendered LaTeX */
+*[aria-hidden=true] {
+    display: none;
+}
+
+/* sub and sup rules to not disgracefully affect line-height */
+
+sup {
+    vertical-align: top;
+    position: relative;
+    top: -0.4em;
+}
+
+sub {
+    vertical-align: bottom;
+    position: relative;
+    bottom: -0.4em;
+}
+
+@media only screen and (max-width: 600px) {
+
+    body {
+        padding: 20px;
+    }
+
+    ul, ol {
+        padding-left: 20px;
+    }
+
+}
+
+
+/*
+ * Print/PDF
+ */
+
+@page {
+  margin: 60px;
+}
+  
+@media only print {
+    body {
+        border: none;
+        padding: 0;
+        max-width: unset;
+    }
+
+    .table-of-contents {
+        display: none;
+    }
+}
+
+.bebras-layout-cell {
+    padding: 0;
+}
+
+.bebras-page-header, .bebras-page-header-space {
+  display: none;
+}
+
+.bebras-page-footer,
+.bebras-page-footer-space {
+    margin-top: 10px;
+    height: 30px;
+}
+
+.bebras-page-header,
+.bebras-page-footer {
+    left: 0;
+    right: 0;
+}
+
+.bebras-page-header {
+  position: fixed;
+  top: 0;
+}
+
+.bebras-page-footer {
+  position: fixed;
+  bottom: 0;
+  border-top: 0.5px solid lightgray;
+
+  display: flex;
+  display: -webkit-flex;
+
+  font-size: 70%;
+}
+
+.bebras-page-footer-taskid {
+    font-weight: bold;
+}
+
+.bebras-page-footer-tasktitle {
+    margin-left: 0.8em;
+    font-style: italic;
+}
+
+
+@media only screen {
+    .bebras-page-header, .bebras-page-header-space,
+.bebras-page-footer, .bebras-page-footer-space {
+        display: none;
+    }
+}
+
+
+
+/* 
+ * Header
+ */
+
+ .bebras-header {
+    line-height: 100%;
+    width: 100%;
+
+    display: flex;
+    display: -webkit-flex;
+
+    flex-direction: column;
+    -webkit-flex-direction: column;
+
+    align-items: stretch;
+    -webkit-box-align: stretch;
+    
+    font-size: 90%;
+    border-collapse: collapse;
+    padding: 1px 0 0 1px;
+    margin-bottom: 20px;
+}
+
+.bebras-header-cell {
+    padding: 5px;
+    border: 1px solid #BBB;
+    margin: -1px 0 0 -1px;
+}
+
+.bebras-ages {
+    display: flex;
+    display: -webkit-flex;
+
+    justify-content: stretch;
+    -webkit-justify-content: stretch;
+}
+
+.bebras-age {
+    text-align: center;
+    
+    flex: auto;
+    -webkit-flex: auto;
+
+    display: flex;
+    display: -webkit-flex;
+
+    flex-direction: column;
+    -webkit-flex-direction: column;
+
+    align-items: center;
+    -webkit-box-align: center;
+}
+
+.bebras-header-caption {
+    font-style: italic;
+}
+
+.bebras-header-caption::after {
+    content: ': ';
+}
+
+.bebras-categories {
+    display: flex;
+    display: -webkit-flex;
+    
+    align-items: stretch;
+    -webkit-box-align: stretch;
+}
+
+.bebras-categories-cell {
+    flex: auto;
+    -webkit-flex: auto;
+
+    display: flex;
+    display: -webkit-flex;
+
+    flex-direction: column;
+    -webkit-flex-direction: column;
+}
+
+.table-of-contents li {
+    margin-top: 0;
+}
+
+@media only screen and (max-width: 600px) {
+
+    .bebras-categories {
+        flex-direction: column;
+        -webkit-flex-direction: column;
+    }
+
+    .bebras-ages {
+        flex-wrap: wrap;
+        -webkit-flex-wrap: wrap;
+    }
+
+    .bebras-age {
+        flex-basis: 33%;
+        -webkit-flex-basis: 33%;
+    }
+}
+
+
+/* 
+ * Main content
+ */
+
+.bebras-sectionbody-2 {
+    margin-left: -17px;
+    border-left: 4px solid white;
+    padding-left: 13px;
+    page-break-before: avoid;
+}
+
+.bebras-sectionbody-2:hover {
+    border-left-color: #DDD;
+}
+
+.bebras-sectionbody-questionchallenge {
+    font-style: italic;
+}
+
+.bebras-sectioncontainer-questionchallenge,
+.bebras-sectioncontainer-answer-optionsinteractivity-description
+.bebras-sectioncontainer-contributors,
+.bebras-sectioncontainer-supportfiles,
+.bebras-sectioncontainer-keywords-and-websites,
+.bebras-sectioncontainer-wording-and-phrases {
+    page-break-inside: avoid;
+}
+
+
+.bebras-sectionbody-questionchallenge em {
+    font-style: normal;
+}
+
+@media only screen and (max-width: 600px) {
+
+    .bebras-sectionbody-2 {
+        margin-left: -13px;
+        padding-left: 9px;
+    }
+
+}
+
+
+/* 
+ * Footer
+ */
+
+.bebras-license {
+    display: flex;
+    display: -webkit-flex;
+
+    line-height: 100%;
+}
+
+.bebras-license-text {
+    font-size: 90%;
+    line-height: 100%;
+    padding-left: 5px;
+}
+
+@media only screen and (max-width: 600px) {
+
+    .bebras-license {
+        flex-direction: column-reverse;
+        -wekbit-flex-direction: column-reverse;
+    }
+
+    .bebras-license-text {
+        padding-left: 0;
+        padding-bottom: 10px;
+    }
+
+}

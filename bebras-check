@@ -1,0 +1,10 @@
+#!/usr/bin/env node
+
+// Make sure we got a filename on the command line.
+if (process.argv.length < 3) {
+  console.log('Usage: node ' + process.argv[1] + ' <task>.task.md');
+  process.exit(1);
+}
+
+const filepath = process.argv[2];
+require('./out/tasklint').runTerminal(filepath);
