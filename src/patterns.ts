@@ -29,25 +29,32 @@ function capturing<T>(pat: string, flags?: string): RichRegExp<Captures<T>> {
     return new RegExp(pat, flags) as RichRegExp<Captures<T>>;
 }
 
-//
+
+// String constants
 
 export const taskFileExtension =
     ".task.md";
 
+
+// Regexes without captures (reused several times in other patterns)
+
+export const webUrl =
+    new RegExp("https?:\\/\\/[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[^\\s;,]*)", "g");
+
+export const email =
+    new RegExp("(?:[a-zA-Z0-9_\\-\\.]+)@(?:(?:\\[[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.)|(?:(?:[a-zA-Z0-9\\-]+\\.)+))(?:[a-zA-Z]{2,4}|[0-9]{1,3})(?:\\]?)", "g");
+
+export const decimal = // 5, 0.5, 5.0005...
+    new RegExp("\\d+\\.?\\d*", "g");
+
+
+// Regexes with semi-typed captures
 
 export const prologue = capturing<{
     format: always,
     version: maybe
 }>(
     "^\\-{3}\\n(?:format: *Bebras Task(?: (?<version>[0-9\\.]+))?\\n)?"
-);
-
-export const email = capturing<{
-    email: always,
-    user: always,
-    host: always,
-}>(
-    "(?<email>(?<user>[a-zA-Z0-9_\\-\\.]+)@(?<host>(?:\\[[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.)|(?:(?:[a-zA-Z0-9\\-]+\\.)+))(?:[a-zA-Z]{2,4}|[0-9]{1,3})(?:\\]?))"
 );
 
 export const id = capturing<{
@@ -68,6 +75,13 @@ export const contributor = capturing<{
     "^(?<name>[^\\(\\)]*) \\((?<country>[^,\\(\\)]*)\\), (?:\\[no email\\]|" + email.source + ")(?: \\((?<role>[^,\\(\\)]*)\\))?$"
 );
 
+export const keyword = capturing<{
+    keyword: always,
+    urls: maybe,
+}>(
+    "^(?<keyword>.+?)(?: - (?<urls>" + webUrl.source + "(?:, +" + webUrl.source + ")*))? *$"
+);
+
 export const supportFile = capturing<{
     filename: always,
     author: always,
@@ -76,8 +90,6 @@ export const supportFile = capturing<{
     "^(?<filename>.*) by (?<author>[^,\\(\\)]*) \\((?<license>.*)\\)$"
 );
 
-export const decimal = // 5, 0.5, 5.0005...
-    new RegExp("\\d+\\.?\\d*");
 
 export const imageOptions = capturing<{
     width_abs: maybe,

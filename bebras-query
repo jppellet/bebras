@@ -71,6 +71,12 @@ def filter(f):
 def if_nonempty:
     [.[]] | select(length > 0)[0];
 
+def trim:
+    (sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; ""));
+
+def splittrim(sep):
+    if type == "null" then [] else (split(sep) | map(trim)) end;
+
 
 # All accessors pipe back to $root if the input is nonempty.
 # This allows to use them directly (e.g. yq 'id') and also
@@ -118,6 +124,18 @@ def contributors_raw:
 
 def contributors:
     contributors_raw | map(parse_contributor);
+
+def parse_keyword:
+    capture("^(?<keyword>.+?)(?: - (?<urls>https?:\\/\\/[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[^\\s;,]*)(?:, +https?:\\/\\/[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[^\\s;,]*))*))? *$") | .urls |= splittrim(",");
+
+def keywords_raw:
+    if_nonempty | $root.keywords;
+
+def keywords:
+    keywords_raw | map(parse_keyword);
+
+def keywords_only:
+    keywords | map(.keyword);
 
 def parse_support_file:
     capture("^(?<filename>.*) by (?<author>[^,\\(\\)]*) \\((?<license>.*)\\)$");

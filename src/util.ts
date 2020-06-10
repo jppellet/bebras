@@ -45,6 +45,7 @@ export interface TaskMetadata {
     ages: { [key in AgeCategory]: Difficulty }
     categories: string[]
     answer_type: string
+    keywords: string[]
     support_files: string[]
     contributors: string[]
 }
@@ -62,6 +63,7 @@ export function defaultTaskMetadata(): TaskMetadata {
             "16-19": "--",
         } as const,
         categories: [],
+        keywords: [],
         support_files: [],
         answer_type: "((unspecified))",
         contributors: ["((unspecified))"],

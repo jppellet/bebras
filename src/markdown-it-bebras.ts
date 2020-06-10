@@ -61,8 +61,13 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
       return `# ${metadata.id} ${metadata.title}`;
     },
 
+    "keywords": (metadata: TaskMetadata) => {
+      const sectionBody = metadata.keywords.map(k => ` * ${k.replace(patterns.webUrl, "<$&>").replace(/ - /, ": ")}`).join("\n");
+      return `## Keywords and Websites\n\n${sectionBody}`;
+    },
+
     "contributors": (metadata: TaskMetadata) => {
-      const sectionBody = metadata.contributors.map(c => ` * ${c.replace(patterns.email, "<$<email>>")}`).join("\n");
+      const sectionBody = metadata.contributors.map(c => ` * ${c.replace(patterns.email, "<$&>")}`).join("\n");
       return `## Contributors\n\n${sectionBody}`;
     },
 
@@ -154,11 +159,18 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
       }
       catCell2 += `</div>`;
 
+      const keywords = metadata.keywords.map(kwLine => {
+        const match = patterns.keyword.exec(kwLine);
+        return match ? match.groups.keyword : kwLine;
+      });
+      const keywordsCell = `<span class="bebras-header-caption">Keywords</span>${keywords.join(", ")}`;
+
       return '' +
         `<div class="bebras-header">
           <div class="bebras-ages">${ageRowCells}</div>
           <div class="bebras-answertype bebras-header-cell">${answerType}</div>
           <div class="bebras-categories bebras-header-cell">${catCell1}${catCell2}</div>
+          <div class="bebras-keywords bebras-header-cell">${keywordsCell}</div>
          </div>`;
     }
   };
@@ -205,9 +217,11 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
       prologueSections.push("table_of_contents");
     }
 
+    const insertKeywordsAfterSection = "Wording and Phrases";
+    const secMarker = `## ${insertKeywordsAfterSection}`;
     state.src =
       mkSections(prologueSections) +
-      state.src +
+      state.src.replace(secMarker, mkSections(["keywords"]) + `\n\n${secMarker}`) +
       mkSections(["contributors", "support_files", "license"]);
 
     return true;

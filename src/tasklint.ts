@@ -3,7 +3,7 @@ import * as _ from 'lodash';
 
 import * as codes from './codes';
 import * as patterns from './patterns';
-import { isNullOrUndefined, s, isString, isUndefined, isArray } from "./util";
+import { isNullOrUndefined, s, isString, isUndefined, isArray, TaskMetadata } from "./util";
 
 
 export type Severity = "error" | "warn";
@@ -41,7 +41,7 @@ export function lint(text: string, filename: string, version?: string): LintOutp
         }
 
         let fmStr = text.slice(fmStart, fmEnd);
-        let metadata;
+        let metadata: Partial<TaskMetadata> = {};
         try {
             metadata = yaml.safeLoad(fmStr, {
                 onWarning: (e: yaml.YAMLException) => {
@@ -93,8 +93,8 @@ export function lint(text: string, filename: string, version?: string): LintOutp
             return [start + fmStart, end + fmStart];
         }
 
-        const requiredFields = ["id", "title", "ages", "answer_type", "categories", "contributors", "support_files"] as const;
-        type MetadataField = typeof requiredFields[number];
+        type MetadataField = keyof TaskMetadata;
+        const requiredFields: Array<MetadataField> = ["id", "title", "ages", "answer_type", "categories", "keywords", "contributors", "support_files"];
 
         const missingFields = [] as string[];
         for (let f of requiredFields) {
@@ -147,12 +147,13 @@ export function lint(text: string, filename: string, version?: string): LintOutp
             error(fmRangeForDef("title"), "The title should be a nonempty string");
         }
 
-        const requiredAgeCats = ["6-8", "8-10", "10-12", "12-14", "14-16", "16-19"] as const;
-        type MetadataAgeCategory = typeof requiredAgeCats[number];
+        type MetadataAgeCategory = keyof NonNullable<typeof metadata.ages>;
+        const requiredAgeCats: Array<MetadataAgeCategory> = ["6-8", "8-10", "10-12", "12-14", "14-16", "16-19"];
 
         const missingAgeCats = [] as string[];
         for (let a of requiredAgeCats) {
-            if (typeof metadata.ages[a] === "undefined" || metadata.ages[a] === null) {
+            const ageDiff = metadata.ages?.[a];
+            if (isNullOrUndefined(ageDiff)) {
                 missingAgeCats.push(a);
             }
         }
@@ -166,7 +167,7 @@ export function lint(text: string, filename: string, version?: string): LintOutp
         let numDefined = 0 + requiredAgeCats.length;
         let closed = false;
         for (let a of requiredAgeCats) {
-            const classif = `${metadata.ages[a]}`;
+            const classif = `${metadata.ages?.[a] ?? "--"}`;
             let level: number;
             if (classif === "--") {
                 level = NaN;
@@ -214,7 +215,7 @@ export function lint(text: string, filename: string, version?: string): LintOutp
             "interactive (other)"
         ];
 
-        const answerType = metadata["answer_type"];
+        const answerType = metadata.answer_type;
         if (!isString(answerType)) {
             error(fmRangeForDef("answer_type"), "The answer type must be a plain string");
         } else if (!validAnswerTypes.includes(answerType)) {
@@ -229,7 +230,7 @@ export function lint(text: string, filename: string, version?: string): LintOutp
             "interactions, systems and society"
         ];
 
-        const categories = metadata["categories"];
+        const categories = metadata.categories;
         if (!isArray(categories) || !_.every(categories, isString)) {
             error(fmRangeForDef("categories"), "The categories must be a list of plain strings");
         } else {
@@ -241,7 +242,7 @@ export function lint(text: string, filename: string, version?: string): LintOutp
             }
         }
 
-        const contributors = metadata["contributors"];
+        const contributors = metadata.contributors;
         if (!isArray(contributors) || !_.every(contributors, isString)) {
             error(fmRangeForDef("contributors"), "The contributors must be a list of strings");
         } else {
@@ -276,7 +277,43 @@ export function lint(text: string, filename: string, version?: string): LintOutp
             }
         }
 
-        const supportFiles = metadata["support_files"];
+        const keywords = metadata.keywords;
+        const seenKeywords = new Set<string>();
+        const seenUrls = new Set<string>();
+        if (!isArray(keywords) || !_.every(keywords, isString)) {
+            error(fmRangeForDef("keywords"), "The keywords must be a list of strings");
+        } else {
+            const sep = " - ";
+            keywords.forEach(f => {
+                let match;
+                if (match = patterns.keyword.exec(f)) {
+                    const keyword = match.groups.keyword;
+                    if (seenKeywords.has(keyword)) {
+                        warn(fmRangeForValueInDef("keywords", keyword), `This keyword is mentioned several times`);
+                    } else {
+                        seenKeywords.add(keyword);
+                    }
+                    if (keyword.indexOf(sep) >= 0) {
+                        warn(fmRangeForValueInDef("keywords", keyword), `Malformed keyword: should not contain ‘${sep}’ or should be followed by valid web URL`);
+                    }
+                    const urlsStr = match.groups.urls;
+                    if (urlsStr) {
+                        const urls = urlsStr.split(/ *, */);
+                        for (const url of urls) {
+                            if (seenUrls.has(url)) {
+                                warn(fmRangeForValueInDef("keywords", url), `This URL is mentioned several times`);
+                            } else {
+                                seenUrls.add(url);
+                            }
+                        }
+                    }
+                } else {
+                    warn(fmRangeForValueInDef("keywords", f), `This line should have the format:\n<keyword>\n  or\n<keyword>${sep}<url>[, <url>]`);
+                }
+            });
+        }
+
+        const supportFiles = metadata.support_files;
         if (!isArray(supportFiles) || !_.every(supportFiles, isString)) {
             error(fmRangeForDef("support_files"), "The support files must be a list of strings");
         } else {
@@ -299,7 +336,6 @@ export function lint(text: string, filename: string, version?: string): LintOutp
             "Answer Options/Interactivity Description",
             "Answer Explanation",
             "It's Informatics",
-            "Keywords and Websites",
             "Wording and Phrases",
             "Comments",
         ];
