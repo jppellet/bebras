@@ -30,10 +30,27 @@ function capturing<T>(pat: string, flags?: string): RichRegExp<Captures<T>> {
 }
 
 
-// String constants
+// String and structured constants
 
 export const taskFileExtension =
     ".task.md";
+
+export const ageCategories = {
+    "6yo–8yo": "6-8",
+    "8yo–10yo": "8-10",
+    "10yo–12yo": "10-12",
+    "12yo–14yo": "12-14",
+    "14yo–16yo": "14-16",
+    "16yo–19yo": "16-19",
+} as const;
+
+export const categories = [
+    "algorithms and programming data",
+    "data structures and representations",
+    "computer processes and hardware",
+    "communication and networking",
+    "interactions, systems and society",
+] as const;
 
 
 // Regexes without captures (reused several times in other patterns)

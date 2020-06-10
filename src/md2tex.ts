@@ -35,16 +35,102 @@ export function renderTex(filepath: string): string {
 
     type Rules = { [key: string]: undefined | ((tokens: Token[], idx: number) => string) };
 
-    const sectionCommands = ["section", "subsection", "subsubsection", "paragraph", "subparagraph"];
+    const sectionCommands: Array<[string, string]> = [
+        ["\\section*{\\centering", "}"],
+        ["\\subsection*{", "}"],
+        ["\\subsubsection*{", "}"],
+        ["\\paragraph*{", "}"],
+        ["\\subparagraph*{", "}"],
+    ];
+
+    function sectionCommandsForHeadingToken(t: Token): [string, string] {
+        const level = parseInt(t.tag.slice(1));
+        const idx = Math.min(level - 1, sectionCommands.length - 1);
+        return sectionCommands[idx];
+    }
+
 
     const expand: Rules = {
 
         "header": (tokens, idx) => {
-            return `(header) TODO\n`; // TODO
+
+            const ageCategories = patterns.ageCategories;
+            const categories = patterns.categories;
+
+            const ageCatTitles = (Object.keys(ageCategories) as Array<keyof typeof ageCategories>);
+            const ageCatTitleCells = ageCatTitles.map(c => `\\textit{${c}:}`).join(" & ");
+
+            const ageCatValueCells = ageCatTitles.map(c => {
+                const catFieldName = ageCategories[c];
+                const catValue: string = metadata.ages[catFieldName] || "--";
+                return catValue;
+            }).join(" & ");
+
+            const numCat1 = Math.floor(categories.length / 2);
+
+            const checkedBox = `$\\boxtimes$`;
+            const uncheckedBox = `$\\square$`;
+
+            function catToRow(catName: string) {
+                const isRelated = metadata.categories.includes(catName);
+                const catChecked = isRelated ? checkedBox : uncheckedBox;
+                return `${catChecked} ${texEscape(catName)}`;
+            }
+
+            let catCell1 = `\\textit{Categories:}`;
+            for (let i = 0; i < numCat1; i++) {
+                catCell1 += `\\newline ${catToRow(categories[i])}`;
+            }
+
+            let catCell2 = ``;
+            for (let i = numCat1; i < categories.length; i++) {
+                if (i !== numCat1) {
+                    catCell2 += "\\newline ";
+
+                }
+                catCell2 += catToRow(categories[i]);
+            }
+
+            const keywords = metadata.keywords.map(kwLine => {
+                const match = patterns.keyword.exec(kwLine);
+                return match ? match.groups.keyword : kwLine;
+            });
+            const keywordsStr = keywords.length === 0 ? "—" : keywords.map(texEscape).join(", ");
+
+            function multicolumn(n: number, contents: string): string {
+                const spec = `{|>{\\hsize=\\dimexpr${n}\\hsize+${n + 1}\\tabcolsep+${n - 1}\\arrayrulewidth\\relax}X|}`;
+                return `\\multicolumn{${n}}${spec}{${contents}}`;
+            }
+
+            return `{\\footnotesize\\begin{tabularx}{\\columnwidth}{ | *{6}{ >{\\centering\\arraybackslash}X | } }
+  \\hline
+  ${ageCatTitleCells} \\\\
+  ${ageCatValueCells} \\\\
+  \\hline
+  ${multicolumn(6, `\\textit{Answer Type:} ${texEscape(metadata.answer_type)}`)} \\\\
+  \\hline
+  ${multicolumn(3, catCell1)} &  ${multicolumn(3, catCell2)} \\\\
+  \\hline
+  ${multicolumn(6, `\\textit{Keywords:} ${keywordsStr}`)} \\\\
+  \\hline
+\\end{tabularx}}
+            \n`;
         },
 
         "license_html": (tokens, idx) => {
-            return `(license) TODO\n`; // TODO
+
+            const year = metadata.id.slice(0, 4);
+            const licenseTitle = "Creative Commons Attribution – ShareAlike 4.0 International License";
+            const licenseTitleShort = "CC BY-SA 4.0";
+            const licenseUrl = "https://creativecommons.org/licenses/by-sa/4.0/";
+            const licenseImageUrl = "https://mirrors.creativecommons.org/presskit/buttons/88x31/svg/by-sa.svg";
+
+
+            // https://tex.stackexchange.com/questions/5433/can-i-use-an-image-located-on-the-web-in-a-latex-document
+
+            return `{\\footnotesize\\begin{tabularx}{\\columnwidth}{ l X }
+  TODO image & Copyright © ${year} Bebras – International Contest on Informatics and Computer Fluency. This work is licensed under a ${licenseTitle}. \\href{${licenseUrl}}{${licenseUrl}}
+\\end{tabularx}}\n`;
         },
 
     };
@@ -111,15 +197,13 @@ export function renderTex(filepath: string): string {
         },
 
         "heading_open": (tokens, idx) => {
-            const t = tokens[idx];
-            const level = parseInt(t.tag.slice(1));
-            const cmdIdx = Math.min(level - 1, sectionCommands.length - 1);
-            const cmd = sectionCommands[cmdIdx];
-            return `\n\\${cmd}*{`;
+            const cmd = sectionCommandsForHeadingToken(tokens[idx])[0];
+            return `\n${cmd}`;
         },
 
         "heading_close": (tokens, idx) => {
-            return `}\n\n`;
+            const cmd = sectionCommandsForHeadingToken(tokens[idx])[1];
+            return `${cmd}\n\n`;
         },
 
 
@@ -242,6 +326,9 @@ export function renderTex(filepath: string): string {
         `\\documentclass[a4paper,12pt]{report}
 
 \\usepackage[margin=2cm]{geometry}
+
+\\usepackage{tabularx}
+\\usepackage{amssymb}
 
 \\usepackage{hyperref}
 \\usepackage{graphicx}
