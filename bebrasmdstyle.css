@@ -5,6 +5,7 @@
 html {
     box-sizing: border-box;
     background:#eee;
+    -webkit-text-size-adjust: 100%;
 }
   
 *, *:before, *:after {
@@ -24,11 +25,23 @@ body {
 }
 
 h1 {
+    position: -webkit-sticky;
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 10;
+
+    margin: 0;
+    padding: 15px 0;
+    border-bottom: 1px solid lightgrey;
     font-size: 150%;
     font-weight: bold;
     text-align: center;
-    border-bottom: none;
     page-break-after: avoid;
+}
+
+.bebras-sectionbody-1 {
+    margin-top: -1px;
 }
 
 h2 {
@@ -136,10 +149,7 @@ sub {
   position: fixed;
   bottom: 0;
   border-top: 0.5px solid lightgray;
-
   display: flex;
-  display: -webkit-flex;
-
   font-size: 70%;
 }
 
@@ -169,16 +179,9 @@ sub {
  .bebras-header {
     line-height: 100%;
     width: 100%;
-
     display: flex;
-    display: -webkit-flex;
-
     flex-direction: column;
-    -webkit-flex-direction: column;
-
     align-items: stretch;
-    -webkit-box-align: stretch;
-    
     font-size: 90%;
     border-collapse: collapse;
     padding: 1px 0 0 1px;
@@ -193,26 +196,15 @@ sub {
 
 .bebras-ages {
     display: flex;
-    display: -webkit-flex;
-
     justify-content: stretch;
-    -webkit-justify-content: stretch;
 }
 
 .bebras-age {
     text-align: center;
-    
     flex: auto;
-    -webkit-flex: auto;
-
     display: flex;
-    display: -webkit-flex;
-
     flex-direction: column;
-    -webkit-flex-direction: column;
-
     align-items: center;
-    -webkit-box-align: center;
 }
 
 .bebras-header-caption {
@@ -225,21 +217,25 @@ sub {
 
 .bebras-categories {
     display: flex;
-    display: -webkit-flex;
-    
     align-items: stretch;
-    -webkit-box-align: stretch;
 }
 
 .bebras-categories-cell {
     flex: auto;
-    -webkit-flex: auto;
-
     display: flex;
-    display: -webkit-flex;
-
     flex-direction: column;
-    -webkit-flex-direction: column;
+}
+
+.bebras-keywords {
+    display: flex;
+}
+
+.bebras-keywords-caption {
+    padding-right: 0.5em;
+}
+
+.bebras-keywords-list {
+    flex: auto;
 }
 
 .table-of-contents li {
@@ -250,17 +246,14 @@ sub {
 
     .bebras-categories {
         flex-direction: column;
-        -webkit-flex-direction: column;
     }
 
     .bebras-ages {
         flex-wrap: wrap;
-        -webkit-flex-wrap: wrap;
     }
 
     .bebras-age {
         flex-basis: 33%;
-        -webkit-flex-basis: 33%;
     }
 }
 
@@ -314,8 +307,6 @@ sub {
 
 .bebras-license {
     display: flex;
-    display: -webkit-flex;
-
     line-height: 100%;
 }
 
@@ -329,7 +320,6 @@ sub {
 
     .bebras-license {
         flex-direction: column-reverse;
-        -wekbit-flex-direction: column-reverse;
     }
 
     .bebras-license-text {

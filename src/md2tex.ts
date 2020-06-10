@@ -8,7 +8,7 @@ import { setLineCap } from 'pdf-lib';
 export function runTerminal(fileIn: string, fileOut: string) {
     const texData = renderTex(fileIn);
     fs.writeFileSync(fileOut, texData);
-    console.log(`Wrote ${fileOut}`);
+    console.log(`Output written on ${fileOut}`);
 }
 
 function texEscape(text: string): string {

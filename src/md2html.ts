@@ -7,7 +7,7 @@ export function runTerminal(fileIn: string, fileOut: string) {
   const mdText = fs.readFileSync(fileIn, 'utf8');
   const [htmlText, metadata] = renderMarkdown(mdText, true);
   fs.writeFileSync(fileOut, htmlText);
-  console.log(`Wrote ${fileOut}`);
+  console.log(`Output written on ${fileOut}`);
 }
 
 export function renderMarkdown(text: string, fullHtml: boolean): [string, TaskMetadata] {
@@ -22,6 +22,7 @@ export function renderMarkdown(text: string, fullHtml: boolean): [string, TaskMe
      <html lang="en">
        <head>
          <meta charset="utf-8">
+         <meta name="viewport" content="width=device-width, initial-scale=1">
          <title>${metadata.id} ${metadata.title}</title>
         <link href="../bebrasmdstyle.css" rel="stylesheet" />
        </head>

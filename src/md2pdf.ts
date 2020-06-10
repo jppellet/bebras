@@ -7,7 +7,7 @@ import util = require("./util");
 export async function runTerminal(fileIn: string, fileOut: string) {
     const pdfData = await renderPdf(fileIn);
     fs.writeFileSync(fileOut, pdfData);
-    console.log(`Wrote ${fileOut}`);
+    console.log(`Output written on ${fileOut}`);
 }
 
 export async function renderPdf(filepath: string) {

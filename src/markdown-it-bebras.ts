@@ -163,7 +163,12 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
         const match = patterns.keyword.exec(kwLine);
         return match ? match.groups.keyword : kwLine;
       });
-      const keywordsCell = `<span class="bebras-header-caption">Keywords</span>${keywords.join(", ")}`;
+      const keywordsStr = keywords.length === 0 ? "—" : keywords.join(", ");
+      const keywordsCell = '' +
+        `<div class="bebras-keywords-caption">
+           <span class="bebras-header-caption">Keywords</span>
+         </div>
+         <div class="bebras-keywords-list">${keywordsStr}</div>`;
 
       return '' +
         `<div class="bebras-header">
@@ -297,13 +302,15 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
       } else if (type === "heading_close") {
         tokensOut.push(tokensIn[i]);
         const newToken = new state.Token('secbody_open', 'div', 1);
-        const level = tokensIn[i].tag.slice(1);
-        let specificClass = ``;
-        if (i > 0 && tokensIn[i - 1].type === "inline") {
-          specificClass = ` bebras-sectionbody-${slugify(tokensIn[i - 1].content.toLowerCase())}`;
+        const level = parseInt(tokensIn[i].tag.slice(1));
+        if (level >= 2) {
+          let specificClass = ``;
+          if (i > 0 && tokensIn[i - 1].type === "inline") {
+            specificClass = ` bebras-sectionbody-${slugify(tokensIn[i - 1].content.toLowerCase())}`;
+          }
+          newToken.attrPush(["class", `bebras-sectionbody-${level}${specificClass}`]);
+          tokensOut.push(newToken);
         }
-        newToken.attrPush(["class", `bebras-sectionbody-${level}${specificClass}`]);
-        tokensOut.push(newToken);
         sectionOpen = true;
 
       } else if (type === "heading_open") {
@@ -313,13 +320,15 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
           sectionOpen = false;
         }
         const newToken = new state.Token('secbody_open', 'div', 1);
-        const level = tokensIn[i].tag.slice(1);
-        let specificClass = ``;
-        if (i < tokensIn.length - 1 && tokensIn[i + 1].type === "inline") {
-          specificClass = ` bebras-sectioncontainer-${slugify(tokensIn[i + 1].content.toLowerCase())}`;
+        const level = parseInt(tokensIn[i].tag.slice(1));
+        if (level >= 2) {
+          let specificClass = ``;
+          if (i < tokensIn.length - 1 && tokensIn[i + 1].type === "inline") {
+            specificClass = ` bebras-sectioncontainer-${slugify(tokensIn[i + 1].content.toLowerCase())}`;
+          }
+          newToken.attrPush(["class", `bebras-sectioncontainer-${level}${specificClass}`]);
+          tokensOut.push(newToken);
         }
-        newToken.attrPush(["class", `bebras-sectioncontainer-${level}${specificClass}`]);
-        tokensOut.push(newToken);
 
         tokensOut.push(tokensIn[i]);
 
