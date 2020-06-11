@@ -3,12 +3,26 @@ import fs = require('fs');
 import puppeteer = require('puppeteer');
 import md2html = require('./md2html');
 import util = require("./util");
+import path = require('path');
+import patterns = require('./patterns');
 
 export async function runTerminal(fileIn: string, fileOut: string) {
     const pdfData = await renderPdf(fileIn);
     fs.writeFileSync(fileOut, pdfData);
     console.log(`Output written on ${fileOut}`);
 }
+
+function toFileUrl(filepath: string): string {
+    let pathName = path.resolve(filepath).replace(/\\/g, '/');
+
+    // Windows drive letter must be prefixed with a slash
+    if (pathName[0] !== '/') {
+        pathName = '/' + pathName;
+    }
+
+    return encodeURI('file://' + pathName);
+};
+
 
 export async function renderPdf(filepath: string) {
 
@@ -19,7 +33,7 @@ export async function renderPdf(filepath: string) {
     const browser = await puppeteer.launch({ headless: true });
     const page = await browser.newPage();
 
-    await page.goto(`file:///Users/jpp/Desktop/bebrastasksupport/${filepath}`, { waitUntil: 'domcontentloaded' });
+    await page.goto(toFileUrl(filepath), { waitUntil: 'domcontentloaded' });
 
     await page.setContent(textHtml, { waitUntil: 'networkidle2' });
 
@@ -35,10 +49,25 @@ export async function renderPdf(filepath: string) {
     const pdfTitle = `${metadata.id} ${metadata.title}`;
     doc.setTitle(pdfTitle);
     doc.setSubject(pdfTitle);
-    doc.setAuthor(metadata.contributors.join("; "));
-    // doc.setKeywords();
     doc.setCreator('Bebras Markdown Stack');
     doc.setProducer('Chromium via Puppeteer and the ‘pdf-lib’ package');
+
+    const authors = metadata.contributors.map(contribLine => {
+        const match = patterns.contributor.exec(contribLine);
+        return match ? match.groups.name : contribLine;
+    });
+    if (authors.length !== 0) {
+        doc.setAuthor(authors.join(", "));
+    }
+
+    const keywords = metadata.keywords.map(kwLine => {
+        const match = patterns.keyword.exec(kwLine);
+        return match ? match.groups.keyword : kwLine;
+    });
+    if (keywords.length !== 0) {
+        doc.setKeywords([keywords.join(", ")]);
+    }
+    // doc.setLanguage();
 
     const pdfBytes = await doc.save();
 
