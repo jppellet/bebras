@@ -87,19 +87,15 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
   const HtmlGeneratorTemplates = {
 
     "license_html": (metadata: TaskMetadata) => {
-      const year = metadata.id.slice(0, 4);
-      const licenseTitle = "Creative Commons Attribution – ShareAlike 4.0 International License";
-      const licenseTitleShort = "CC BY-SA 4.0";
-      const licenseUrl = "https://creativecommons.org/licenses/by-sa/4.0/";
-      const licenseImageUrl = "https://mirrors.creativecommons.org/presskit/buttons/88x31/svg/by-sa.svg";
+      const license = patterns.genLicense(metadata);
       return "" +
         `<p>
           <div class="bebras-license">
             <div class="bebras-license-image">
-              <a href="${licenseUrl}"><img alt="license" title="${licenseTitleShort}" src="${licenseImageUrl}"/></a>
+              <a href="${license.url}"><img alt="license" title="${license.titleShort}" src="${license.imageUrl}"/></a>
             </div>
             <div class="bebras-license-text">
-              Copyright © ${year} Bebras – International Contest on Informatics and Computer Fluency. This work is licensed under a ${licenseTitle}. <a href="${licenseUrl}">${licenseUrl}</a>
+              ${license.fullCopyright()} <a href="${license.url}">${license.url}</a>
             </div>
           </div>
         </p>`;
@@ -393,25 +389,27 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
       `<span class="bebras-page-footer-taskid">${metadata.id}</span>
        <span class="bebras-page-footer-tasktitle">${metadata.title}</span>`;
 
-    return '' +
-      `<div class="bebras-page-header">${pageHeader}</div>
-       <div class="bebras-page-footer">${pageFooter}</div>
-       <table>
-         <thead>
-           <tr><td class="bebras-layout-cell"><div class="bebras-page-header-space">&nbsp;</div></td></tr>
-         </thead>
-         <tbody>
-           <tr><td class="bebras-layout-cell">`;
+    return "";
+    // return '' +
+    //   `<div class="bebras-page-header">${pageHeader}</div>
+    //    <div class="bebras-page-footer">${pageFooter}</div>
+    //    <table>
+    //      <thead>
+    //        <tr><td class="bebras-layout-cell"><div class="bebras-page-header-space">&nbsp;</div></td></tr>
+    //      </thead>
+    //      <tbody>
+    //        <tr><td class="bebras-layout-cell">`;
   };
 
   md.renderer.rules.main_close = (tokens, idx) => {
-    return '' +
-      `    </td></tr>
-         </tbody>
-         <tfoot>
-           <tr><td class="bebras-layout-cell"><div class="bebras-page-footer-space">&nbsp;</div></td></tr>
-         </tfoot>
-       </table>`;
+    return "";
+    // return '' +
+    //   `    </td></tr>
+    //      </tbody>
+    //      <tfoot>
+    //        <tr><td class="bebras-layout-cell"><div class="bebras-page-footer-space">&nbsp;</div></td></tr>
+    //      </tfoot>
+    //    </table>`;
   };
 
 

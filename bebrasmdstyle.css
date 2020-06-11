@@ -105,11 +105,17 @@ sub {
  */
 
 @page {
-  margin: 60px;
+  margin: 60px 60px 80px;
 }
   
 @media only print {
+
+    html {
+        background: none;
+    }
+
     body {
+        background: none;
         border: none;
         padding: 0;
         max-width: unset;
@@ -124,7 +130,7 @@ sub {
     padding: 0;
 }
 
-.bebras-page-header, .bebras-page-header-space {
+/* .bebras-page-header, .bebras-page-header-space {
   display: none;
 }
 
@@ -168,7 +174,7 @@ sub {
 .bebras-page-footer, .bebras-page-footer-space {
         display: none;
     }
-}
+} */
 
 
 

@@ -2,7 +2,7 @@
 // the groups property of the RegExpExecArray object
 
 import G = require("glob");
-import { Hash } from "crypto";
+import { TaskMetadata } from "./util";
 
 // @ts-ignore
 interface RichRegExpExecArray<T> extends globalThis.RegExpExecArray {
@@ -27,6 +27,37 @@ export type GroupNameOf<T> = T extends RichRegExp<infer H> ? keyof H : never;
 
 function capturing<T>(pat: string, flags?: string): RichRegExp<Captures<T>> {
     return new RegExp(pat, flags) as RichRegExp<Captures<T>>;
+}
+
+
+// Some useful metadata-related functions
+
+export class LicenceInfo {
+    constructor(
+        public year: string,
+        public title: string,
+        public titleShort: string,
+        public url: string,
+        public imageUrl: string,
+    ) { }
+
+    shortCopyright(): string {
+        return `© ${this.year} Bebras (${this.titleShort})`;
+    }
+
+    fullCopyright(): string {
+        return `Copyright © ${this.year} Bebras – International Contest on Informatics and Computer Fluency. This work is licensed under a ${this.title}.`;
+    }
+}
+
+export function genLicense(metadata: TaskMetadata): LicenceInfo {
+    return new LicenceInfo(
+        /* year:       */ metadata.id.slice(0, 4),
+        /* title:      */ "Creative Commons Attribution – ShareAlike 4.0 International License",
+        /* titleShort: */ "CC BY-SA 4.0",
+        /* url:        */ "https://creativecommons.org/licenses/by-sa/4.0/",
+        /* imageUrl:   */ "https://mirrors.creativecommons.org/presskit/buttons/88x31/svg/by-sa.svg",
+    );
 }
 
 

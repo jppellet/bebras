@@ -23,6 +23,7 @@ export function renderTex(filepath: string): string {
     const textMd = fs.readFileSync(filepath, 'utf-8');
 
     const [tokens, metadata] = md2html.parseMarkdown(textMd);
+    const license = patterns.genLicense(metadata);
 
     const skip = () => "";
 
@@ -91,6 +92,7 @@ export function renderTex(filepath: string): string {
                 catCell2 += catToRow(categories[i]);
             }
 
+            const keywordsCaption = `\\textit{Keywords: }`;
             const keywords = metadata.keywords.map(kwLine => {
                 const match = patterns.keyword.exec(kwLine);
                 return match ? match.groups.keyword : kwLine;
@@ -111,7 +113,7 @@ export function renderTex(filepath: string): string {
   \\hline
   ${multicolumn(3, catCell1)} &  ${multicolumn(3, catCell2)} \\\\
   \\hline
-  ${multicolumn(6, `\\textit{Keywords:} ${keywordsStr}`)} \\\\
+  ${multicolumn(6, `\\settowidth{\\hangindent}{${keywordsCaption}}${keywordsCaption}${keywordsStr}`)} \\\\
   \\hline
 \\end{tabularx}}
             \n`;
@@ -119,17 +121,10 @@ export function renderTex(filepath: string): string {
 
         "license_html": (tokens, idx) => {
 
-            const year = metadata.id.slice(0, 4);
-            const licenseTitle = "Creative Commons Attribution – ShareAlike 4.0 International License";
-            const licenseTitleShort = "CC BY-SA 4.0";
-            const licenseUrl = "https://creativecommons.org/licenses/by-sa/4.0/";
-            const licenseImageUrl = "https://mirrors.creativecommons.org/presskit/buttons/88x31/svg/by-sa.svg";
-
-
             // https://tex.stackexchange.com/questions/5433/can-i-use-an-image-located-on-the-web-in-a-latex-document
 
             return `{\\footnotesize\\begin{tabularx}{\\columnwidth}{ l X }
-  TODO image & Copyright © ${year} Bebras – International Contest on Informatics and Computer Fluency. This work is licensed under a ${licenseTitle}. \\href{${licenseUrl}}{${licenseUrl}}
+  TODO image & ${license.fullCopyright()} \\href{${license.url}}{${license.url}}
 \\end{tabularx}}\n`;
         },
 
@@ -340,6 +335,17 @@ export function renderTex(filepath: string): string {
 \\setlength{\\parindent}{0pt}
 \\setlength{\\parskip}{2ex}
 \\raggedbottom
+
+\\usepackage{fancyhdr}
+\\usepackage{lastpage}
+\\pagestyle{fancy}
+
+\\fancyhf{}
+\\renewcommand{\\headrulewidth}{0pt}
+\\renewcommand{\\footrulewidth}{0.4pt}
+\\lfoot{\\scriptsize ${texEscape(license.shortCopyright())}}
+\\cfoot{\\scriptsize\\itshape ${texEscape(metadata.id)} ${texEscape(metadata.title)}}
+\\rfoot{\\scriptsize Page \\thepage{}/\\pageref*{LastPage}}
 
 \\begin{document}
 ${taskTex}

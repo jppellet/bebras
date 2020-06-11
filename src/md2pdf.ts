@@ -37,7 +37,37 @@ export async function renderPdf(filepath: string) {
 
     await page.setContent(textHtml, { waitUntil: 'networkidle2' });
 
-    const pdfData = await page.pdf({ format: 'A4' });
+    const licence = patterns.genLicense(metadata);
+
+    // TODO load that from CSS file?
+    const baseHeaderFooterStyleParts: Array<[string, string]> = [
+        ["font-family", "Helvetica, Arial, sans-serif"],
+        ["font-size", "9px"],
+        ["width", "100%"],
+        ["margin", "0 45px"],
+        ["position", "relative"],
+        ["top", "-25px"],
+        ["border-top", "1px solid lightgrey"],
+        ["padding-top", "3px"],
+        ["display", "flex"],
+    ];
+
+    const baseHeaderFooterStyle = baseHeaderFooterStyleParts.map(([name, value]) => `${name}:${value}`).join(";");
+
+    const footerTemplate = '' +
+        `<div style="${baseHeaderFooterStyle}" class="pdffooter">
+          <span style="flex:1 0 0; text-align: left">${licence.shortCopyright()}</span>
+          <span style="flex:1 0 0; text-align: center; font-style:italic">${metadata.id} ${metadata.title}</span>
+          <span style="flex:1 0 0; text-align: right">Page <span class="pageNumber"></span>/<span class="totalPages"></span>
+         </div>`;
+
+    const pdfData = await page.pdf({
+        format: 'A4',
+        displayHeaderFooter: true,
+        printBackground: true,
+        headerTemplate: '<div/>',
+        footerTemplate
+    });
 
     await browser.close();
 
