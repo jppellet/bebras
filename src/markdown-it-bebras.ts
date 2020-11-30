@@ -1,14 +1,14 @@
-import MarkdownIt = require("markdown-it");
-import Token = require("markdown-it/lib/token");
-import Renderer = require("markdown-it/lib/renderer");
-import StateCore = require("markdown-it/lib/rules_core/state_core");
+import MarkdownIt = require("markdown-it")
+import Token = require("markdown-it/lib/token")
+import Renderer = require("markdown-it/lib/renderer")
+import StateCore = require("markdown-it/lib/rules_core/state_core")
 
-const slugify: (s: string) => string = require('slugify');
+const slugify: (s: string) => string = require('slugify')
 
-import * as yaml from 'js-yaml';
+import * as yaml from 'js-yaml'
 
-import * as patterns from './patterns';
-import { TaskMetadata, defaultTaskMetadata } from "./util";
+import * as patterns from './patterns'
+import { TaskMetadata, defaultTaskMetadata } from "./util"
 
 
 function bebrasPlugin(md: MarkdownIt, _options: any) {
@@ -26,14 +26,14 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
       rowspan: true,
       headerless: true,
     }) // see https://www.npmjs.com/package/markdown-it-multimd-table
-    .use(require("markdown-it-toc-done-right"), { level: 2, listType: "ul", placeholder: '{{table_of_contents}}' });
+    .use(require("markdown-it-toc-done-right"), { level: 2, listType: "ul", placeholder: '{{table_of_contents}}' })
 
   const quotes = {
     eng: ['“', '”', '‘', '’'],
     fra: ['«\u202F', '\u202F»', '“', '”'],
     deu: ['„', '“', '‚', '‘'],
     ita: ['«', '»', '“', '”'],
-  };
+  }
 
   // ensure options
   md.set({
@@ -49,24 +49,24 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
 
     // Double + single quotes replacement pairs, when typographer enabled,
     quotes: quotes.fra, // TODO set according to lang
-  });
+  })
 
   const defaultOptions = {
     addToc: false,
-  };
+  }
 
-  type PluginOptions = typeof defaultOptions;
+  type PluginOptions = typeof defaultOptions
 
-  const options: PluginOptions = Object.assign({}, defaultOptions, _options);
+  const options: PluginOptions = Object.assign({}, defaultOptions, _options)
 
-  type MdGeneratorFunction = (metadata: TaskMetadata) => string;
-  type HtmlGeneratorFunction = (metadata: TaskMetadata) => string;
+  type MdGeneratorFunction = (metadata: TaskMetadata) => string
+  type HtmlGeneratorFunction = (metadata: TaskMetadata) => string
 
 
   const MdGeneratorTemplates = {
 
     "title": (metadata: TaskMetadata) => {
-      return `# ${metadata.id} ${metadata.title}`;
+      return `# ${metadata.id} ${metadata.title}`
     },
 
     // TODO remove this and load keywords from Markdown instead
@@ -76,27 +76,27 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
     // },
 
     "contributors": (metadata: TaskMetadata) => {
-      const sectionBody = metadata.contributors.map(c => ` * ${c.replace(patterns.email, "<$&>")}`).join("\n");
-      return `## Contributors\n\n${sectionBody}`;
+      const sectionBody = metadata.contributors.map(c => ` * ${c.replace(patterns.email, "<$&>")}`).join("\n")
+      return `## Contributors\n\n${sectionBody}`
     },
 
     "support_files": (metadata: TaskMetadata) => {
-      const sectionBody = metadata.support_files.map(f => ` * ${f}`).join("\n");
-      return `## Support Files\n\n${sectionBody}`;
+      const sectionBody = metadata.support_files.map(f => ` * ${f}`).join("\n")
+      return `## Support Files\n\n${sectionBody}`
     },
 
     "license": (metadata: TaskMetadata) => {
-      const sectionBody = "{{license_html}}";
-      return `## License\n\n${sectionBody}`;
+      const sectionBody = "{{license_html}}"
+      return `## License\n\n${sectionBody}`
     },
 
-  };
+  }
 
 
   const HtmlGeneratorTemplates = {
 
     "license_html": (metadata: TaskMetadata) => {
-      const license = patterns.genLicense(metadata);
+      const license = patterns.genLicense(metadata)
       return "" +
         `<p>
           <div class="bebras-license">
@@ -107,59 +107,59 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
               ${license.fullCopyright()} <a href="${license.url}">${license.url}</a>
             </div>
           </div>
-        </p>`;
+        </p>`
     },
 
     "header": (metadata: TaskMetadata) => {
 
-      const ageCategories = patterns.ageCategories;
-      const categories = patterns.categories;
+      const ageCategories = patterns.ageCategories
+      const categories = patterns.categories
 
       const ageRowCells =
         (Object.keys(ageCategories) as Array<keyof typeof ageCategories>).map(catName => {
-          const catFieldName = ageCategories[catName];
-          let catValue: string = metadata.ages[catFieldName] || "--";
+          const catFieldName = ageCategories[catName]
+          let catValue: string = metadata.ages[catFieldName] || "--"
           if (catValue.startsWith("--")) {
-            catValue = "—";
+            catValue = "—"
           }
-          return `<div class="bebras-age bebras-header-cell"><span class="bebras-header-caption">${catName}</span><span class="bebras-header-value">${catValue}</span></div>`;
-        }).join("");
+          return `<div class="bebras-age bebras-header-cell"><span class="bebras-header-caption">${catName}</span><span class="bebras-header-value">${catValue}</span></div>`
+        }).join("")
 
-      const answerType = `<span class="bebras-header-caption">Answer Type</span><span class="bebras-header-value">${metadata.answer_type}</span>`;
+      const answerType = `<span class="bebras-header-caption">Answer Type</span><span class="bebras-header-value">${metadata.answer_type}</span>`
 
-      const numCat1 = Math.floor(categories.length / 2);
+      const numCat1 = Math.floor(categories.length / 2)
 
-      const checkedBox = `☒`;
-      const uncheckedBox = `☐`;
+      const checkedBox = `☒`
+      const uncheckedBox = `☐`
 
       function catToRow(catName: string) {
-        const isRelated = metadata.categories.includes(catName);
-        const catChecked = isRelated ? checkedBox : uncheckedBox;
-        return `${catChecked} ${catName}`;
+        const isRelated = metadata.categories.includes(catName)
+        const catChecked = isRelated ? checkedBox : uncheckedBox
+        return `${catChecked} ${catName}`
       }
 
-      let catCell1 = `<div class="bebras-categories-cell"><span class="bebras-header-caption">Categories</span>`;
+      let catCell1 = `<div class="bebras-categories-cell"><span class="bebras-header-caption">Categories</span>`
       for (let i = 0; i < numCat1; i++) {
-        catCell1 += `<span class="bebras-header-value">${catToRow(categories[i])}</span>`;
+        catCell1 += `<span class="bebras-header-value">${catToRow(categories[i])}</span>`
       }
-      catCell1 += `</div>`;
+      catCell1 += `</div>`
 
-      let catCell2 = `<div class="bebras-categories-cell">`;
+      let catCell2 = `<div class="bebras-categories-cell">`
       for (let i = numCat1; i < categories.length; i++) {
-        catCell2 += `<span class="bebras-header-value">${catToRow(categories[i])}</span>`;
+        catCell2 += `<span class="bebras-header-value">${catToRow(categories[i])}</span>`
       }
-      catCell2 += `</div>`;
+      catCell2 += `</div>`
 
       const keywords = metadata.keywords.map(kwLine => {
-        const match = patterns.keyword.exec(kwLine);
-        return match ? match.groups.keyword : kwLine;
-      });
-      const keywordsStr = keywords.length === 0 ? "—" : keywords.join(", ");
+        const match = patterns.keyword.exec(kwLine)
+        return match ? match.groups.keyword : kwLine
+      })
+      const keywordsStr = keywords.length === 0 ? "—" : keywords.join(", ")
       const keywordsCell = '' +
         `<div class="bebras-keywords-caption">
            <span class="bebras-header-caption">Keywords</span>
          </div>
-         <div class="bebras-keywords-list">${keywordsStr}</div>`;
+         <div class="bebras-keywords-list">${keywordsStr}</div>`
 
       //  return '' +
       //  `<div class="bebras-header">
@@ -174,50 +174,50 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
             <div class="bebras-ages">${ageRowCells}</div>
             <div class="bebras-answertype bebras-header-cell">${answerType}</div>
             <div class="bebras-categories bebras-header-cell">${catCell1}${catCell2}</div>
-           </div>`;
+           </div>`
     },
-  };
+  }
 
-  type MdTemplateName = keyof typeof MdGeneratorTemplates;
-  type HtmlTemplateName = keyof typeof HtmlGeneratorTemplates;
+  type MdTemplateName = keyof typeof MdGeneratorTemplates
+  type HtmlTemplateName = keyof typeof HtmlGeneratorTemplates
 
-  type TemplateName = MdTemplateName | HtmlTemplateName | "table_of_contents";
+  type TemplateName = MdTemplateName | HtmlTemplateName | "table_of_contents"
 
 
-  let taskMetadata: TaskMetadata | undefined;
+  let taskMetadata: TaskMetadata | undefined
 
   md.core.ruler.before('block', 'bebras_metadata', (state: StateCore) => {
     // check front matter
-    let parsedMetadata: object | undefined;
-    const fmStartMarker = "---\n";
-    const fmEndMarker = "\n---\n";
+    let parsedMetadata: object | undefined
+    const fmStartMarker = "---\n"
+    const fmEndMarker = "\n---\n"
     if (state.src.startsWith(fmStartMarker)) {
-      const fmEnd = state.src.indexOf(fmEndMarker, fmStartMarker.length);
+      const fmEnd = state.src.indexOf(fmEndMarker, fmStartMarker.length)
       if (fmEnd >= 0) {
         // parse front matter as YAML
-        const fmStr = state.src.slice(0, fmEnd);
+        const fmStr = state.src.slice(0, fmEnd)
         try {
-          parsedMetadata = yaml.safeLoad(fmStr);
+          parsedMetadata = yaml.safeLoad(fmStr)
         } catch { }
-        state.src = state.src.slice(fmEnd + fmEndMarker.length);
+        state.src = state.src.slice(fmEnd + fmEndMarker.length)
       }
     }
 
-    taskMetadata = Object.assign({}, defaultTaskMetadata(), parsedMetadata);
-    state.env.taskMetadata = taskMetadata;
+    taskMetadata = Object.assign({}, defaultTaskMetadata(), parsedMetadata)
+    state.env.taskMetadata = taskMetadata
 
-    return true;
-  });
+    return true
+  })
 
   md.core.ruler.before('block', 'bebras_md_insert_metadata', (state: StateCore) => {
-    const sep = "\n\n";
+    const sep = "\n\n"
     function mkSections(names: TemplateName[]) {
-      return sep + names.map(n => `{{${n}}}`).join(sep) + sep;
+      return sep + names.map(n => `{{${n}}}`).join(sep) + sep
     }
 
-    const prologueSections: TemplateName[] = ["title", "header"];
+    const prologueSections: TemplateName[] = ["title", "header"]
     if (options.addToc) {
-      prologueSections.push("table_of_contents");
+      prologueSections.push("table_of_contents")
     }
 
     // TODO remove, no need to insert keywords
@@ -231,65 +231,65 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
     state.src =
       mkSections(prologueSections) +
       state.src +
-      mkSections(["contributors", "support_files", "license"]);
+      mkSections(["contributors", "support_files", "license"])
 
-    return true;
-  });
+    return true
+  })
 
-  const templatePattern = "{{([a-zA-Z0-9_]+)}}";
+  const templatePattern = "{{([a-zA-Z0-9_]+)}}"
 
   md.core.ruler.before('block', 'bebras_md_expand', (state: StateCore) => {
 
-    const templateRegExp = new RegExp(templatePattern, 'g');
-    const newSrcParts = [] as string[];
+    const templateRegExp = new RegExp(templatePattern, 'g')
+    const newSrcParts = [] as string[]
 
-    let match: RegExpExecArray | null;
-    let lastMatchEnd = -1;
+    let match: RegExpExecArray | null
+    let lastMatchEnd = -1
     function flushPartTo(end: number) {
-      const newPart = state.src.slice(lastMatchEnd + 1, end);
+      const newPart = state.src.slice(lastMatchEnd + 1, end)
       if (newPart !== '') {
-        newSrcParts.push(newPart);
+        newSrcParts.push(newPart)
       }
     }
 
-    taskMetadata = taskMetadata || defaultTaskMetadata();
+    taskMetadata = taskMetadata || defaultTaskMetadata()
 
     while ((match = templateRegExp.exec(state.src)) !== null) {
-      const templateName = match[1] as MdTemplateName;
+      const templateName = match[1] as MdTemplateName
 
       if (typeof MdGeneratorTemplates[templateName] !== "function") {
-        continue;
+        continue
       }
 
-      flushPartTo(match.index);
-      lastMatchEnd = match.index + match[0].length;
-      templateRegExp.lastIndex = lastMatchEnd + 1;
+      flushPartTo(match.index)
+      lastMatchEnd = match.index + match[0].length
+      templateRegExp.lastIndex = lastMatchEnd + 1
 
-      newSrcParts.push(MdGeneratorTemplates[templateName](taskMetadata));
+      newSrcParts.push(MdGeneratorTemplates[templateName](taskMetadata))
     }
-    flushPartTo(state.src.length);
+    flushPartTo(state.src.length)
 
-    state.src = newSrcParts.join("");
+    state.src = newSrcParts.join("")
 
-    return true;
-  });
+    return true
+  })
 
 
   md.core.ruler.after('block', 'bebras_html_expand', (state: StateCore) => {
-    const templateRegExp = new RegExp('^' + templatePattern + '$', 'i');
+    const templateRegExp = new RegExp('^' + templatePattern + '$', 'i')
 
 
-    const tokensIn = state.tokens;
-    const tokensOut = [] as Token[];
-    let sectionOpen = false;
+    const tokensIn = state.tokens
+    const tokensOut = [] as Token[]
+    let sectionOpen = false
 
-    tokensOut.push(new state.Token('main_open', 'div', 1));
+    tokensOut.push(new state.Token('main_open', 'div', 1))
 
     for (let i = 0; i < tokensIn.length; i++) {
-      let match: RegExpExecArray | null;
-      let templateName: string;
+      let match: RegExpExecArray | null
+      let templateName: string
 
-      const type = tokensIn[i].type;
+      const type = tokensIn[i].type
       if (
         type === "paragraph_open" &&
         i < tokensIn.length - 2 &&
@@ -298,183 +298,183 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
         (match = templateRegExp.exec(tokensIn[i + 1].content)) !== null &&
         typeof HtmlGeneratorTemplates[(templateName = match[1] as HtmlTemplateName)] === "function"
       ) {
-        tokensIn[i + 1].type = "bebras_html_expand";
-        tokensIn[i + 1].meta = templateName;
-        tokensOut.push(tokensIn[i + 1]);
-        i += 2;
+        tokensIn[i + 1].type = "bebras_html_expand"
+        tokensIn[i + 1].meta = templateName
+        tokensOut.push(tokensIn[i + 1])
+        i += 2
 
       } else if (type === "heading_close") {
-        tokensOut.push(tokensIn[i]);
-        const newToken = new state.Token('secbody_open', 'div', 1);
-        const level = parseInt(tokensIn[i].tag.slice(1));
+        tokensOut.push(tokensIn[i])
+        const newToken = new state.Token('secbody_open', 'div', 1)
+        const level = parseInt(tokensIn[i].tag.slice(1))
         if (level >= 2) {
-          let specificClass = ``;
+          let specificClass = ``
           if (i > 0 && tokensIn[i - 1].type === "inline") {
-            specificClass = ` bebras-sectionbody-${slugify(tokensIn[i - 1].content.toLowerCase())}`;
+            specificClass = ` bebras-sectionbody-${slugify(tokensIn[i - 1].content.toLowerCase())}`
           }
-          newToken.attrPush(["class", `bebras-sectionbody-${level}${specificClass}`]);
-          tokensOut.push(newToken);
+          newToken.attrPush(["class", `bebras-sectionbody-${level}${specificClass}`])
+          tokensOut.push(newToken)
         }
-        sectionOpen = true;
+        sectionOpen = true
 
       } else if (type === "heading_open") {
         if (sectionOpen) {
-          tokensOut.push(new state.Token('secbody_close', 'div', -1));
-          tokensOut.push(new state.Token('seccontainer_close', 'div', -1));
-          sectionOpen = false;
+          tokensOut.push(new state.Token('secbody_close', 'div', -1))
+          tokensOut.push(new state.Token('seccontainer_close', 'div', -1))
+          sectionOpen = false
         }
-        const newToken = new state.Token('secbody_open', 'div', 1);
-        const level = parseInt(tokensIn[i].tag.slice(1));
+        const newToken = new state.Token('secbody_open', 'div', 1)
+        const level = parseInt(tokensIn[i].tag.slice(1))
         if (level >= 2) {
-          let specificClass = ``;
+          let specificClass = ``
           if (i < tokensIn.length - 1 && tokensIn[i + 1].type === "inline") {
-            specificClass = ` bebras-sectioncontainer-${slugify(tokensIn[i + 1].content.toLowerCase())}`;
+            specificClass = ` bebras-sectioncontainer-${slugify(tokensIn[i + 1].content.toLowerCase())}`
           }
-          newToken.attrPush(["class", `bebras-sectioncontainer-${level}${specificClass}`]);
-          tokensOut.push(newToken);
+          newToken.attrPush(["class", `bebras-sectioncontainer-${level}${specificClass}`])
+          tokensOut.push(newToken)
         }
 
-        tokensOut.push(tokensIn[i]);
+        tokensOut.push(tokensIn[i])
 
       } else {
-        tokensOut.push(tokensIn[i]);
+        tokensOut.push(tokensIn[i])
       }
     }
 
     if (sectionOpen) {
-      const newToken = new state.Token('secbody_close', 'div', -1);
-      tokensOut.push(newToken);
+      const newToken = new state.Token('secbody_close', 'div', -1)
+      tokensOut.push(newToken)
     }
 
-    tokensOut.push(new state.Token('main_close', 'div', -1));
+    tokensOut.push(new state.Token('main_close', 'div', -1))
 
-    state.tokens = tokensOut;
-    return true;
-  });
+    state.tokens = tokensOut
+    return true
+  })
 
   md.block.ruler.after('fence', 'raw', function fence(state, startLine, endLine, silent) {
-    const OpenMarker = 0x3C;/* < */
-    const CloseMarker = 0x3E;/* > */
+    const OpenMarker = 0x3C/* < */
+    const CloseMarker = 0x3E/* > */
 
     // if it's indented more than 3 spaces, it should be a code block
-    if (state.sCount[startLine] - state.blkIndent >= 4) { return false; }
+    if (state.sCount[startLine] - state.blkIndent >= 4) { return false }
 
-    let pos = state.bMarks[startLine] + state.tShift[startLine];
-    let max = state.eMarks[startLine];
-    if (pos + 3 > max) { return false; }
+    let pos = state.bMarks[startLine] + state.tShift[startLine]
+    let max = state.eMarks[startLine]
+    if (pos + 3 > max) { return false }
 
     if (state.src.charCodeAt(pos) !== OpenMarker) {
-      return false;
+      return false
     }
 
     // scan marker length
-    let mem = pos;
-    pos = state.skipChars(pos, OpenMarker);
+    let mem = pos
+    pos = state.skipChars(pos, OpenMarker)
 
-    let len = pos - mem;
+    let len = pos - mem
 
-    if (len < 3) { return false; }
+    if (len < 3) { return false }
 
-    const param = state.src.slice(pos, max).trim();
-    let haveEndMarker = false;
+    const param = state.src.slice(pos, max).trim()
+    let haveEndMarker = false
 
     // Since start is found, we can report success here in validation mode
-    if (silent) { return true; }
+    if (silent) { return true }
 
     // search end of block
-    let nextLine = startLine;
+    let nextLine = startLine
 
     for (; ;) {
-      nextLine++;
+      nextLine++
       if (nextLine >= endLine) {
         // unclosed block should be autoclosed by end of document.
         // also block seems to be autoclosed by end of parent
-        break;
+        break
       }
 
-      pos = mem = state.bMarks[nextLine] + state.tShift[nextLine];
-      max = state.eMarks[nextLine];
+      pos = mem = state.bMarks[nextLine] + state.tShift[nextLine]
+      max = state.eMarks[nextLine]
 
       if (pos < max && state.sCount[nextLine] < state.blkIndent) {
         // non-empty line with negative indent should stop the list:
         // - <<<
         //  test
-        break;
+        break
       }
 
-      if (state.src.charCodeAt(pos) !== CloseMarker) { continue; }
+      if (state.src.charCodeAt(pos) !== CloseMarker) { continue }
 
       if (state.sCount[nextLine] - state.blkIndent >= 4) {
         // closing fence should be indented less than 4 spaces
-        continue;
+        continue
       }
 
-      pos = state.skipChars(pos, CloseMarker);
+      pos = state.skipChars(pos, CloseMarker)
 
       // closing code fence must be at least as long as the opening one
-      if (pos - mem < len) { continue; }
+      if (pos - mem < len) { continue }
 
       // make sure tail has spaces only
-      pos = state.skipSpaces(pos);
+      pos = state.skipSpaces(pos)
 
-      if (pos < max) { continue; }
+      if (pos < max) { continue }
 
-      haveEndMarker = true;
+      haveEndMarker = true
       // found!
-      break;
+      break
     }
 
     // If a fence has heading spaces, they should be removed from its inner block
-    len = state.sCount[startLine];
+    len = state.sCount[startLine]
 
-    state.line = nextLine + (haveEndMarker ? 1 : 0);
+    state.line = nextLine + (haveEndMarker ? 1 : 0)
 
-    const token = state.push('raw', 'pre', 0);
-    token.info = param;
-    token.content = state.getLines(startLine + 1, nextLine, len, true);
-    token.map = [startLine, state.line];
+    const token = state.push('raw', 'pre', 0)
+    token.info = param
+    token.content = state.getLines(startLine + 1, nextLine, len, true)
+    token.map = [startLine, state.line]
 
-    console.log(token);
+    console.log(token)
 
-    return true;
-  }, { alt: ['paragraph', 'reference', 'blockquote', 'list'] });
+    return true
+  }, { alt: ['paragraph', 'reference', 'blockquote', 'list'] })
 
   md.renderer.rules.raw = (tokens: Token[], idx: number, options: MarkdownIt.Options, env: any, self: Renderer) => {
-    const token = tokens[idx];
+    const token = tokens[idx]
     if (token.info.length === 0 || token.info === "html") {
-      return token.content;
+      return token.content
     } else {
-      return "";
+      return ""
     }
-  };
+  }
 
-  const defaultImageRenderer = md.renderer.rules.image!;
+  const defaultImageRenderer = md.renderer.rules.image!
   md.renderer.rules.image = (tokens: Token[], idx: number, options: MarkdownIt.Options, env: any, self: Renderer) => {
-    const token = tokens[idx];
+    const token = tokens[idx]
 
     if (tokens.length === 1) {
       // this is the only image in a block
-      token.attrJoin("class", "only-img-in-p");
+      token.attrJoin("class", "only-img-in-p")
     }
 
-    let title, match;
+    let title, match
     if ((title = token.attrGet("title")) && (match = patterns.imageOptions.exec(title))) {
 
-      const newTitle = title.replace(patterns.imageOptions, "");
-      token.attrSet("title", newTitle);
+      const newTitle = title.replace(patterns.imageOptions, "")
+      token.attrSet("title", newTitle)
 
-      let value;
-      let styles = [] as string[];
+      let value
+      let styles = [] as string[]
 
       function addStyle(name: string, value: string) {
-        styles.push(`${name}:${value}`);
+        styles.push(`${name}:${value}`)
       }
 
       function addStylePx(name: string, decimalValue: string) {
-        addStyle(name, `${decimalValue}px`);
+        addStyle(name, `${decimalValue}px`)
       }
 
-      type GroupName = patterns.GroupNameOf<typeof patterns.imageOptions>;
+      type GroupName = patterns.GroupNameOf<typeof patterns.imageOptions>
 
       const parserElems: Array<[GroupName, string, (n: string, v: string) => void]> = [
         ["width_abs", "width", addStylePx],
@@ -483,37 +483,37 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
         ["width_max", "max-width", addStylePx],
         ["height_abs", "height", addStylePx],
         ["placement", "float", addStyle],
-      ];
+      ]
 
       for (const [groupName, cssName, doAddStyle] of parserElems) {
         if (value = match.groups[groupName]) {
-          doAddStyle(cssName, value);
+          doAddStyle(cssName, value)
         }
       }
 
       if (styles.length !== 0) {
-        const style = styles.join(";\n");
-        token.attrPush(["style", style]);
+        const style = styles.join(";\n")
+        token.attrPush(["style", style])
       }
     }
-    return defaultImageRenderer(tokens, idx, options, env, self);
-  };
+    return defaultImageRenderer(tokens, idx, options, env, self)
+  }
 
   md.renderer.rules.bebras_html_expand = (tokens, idx) => {
-    const templateName = tokens[idx].meta as HtmlTemplateName;
-    return HtmlGeneratorTemplates[templateName](taskMetadata || defaultTaskMetadata());
-  };
+    const templateName = tokens[idx].meta as HtmlTemplateName
+    return HtmlGeneratorTemplates[templateName](taskMetadata || defaultTaskMetadata())
+  }
 
 
   md.renderer.rules.main_open = (tokens, idx) => {
 
-    const metadata = taskMetadata ?? defaultTaskMetadata();
-    const pageHeader = ``;
+    const metadata = taskMetadata ?? defaultTaskMetadata()
+    const pageHeader = ``
     const pageFooter = '' +
       `<span class="bebras-page-footer-taskid">${metadata.id}</span>
-       <span class="bebras-page-footer-tasktitle">${metadata.title}</span>`;
+       <span class="bebras-page-footer-tasktitle">${metadata.title}</span>`
 
-    return "";
+    return ""
     // return '' +
     //   `<div class="bebras-page-header">${pageHeader}</div>
     //    <div class="bebras-page-footer">${pageFooter}</div>
@@ -523,10 +523,10 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
     //      </thead>
     //      <tbody>
     //        <tr><td class="bebras-layout-cell">`;
-  };
+  }
 
   md.renderer.rules.main_close = (tokens, idx) => {
-    return "";
+    return ""
     // return '' +
     //   `    </td></tr>
     //      </tbody>
@@ -534,10 +534,10 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
     //        <tr><td class="bebras-layout-cell"><div class="bebras-page-footer-space">&nbsp;</div></td></tr>
     //      </tfoot>
     //    </table>`;
-  };
+  }
 
 
 }
 
 
-export = bebrasPlugin;
+export = bebrasPlugin

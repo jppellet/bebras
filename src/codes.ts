@@ -1,6 +1,6 @@
 
 
-type Dictionary<V> = { [key: string]: V };
+type Dictionary<V> = { [key: string]: V }
 
 // ISO 3166-1 for country codes; country names slightly normalized
 export const countryNameByCountryCodes: Dictionary<string> = {
@@ -253,13 +253,13 @@ export const countryNameByCountryCodes: Dictionary<string> = {
 	"YE": "Yemen",
 	"ZM": "Zambia",
 	"ZW": "Zimbabwe",
-};
+}
 
-export const countryCodeByCountryName: Dictionary<string> = {};
+export const countryCodeByCountryName: Dictionary<string> = {}
 
 for (const countryCode of Object.keys(countryNameByCountryCodes)) {
-	const countryName = countryNameByCountryCodes[countryCode];
-	countryCodeByCountryName[countryName] = countryCode;
+	const countryName = countryNameByCountryCodes[countryCode]
+	countryCodeByCountryName[countryName] = countryCode
 }
 
 // ISO 639-3
@@ -447,48 +447,48 @@ export const languageNameByLanguageCode: Dictionary<string> = {
 	"yor": "Yoruba",
 	"zha": "Zhuang",
 	"zul": "Zulu",
-};
+}
 
 export function countrySuggestionsFor(country: string): string[] {
-	const sugg = [] as string[];
+	const sugg = [] as string[]
 	for (const c of Object.values(countryNameByCountryCodes)) {
-		const dist = levenshteinDistance(country, c);
+		const dist = levenshteinDistance(country, c)
 		if (dist <= 3) {
-			sugg.push(c);
+			sugg.push(c)
 		}
 	}
-	return sugg;
+	return sugg
 }
 
 function levenshteinDistance(a: string, b: string): number {
-	if (a.length === 0) { return b.length; }
-	if (b.length === 0) { return a.length; }
+	if (a.length === 0) { return b.length }
+	if (b.length === 0) { return a.length }
 
-	const matrix = [];
-	let i: number, j: number;
+	const matrix = []
+	let i: number, j: number
 
 	// increment along the first column of each row
 	for (i = 0; i <= b.length; i++) {
-		matrix[i] = [i];
+		matrix[i] = [i]
 	}
 
 	// increment each column in the first row
 	for (j = 0; j <= a.length; j++) {
-		matrix[0][j] = j;
+		matrix[0][j] = j
 	}
 
 	// Fill in the rest of the matrix
 	for (i = 1; i <= b.length; i++) {
 		for (j = 1; j <= a.length; j++) {
 			if (b.charAt(i - 1) === a.charAt(j - 1)) {
-				matrix[i][j] = matrix[i - 1][j - 1];
+				matrix[i][j] = matrix[i - 1][j - 1]
 			} else {
 				matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, // substitution
 					Math.min(matrix[i][j - 1] + 1, // insertion
-						matrix[i - 1][j] + 1)); // deletion
+						matrix[i - 1][j] + 1)) // deletion
 			}
 		}
 	}
 
-	return matrix[b.length][a.length];
+	return matrix[b.length][a.length]
 };

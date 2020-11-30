@@ -1,12 +1,12 @@
-import fs = require('fs');
-import jsrender = require('jsrender');
-import { TaskMetadata } from './util';
-import { texstr } from './util';
-import { PdfBookmarkMetadata } from './json_schemas';
+import fs = require('fs')
+import jsrender = require('jsrender')
+import { TaskMetadata } from './util'
+import { texstr } from './util'
+import { PdfBookmarkMetadata } from './json_schemas'
 
 // JsRender setup
-jsrender.views.converters("texstr", texstr);
-jsrender.views.settings.allowCode(true);
+jsrender.views.converters("texstr", texstr)
+jsrender.views.settings.allowCode(true)
 
 // A type-safe(r) version of JsViews.TemplateRender
 interface RichTemplateRender<T> {
@@ -17,9 +17,9 @@ interface RichTemplateRender<T> {
 const Dialects = {
     "default": { open: "{{", end: "}}" },
     "tex": { open: "<<", end: ">>" },
-} as const;
+} as const
 
-type Dialect = keyof typeof Dialects;
+type Dialect = keyof typeof Dialects
 
 class TemplateSpec<T extends { [key: string]: any }> {
 
@@ -28,21 +28,21 @@ class TemplateSpec<T extends { [key: string]: any }> {
     // Lazily managed template source and JsRender-compiled
     // version of the source
 
-    private _source?: string;
-    private _compiledTemplate?: JsViews.Template;
+    private _source?: string
+    private _compiledTemplate?: JsViews.Template
 
     private get source(): string {
-        return this._source ?? (this._source = fs.readFileSync("src/templates/" + this.name, "utf8"));
+        return this._source ?? (this._source = fs.readFileSync("src/templates/" + this.name, "utf8"))
     }
 
     private get compiledTemplate(): JsViews.Template {
-        return this._compiledTemplate ?? (this._compiledTemplate = jsrender.templates(this.source));
+        return this._compiledTemplate ?? (this._compiledTemplate = jsrender.templates(this.source))
     }
 
     get render(): RichTemplateRender<T> {
-        const dialectOpts = Dialects[this.dialect];
-        jsrender.views.settings.delimiters(dialectOpts.open, dialectOpts.end);
-        return this.compiledTemplate.render.bind(this.compiledTemplate);
+        const dialectOpts = Dialects[this.dialect]
+        jsrender.views.settings.delimiters(dialectOpts.open, dialectOpts.end)
+        return this.compiledTemplate.render.bind(this.compiledTemplate)
     }
 
 }
@@ -57,6 +57,6 @@ const templates = {
         }[]
     }>("AddPdfBookmarks.tex.template", "tex"),
 
-};
+}
 
-export default templates;
+export default templates

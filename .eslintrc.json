@@ -9,12 +9,17 @@
         "@typescript-eslint"
     ],
     "rules": {
+        "semi": "off",
+        "@typescript-eslint/semi": ["error", "never"],
         "@typescript-eslint/class-name-casing": "warn",
-        "@typescript-eslint/semi": "warn",
+        // "@typescript-eslint/explicit-function-return-type": ["error"],
+        // "@typescript-eslint/prefer-for-of": "warn",
+        // "@typescript-eslint/switch-exhaustiveness-check": "error",
+        "comma-dangle": ["error", "always-multiline"],
         "curly": "warn",
         "eqeqeq": "warn",
         "no-throw-literal": "warn",
-        "semi": "off",
         "prefer-named-capture-group": "warn"
+        // "no-unexpected-multiline": "error"
     }
 }
