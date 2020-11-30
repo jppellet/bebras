@@ -1,7 +1,6 @@
 // The following allows us to type to some extend
 // the groups property of the RegExpExecArray object
 
-import G = require("glob");
 import { TaskMetadata } from "./util";
 
 // @ts-ignore
@@ -76,13 +75,23 @@ export const ageCategories = {
 } as const;
 
 export const categories = [
-    "algorithms and programming data",
+    "algorithms and programming",
     "data structures and representations",
     "computer processes and hardware",
     "communication and networking",
     "interactions, systems and society",
 ] as const;
 
+export const markdownSectionNames = [
+    "Body",
+    "Question/Challenge",
+    "Answer Options/Interactivity Description",
+    "Answer Explanation",
+    "It's Informatics",
+    "Keywords and Websites",
+    "Wording and Phrases",
+    "Comments",
+] as const;
 
 // Regexes without captures (reused several times in other patterns)
 
@@ -90,10 +99,14 @@ export const webUrl =
     new RegExp("https?:\\/\\/[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[^\\s;,]*)", "g");
 
 export const email =
-    new RegExp("(?:[a-zA-Z0-9_\\-\\.]+)@(?:(?:\\[[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.)|(?:(?:[a-zA-Z0-9\\-]+\\.)+))(?:[a-zA-Z]{2,4}|[0-9]{1,3})(?:\\]?)", "g");
+    new RegExp("(?:[a-zA-Z0-9_\\-\\.]+)@(?:(?:\\[[0-9]{1,10}\\.[0-9]{1,10}\\.[0-9]{1,10}\\.)|(?:(?:[a-zA-Z0-9\\-]+\\.)+))(?:[a-zA-Z]{2,10}|[0-9]{1,10})(?:\\]?)", "g");
 
 export const decimal = // 5, 0.5, 5.0005...
     new RegExp("\\d+\\.?\\d*", "g");
+
+export const texCharsPattern =
+    // we escape these: \ % _ $ &
+    new RegExp("[\\\\%_\\$&]", "g");
 
 
 // Regexes with semi-typed captures
@@ -118,9 +131,9 @@ export const contributor = capturing<{
     name: always,
     country: always,
     email: maybe,
-    role: maybe,
+    roles: always,
 }>(
-    "^(?<name>[^\\(\\)]*) \\((?<country>[^,\\(\\)]*)\\), (?:\\[no email\\]|" + email.source + ")(?: \\((?<role>[^,\\(\\)]*)\\))?$"
+    "^(?<name>[^\\(\\)]*), (?:\\[no email\\]|" + email.source + "), (?<country>[^,\\(\\)]*) \\((?<roles>[^\\(\\)]*)\\)$"
 );
 
 export const keyword = capturing<{
@@ -132,10 +145,10 @@ export const keyword = capturing<{
 
 export const supportFile = capturing<{
     filename: always,
-    author: always,
+    author_ext: always,
     license: always,
 }>(
-    "^(?<filename>.*) by (?<author>[^,\\(\\)]*) \\((?<license>.*)\\)$"
+    "^(?<filename>.*?) (?<author_ext>by [^\\(\\)]*) \\((?<license>.*)\\)$"
 );
 
 
@@ -150,11 +163,6 @@ export const imageOptions = capturing<{
     "\\s*\\((?:(?<width_abs>" + decimal.source + "?)(?:px)?|(?<width_rel>" + decimal.source + "%)(?: min (?<width_min>" + decimal.source + ")(?:px)?)?(?: max (?<width_max>" + decimal.source + ")(?:px)?)?)(?: ?x ?(?<height_abs>" + decimal.source + ")(?:px)?)?(?: +(?<placement>left|right))?\\)"
 );
 
-export const texCharsPattern = capturing<{
-    c: always,
-}>(
-    "(?<c>[\\\\%_\\$])", "g"
-);
 
 export const texInlineNumbersPattern = capturing<{
     pre: always,

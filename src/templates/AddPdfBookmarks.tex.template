@@ -1,0 +1,24 @@
+\documentclass[a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage{pdfpages}
+\usepackage{hyperref}
+\usepackage{bookmark}
+
+\begin{document}
+
+<<* pageCounter = 0 >>
+<<for pdfFiles>>
+
+    % Include all of the referenced PDF
+    \includepdf[pages={1-}]{<<:filepath>>}
+
+    % Other bookmarks for task sections
+    <<for bookmarkMetadata.bookmarks>>
+        \bookmark[page=<<*: pageCounter + data.page >>,level=<<:level>><<if level == 0>>,bold<</if>>]{<<texstr:caption>>}
+    <</for>>
+
+    <<* pageCounter += data.bookmarkMetadata.numPages >>
+<</for>>
+
+\end{document}

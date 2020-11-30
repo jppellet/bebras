@@ -17,34 +17,42 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
   md
     .use(require("markdown-it-sub"))
     .use(require("markdown-it-sup"))
-    .use(require("markdown-it-texmath"))
+    .use(require("markdown-it-texmath"), {
+      engine: require('katex'),
+    })
     .use(require("markdown-it-anchor"))
-    .use(require("markdown-it-toc-done-right"), { level: 2, listType: "ul", placeholder: '{{table_of_contents}}' })
-    ;
+    .use(require("markdown-it-multimd-table"), {
+      multiline: true,
+      rowspan: true,
+      headerless: true,
+    }) // see https://www.npmjs.com/package/markdown-it-multimd-table
+    .use(require("markdown-it-toc-done-right"), { level: 2, listType: "ul", placeholder: '{{table_of_contents}}' });
+
+  const quotes = {
+    eng: ['“', '”', '‘', '’'],
+    fra: ['«\u202F', '\u202F»', '“', '”'],
+    deu: ['„', '“', '‚', '‘'],
+    ita: ['«', '»', '“', '”'],
+  };
 
   // ensure options
   md.set({
-    html: false,        // Enable HTML tags in source
-    xhtmlOut: false,        // Use '/' to close single tags (<br />).
-    // This is only for full CommonMark compatibility.
-    breaks: false,        // Convert '\n' in paragraphs into <br>
-    langPrefix: 'language-',  // CSS language prefix for fenced blocks. Can be
+    html: false,        // Disable HTML tags in source
+    xhtmlOut: false,    // Don't use '/' to close single tags (<br />).
+    breaks: false,      // Convert '\n' in paragraphs into <br>
+    langPrefix: 'language-', // CSS language prefix for fenced blocks. Can be
     // useful for external highlighters.
-    linkify: false,        // Autoconvert URL-like text to links
+    linkify: false,     // Autoconvert URL-like text to links
 
     // Enable some language-neutral replacement + quotes beautification
     typographer: true,
 
     // Double + single quotes replacement pairs, when typographer enabled,
-    // and smartquotes on. Could be either a String or an Array.
-    //
-    // For example, you can use '«»„“' for Russian, '„“‚‘' for German,
-    // and ['«\xA0', '\xA0»', '‹\xA0', '\xA0›'] for French (including nbsp).
-    quotes: '“”‘’',
+    quotes: quotes.fra, // TODO set according to lang
   });
 
   const defaultOptions = {
-    addToc: true
+    addToc: false,
   };
 
   type PluginOptions = typeof defaultOptions;
@@ -61,10 +69,11 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
       return `# ${metadata.id} ${metadata.title}`;
     },
 
-    "keywords": (metadata: TaskMetadata) => {
-      const sectionBody = metadata.keywords.map(k => ` * ${k.replace(patterns.webUrl, "<$&>").replace(/ - /, ": ")}`).join("\n");
-      return `## Keywords and Websites\n\n${sectionBody}`;
-    },
+    // TODO remove this and load keywords from Markdown instead
+    // "keywords": (metadata: TaskMetadata) => {
+    //   const sectionBody = metadata.keywords.map(k => ` * ${k.replace(patterns.webUrl, "<$&>").replace(/ - /, ": ")}`).join("\n")
+    //   return `## Keywords and Websites\n\n${sectionBody}`
+    // },
 
     "contributors": (metadata: TaskMetadata) => {
       const sectionBody = metadata.contributors.map(c => ` * ${c.replace(patterns.email, "<$&>")}`).join("\n");
@@ -79,7 +88,7 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
     "license": (metadata: TaskMetadata) => {
       const sectionBody = "{{license_html}}";
       return `## License\n\n${sectionBody}`;
-    }
+    },
 
   };
 
@@ -110,7 +119,7 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
         (Object.keys(ageCategories) as Array<keyof typeof ageCategories>).map(catName => {
           const catFieldName = ageCategories[catName];
           let catValue: string = metadata.ages[catFieldName] || "--";
-          if (catValue === "--") {
+          if (catValue.startsWith("--")) {
             catValue = "—";
           }
           return `<div class="bebras-age bebras-header-cell"><span class="bebras-header-caption">${catName}</span><span class="bebras-header-value">${catValue}</span></div>`;
@@ -152,14 +161,21 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
          </div>
          <div class="bebras-keywords-list">${keywordsStr}</div>`;
 
-      return '' +
+      //  return '' +
+      //  `<div class="bebras-header">
+      //    <div class="bebras-ages">${ageRowCells}</div>
+      //    <div class="bebras-answertype bebras-header-cell">${answerType}</div>
+      //    <div class="bebras-categories bebras-header-cell">${catCell1}${catCell2}</div>
+      //    <div class="bebras-keywords bebras-header-cell">${keywordsCell}</div>
+      //   </div>`
+
+      return '' + // version without keywords for now, TODO
         `<div class="bebras-header">
-          <div class="bebras-ages">${ageRowCells}</div>
-          <div class="bebras-answertype bebras-header-cell">${answerType}</div>
-          <div class="bebras-categories bebras-header-cell">${catCell1}${catCell2}</div>
-          <div class="bebras-keywords bebras-header-cell">${keywordsCell}</div>
-         </div>`;
-    }
+            <div class="bebras-ages">${ageRowCells}</div>
+            <div class="bebras-answertype bebras-header-cell">${answerType}</div>
+            <div class="bebras-categories bebras-header-cell">${catCell1}${catCell2}</div>
+           </div>`;
+    },
   };
 
   type MdTemplateName = keyof typeof MdGeneratorTemplates;
@@ -204,11 +220,17 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
       prologueSections.push("table_of_contents");
     }
 
-    const insertKeywordsAfterSection = "Wording and Phrases";
-    const secMarker = `## ${insertKeywordsAfterSection}`;
+    // TODO remove, no need to insert keywords
+    // const insertKeywordsAfterSection = "Wording and Phrases"
+    // const secMarker = `## ${insertKeywordsAfterSection}`
+    // state.src =
+    //   mkSections(prologueSections) +
+    //   state.src.replace(secMarker, mkSections(["keywords"]) + `\n\n${secMarker}`) +
+    //   mkSections(["contributors", "support_files", "license"])
+
     state.src =
       mkSections(prologueSections) +
-      state.src.replace(secMarker, mkSections(["keywords"]) + `\n\n${secMarker}`) +
+      state.src +
       mkSections(["contributors", "support_files", "license"]);
 
     return true;
@@ -330,9 +352,111 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
     return true;
   });
 
+  md.block.ruler.after('fence', 'raw', function fence(state, startLine, endLine, silent) {
+    const OpenMarker = 0x3C;/* < */
+    const CloseMarker = 0x3E;/* > */
+
+    // if it's indented more than 3 spaces, it should be a code block
+    if (state.sCount[startLine] - state.blkIndent >= 4) { return false; }
+
+    let pos = state.bMarks[startLine] + state.tShift[startLine];
+    let max = state.eMarks[startLine];
+    if (pos + 3 > max) { return false; }
+
+    if (state.src.charCodeAt(pos) !== OpenMarker) {
+      return false;
+    }
+
+    // scan marker length
+    let mem = pos;
+    pos = state.skipChars(pos, OpenMarker);
+
+    let len = pos - mem;
+
+    if (len < 3) { return false; }
+
+    const param = state.src.slice(pos, max).trim();
+    let haveEndMarker = false;
+
+    // Since start is found, we can report success here in validation mode
+    if (silent) { return true; }
+
+    // search end of block
+    let nextLine = startLine;
+
+    for (; ;) {
+      nextLine++;
+      if (nextLine >= endLine) {
+        // unclosed block should be autoclosed by end of document.
+        // also block seems to be autoclosed by end of parent
+        break;
+      }
+
+      pos = mem = state.bMarks[nextLine] + state.tShift[nextLine];
+      max = state.eMarks[nextLine];
+
+      if (pos < max && state.sCount[nextLine] < state.blkIndent) {
+        // non-empty line with negative indent should stop the list:
+        // - <<<
+        //  test
+        break;
+      }
+
+      if (state.src.charCodeAt(pos) !== CloseMarker) { continue; }
+
+      if (state.sCount[nextLine] - state.blkIndent >= 4) {
+        // closing fence should be indented less than 4 spaces
+        continue;
+      }
+
+      pos = state.skipChars(pos, CloseMarker);
+
+      // closing code fence must be at least as long as the opening one
+      if (pos - mem < len) { continue; }
+
+      // make sure tail has spaces only
+      pos = state.skipSpaces(pos);
+
+      if (pos < max) { continue; }
+
+      haveEndMarker = true;
+      // found!
+      break;
+    }
+
+    // If a fence has heading spaces, they should be removed from its inner block
+    len = state.sCount[startLine];
+
+    state.line = nextLine + (haveEndMarker ? 1 : 0);
+
+    const token = state.push('raw', 'pre', 0);
+    token.info = param;
+    token.content = state.getLines(startLine + 1, nextLine, len, true);
+    token.map = [startLine, state.line];
+
+    console.log(token);
+
+    return true;
+  }, { alt: ['paragraph', 'reference', 'blockquote', 'list'] });
+
+  md.renderer.rules.raw = (tokens: Token[], idx: number, options: MarkdownIt.Options, env: any, self: Renderer) => {
+    const token = tokens[idx];
+    if (token.info.length === 0 || token.info === "html") {
+      return token.content;
+    } else {
+      return "";
+    }
+  };
+
   const defaultImageRenderer = md.renderer.rules.image!;
   md.renderer.rules.image = (tokens: Token[], idx: number, options: MarkdownIt.Options, env: any, self: Renderer) => {
     const token = tokens[idx];
+
+    if (tokens.length === 1) {
+      // this is the only image in a block
+      token.attrJoin("class", "only-img-in-p");
+    }
+
     let title, match;
     if ((title = token.attrGet("title")) && (match = patterns.imageOptions.exec(title))) {
 

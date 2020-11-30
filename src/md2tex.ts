@@ -3,19 +3,12 @@ import md2html = require('./md2html');
 import _ = require('lodash');
 import Token = require('markdown-it/lib/token');
 import patterns = require("./patterns");
-import { setLineCap } from 'pdf-lib';
+import { texstr, texMathify } from './util';
 
 export function runTerminal(fileIn: string, fileOut: string) {
     const texData = renderTex(fileIn);
     fs.writeFileSync(fileOut, texData);
     console.log(`Output written on ${fileOut}`);
-}
-
-function texEscape(text: string): string {
-    return text
-        .replace(patterns.texCharsPattern, "\\$<c>")
-        .replace(patterns.texInlineNumbersPattern, "$<pre>$$$<n>$$$<post>")
-        ;
 }
 
 export function renderTex(filepath: string): string {
@@ -75,7 +68,7 @@ export function renderTex(filepath: string): string {
             function catToRow(catName: string) {
                 const isRelated = metadata.categories.includes(catName);
                 const catChecked = isRelated ? checkedBox : uncheckedBox;
-                return `${catChecked} ${texEscape(catName)}`;
+                return `${catChecked} ${texstr(catName)}`;
             }
 
             let catCell1 = `\\textit{Categories:}`;
@@ -97,7 +90,7 @@ export function renderTex(filepath: string): string {
                 const match = patterns.keyword.exec(kwLine);
                 return match ? match.groups.keyword : kwLine;
             });
-            const keywordsStr = keywords.length === 0 ? "—" : keywords.map(texEscape).join(", ");
+            const keywordsStr = keywords.length === 0 ? "—" : keywords.map(texstr).join(", ");
 
             function multicolumn(n: number, contents: string): string {
                 const spec = `{|>{\\hsize=\\dimexpr${n}\\hsize+${n + 1}\\tabcolsep+${n - 1}\\arrayrulewidth\\relax}X|}`;
@@ -109,7 +102,7 @@ export function renderTex(filepath: string): string {
   ${ageCatTitleCells} \\\\
   ${ageCatValueCells} \\\\
   \\hline
-  ${multicolumn(6, `\\textit{Answer Type:} ${texEscape(metadata.answer_type)}`)} \\\\
+  ${multicolumn(6, `\\textit{Answer Type:} ${texstr(metadata.answer_type)}`)} \\\\
   \\hline
   ${multicolumn(3, catCell1)} &  ${multicolumn(3, catCell2)} \\\\
   \\hline
@@ -188,7 +181,7 @@ export function renderTex(filepath: string): string {
 
         "text": (tokens, idx) => {
             const t = tokens[idx];
-            return texEscape(t.content);
+            return texMathify(t.content);
         },
 
         "heading_open": (tokens, idx) => {
@@ -343,8 +336,8 @@ export function renderTex(filepath: string): string {
 \\fancyhf{}
 \\renewcommand{\\headrulewidth}{0pt}
 \\renewcommand{\\footrulewidth}{0.4pt}
-\\lfoot{\\scriptsize ${texEscape(license.shortCopyright())}}
-\\cfoot{\\scriptsize\\itshape ${texEscape(metadata.id)} ${texEscape(metadata.title)}}
+\\lfoot{\\scriptsize ${texstr(license.shortCopyright())}}
+\\cfoot{\\scriptsize\\itshape ${texstr(metadata.id)} ${texstr(metadata.title)}}
 \\rfoot{\\scriptsize Page \\thepage{}/\\pageref*{LastPage}}
 
 \\begin{document}

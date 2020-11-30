@@ -47,7 +47,7 @@ export function lint(text: string, filename: string, version?: string): LintOutp
                 onWarning: (e: yaml.YAMLException) => {
                     const [range, msg] = fmRangeFromException(e);
                     warn(range, `Malformed metadata markup: ${msg}`);
-                }
+                },
             });
         } catch (e) {
             if (e instanceof yaml.YAMLException) {
@@ -94,7 +94,7 @@ export function lint(text: string, filename: string, version?: string): LintOutp
         }
 
         type MetadataField = keyof TaskMetadata;
-        const requiredFields: Array<MetadataField> = ["id", "title", "ages", "answer_type", "categories", "keywords", "contributors", "support_files"];
+        const requiredFields: Array<MetadataField> = ["id", "title", "ages", "answer_type", "categories", "contributors", "support_files"];
 
         const missingFields = [] as string[];
         for (let f of requiredFields) {
@@ -116,7 +116,7 @@ export function lint(text: string, filename: string, version?: string): LintOutp
         } else if (match = patterns.id.exec(id)) {
 
             if (!filename.startsWith(id)) {
-                error(fmRangeForValueInDef("id", id), "The filename does not match this ID");
+                error(fmRangeForValueInDef("id", id), `The filename '${filename}' does not match this ID`);
             } else {
                 const trimmedFilename = filename.slice(id.length);
                 if (trimmedFilename.length !== 0) {
@@ -139,12 +139,14 @@ export function lint(text: string, filename: string, version?: string): LintOutp
                 warn([start, start + 2], "This country code looks invalid");
             }
         } else {
-            error(fmRangeForValueInDef("id", id), "The task ID should have the format YYYY-CC-00[x]");
+            error(fmRangeForValueInDef("id", id), `The task ID should have the format YYYY-CC-00[x]\n\nPattern:\n${patterns.id.source}`);
         }
 
         const title = metadata.title;
         if (!isString(title) || title.length === 0) {
             error(fmRangeForDef("title"), "The title should be a nonempty string");
+        } else if (title.includes("TODO")) {
+            warn(fmRangeForValueInDef("title", "TODO"), "The title contains a TODO");
         }
 
         type MetadataAgeCategory = keyof NonNullable<typeof metadata.ages>;
@@ -166,13 +168,15 @@ export function lint(text: string, filename: string, version?: string): LintOutp
         let lastLevel = NaN;
         let numDefined = 0 + requiredAgeCats.length;
         let closed = false;
+        const LevelNotApplicable = "--";
+        const LevelNotApplicableKnownGap = "----";
         for (let a of requiredAgeCats) {
-            const classif = `${metadata.ages?.[a] ?? "--"}`;
+            const classif = `${metadata.ages?.[a] ?? LevelNotApplicable}`;
             let level: number;
-            if (classif === "--") {
+            if (classif === LevelNotApplicable || classif === LevelNotApplicableKnownGap) {
                 level = NaN;
                 numDefined--;
-                if (!isNaN(lastLevel)) {
+                if (!isNaN(lastLevel) && classif !== LevelNotApplicableKnownGap) {
                     closed = true;
                 }
             } else if (classif === "easy") {
@@ -182,7 +186,7 @@ export function lint(text: string, filename: string, version?: string): LintOutp
             } else if (classif === "hard") {
                 level = 3;
             } else {
-                error(fmRangeForAgeValue(a), `Invalid value, should be one of easy, medium, hard, or -- if not applicable`);
+                error(fmRangeForAgeValue(a), `Invalid value, should be one of easy, medium, hard, or ${LevelNotApplicable} if not applicable`);
                 return;
             }
 
@@ -192,7 +196,7 @@ export function lint(text: string, filename: string, version?: string): LintOutp
 
             if (!isNaN(level) && closed) {
                 const range = fmRangeForAgeValue(requiredAgeCats[requiredAgeCats.indexOf(a) - 1]);
-                error(range, `There is a gap in the age definitions`);
+                error(range, `There is a gap in the age definitions. Use ${LevelNotApplicableKnownGap} to signal it's meant to be so.`);
                 closed = false;
             }
 
@@ -211,31 +215,25 @@ export function lint(text: string, filename: string, version?: string): LintOutp
             "open integer",
             "open text",
             "interactive (click-on-object)",
-            "interactive (drang-and-drop)",
-            "interactive (other)"
+            "interactive (drag-and-drop)",
+            "interactive (other)",
         ];
 
         const answerType = metadata.answer_type;
         if (!isString(answerType)) {
             error(fmRangeForDef("answer_type"), "The answer type must be a plain string");
         } else if (!validAnswerTypes.includes(answerType)) {
-            warn(fmRangeForDef("answer_type"), `This answer type is not recognized. Expected one of:\n - ${validAnswerTypes.join("\n - ")}`);
+            warn(fmRangeForDef("answer_type"), `This answer type is not recognized. Expected one of:\n  - ${validAnswerTypes.join("\n  - ")}`);
         }
 
-        const validCategories = [
-            "algorithms and programming data",
-            "data structures and representations",
-            "computer processes and hardware",
-            "communication and networking",
-            "interactions, systems and society"
-        ];
+        const validCategories = patterns.categories as readonly string[];
 
         const categories = metadata.categories;
         if (!isArray(categories) || !_.every(categories, isString)) {
             error(fmRangeForDef("categories"), "The categories must be a list of plain strings");
         } else {
             _.filter(categories, c => !validCategories.includes(c)).forEach(c => {
-                error(fmRangeForValueInDef("categories", c), `Invalid category '${c}', should be one of:\n - ${validCategories.join("\n - ")}`);
+                error(fmRangeForValueInDef("categories", c), `Invalid category '${c}', should be one of:\n  - ${validCategories.join("\n  - ")}`);
             });
             if (_.uniq(categories).length !== categories.length) {
                 warn(fmRangeForDef("categories"), `The categories should be unique`);
@@ -268,7 +266,7 @@ export function lint(text: string, filename: string, version?: string): LintOutp
                         }
                     }
                 } else {
-                    warn(fmRangeForValueInDef("contributors", c), `Contributor should be formatted following the format:\nName (Country), email\nor\nName (Country), email (role)\nWrite [no email] if the email address is not known.`);
+                    warn(fmRangeForValueInDef("contributors", c), `Contributor should be formatted following the format:\nName (Country), email\nor\nName (Country), email (role)\nWrite [no email] if the email address is not known.\nMultiple roles should be separated by commas.\n\nPattern:\n${patterns.contributor.source}`);
                 }
             }
 
@@ -277,7 +275,7 @@ export function lint(text: string, filename: string, version?: string): LintOutp
             }
         }
 
-        const keywords = metadata.keywords;
+        const keywords: string[] = ["TODO get from below"]; //metadata.keywords // TODO: load this from main text, not YAML preamble, as it is localized 
         const seenKeywords = new Set<string>();
         const seenUrls = new Set<string>();
         if (!isArray(keywords) || !_.every(keywords, isString)) {
@@ -308,7 +306,7 @@ export function lint(text: string, filename: string, version?: string): LintOutp
                         }
                     }
                 } else {
-                    warn(fmRangeForValueInDef("keywords", f), `This line should have the format:\n<keyword>\n  or\n<keyword>${sep}<url>[, <url>]`);
+                    warn(fmRangeForValueInDef("keywords", f), `This line should have the format:\n<keyword>\n  or\n<keyword>${sep}<url>[, <url>]\n\nPattern:\n${patterns.keyword.source}`);
                 }
             });
         }
@@ -320,30 +318,46 @@ export function lint(text: string, filename: string, version?: string): LintOutp
             supportFiles.forEach(f => {
                 let match;
                 if (match = patterns.supportFile.exec(f)) {
-                    const author = match.groups.author ?? "";
-                    if (!_.find(contributors, c => _.startsWith(c, author))) {
-                        warn(fmRangeForValueInDef("support_files", author), `This person is not mentioned in the contributor list`);
+                    const authorExt = match.groups.author_ext ?? "";
+                    const authorParts = authorExt.split(", ");
+                    const ByMarker = "by ";
+                    for (const authorPart of authorParts) {
+                        const byPos = authorPart.indexOf(ByMarker);
+                        if (byPos === -1) {
+                            warn(fmRangeForValueInDef("support_files", authorPart), `This part should have the format:\n<work> by <author>`);
+                        } else {
+                            const GraphicsRole = "graphics";
+                            function checkAuthorName(authorName: string) {
+                                function isGraphicsContributor(c: string): boolean {
+                                    if (!c.startsWith(authorName)) {
+                                        return false;
+                                    }
+                                    let submatch;
+                                    if (submatch = patterns.contributor.exec(c)) {
+                                        return submatch.groups.roles.includes(GraphicsRole);
+                                    } else {
+                                        return false;
+                                    }
+                                }
+                                if (!_.find(contributors, isGraphicsContributor)) {
+                                    warn(fmRangeForValueInDef("support_files", authorName), `This person is not mentioned in the contributor list with role '${GraphicsRole}'`);
+                                }
+                            }
+                            const authorNames = authorPart.substring(byPos + ByMarker.length);
+                            authorNames.split(" and ").forEach(checkAuthorName);
+                        }
                     }
+                    // TODO validate file names, check missing licences
                 } else {
-                    warn(fmRangeForValueInDef("support_files", f), `This line should have the format:\n<filename> by <author> (<license>)`);
+                    warn(fmRangeForValueInDef("support_files", f), `This line should have the format:\n<filename> by <author>[, <work> by <author>] (<license>)\n\nPattern:\n${patterns.supportFile.source}`);
                 }
             });
         }
 
-        const requiredMarkdownSections = [
-            "Body",
-            "Question/Challenge",
-            "Answer Options/Interactivity Description",
-            "Answer Explanation",
-            "It's Informatics",
-            "Wording and Phrases",
-            "Comments",
-        ];
-
         let searchFrom = fmEnd;
         const missingSections = [] as string[];
         const secPrefix = "## ";
-        requiredMarkdownSections.forEach(secName => {
+        patterns.markdownSectionNames.forEach(secName => {
             const secMarker = secPrefix + secName;
             const secStart = text.indexOf('\n' + secMarker + '\n', searchFrom);
             if (secStart < 0) {
@@ -354,7 +368,7 @@ export function lint(text: string, filename: string, version?: string): LintOutp
         });
 
         if (missingSections.length !== 0) {
-            error([fmEnd, text.length], `Missing or misplaced required section${s(missingSections.length)}:\n${missingSections.join("\n")}\n\nSections are expected in this order:\n${secPrefix}${requiredMarkdownSections.join("\n" + secPrefix)}`);
+            error([fmEnd, text.length], `Missing or misplaced required section${s(missingSections.length)}:\n${missingSections.join("\n")}\n\nSections are expected in this order:\n${secPrefix}${patterns.markdownSectionNames.join("\n" + secPrefix)}`);
         }
 
     })();
