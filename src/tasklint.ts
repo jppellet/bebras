@@ -241,6 +241,9 @@ export function lint(text: string, filename: string, version?: string): LintOutp
         }
 
         const contributors = metadata.contributors
+        const GraphicsRole = "graphics"
+        const graphicsContributors = new Set<string>()
+
         if (!isArray(contributors) || !_.every(contributors, isString)) {
             error(fmRangeForDef("contributors"), "The contributors must be a list of strings")
         } else {
@@ -270,6 +273,9 @@ export function lint(text: string, filename: string, version?: string): LintOutp
                             }
                             countries.push(country)
                         }
+                    }
+                    if (match.groups.roles.includes(GraphicsRole)) {
+                        graphicsContributors.add(match.groups.name)
                     }
                 } else {
                     warn(fmRangeForValueInDef("contributors", c), `Contributor should have the format:\nName, email, country (role[s])\nWrite [no email] if the email address is not known.\nMultiple roles should be separated by commas.\n\nPattern:\n${patterns.contributor.source}`)
@@ -321,6 +327,7 @@ export function lint(text: string, filename: string, version?: string): LintOutp
         if (!isArray(supportFiles) || !_.every(supportFiles, isString)) {
             error(fmRangeForDef("support_files"), "The support files must be a list of strings")
         } else {
+            const seenGraphicsContributors = new Set<string>()
             supportFiles.forEach(f => {
                 let match
                 if (match = patterns.supportFile.exec(f)) {
@@ -332,25 +339,14 @@ export function lint(text: string, filename: string, version?: string): LintOutp
                         if (byPos === -1) {
                             warn(fmRangeForValueInDef("support_files", authorPart), `This part should have the format:\n<work> by <author>`)
                         } else {
-                            const GraphicsRole = "graphics"
-                            function checkAuthorName(authorName: string) {
-                                function isGraphicsContributor(c: string): boolean {
-                                    if (!c.startsWith(authorName)) {
-                                        return false
-                                    }
-                                    let submatch
-                                    if (submatch = patterns.contributor.exec(c)) {
-                                        return submatch.groups.roles.includes(GraphicsRole)
-                                    } else {
-                                        return false
-                                    }
-                                }
-                                if (!_.find(contributors, isGraphicsContributor)) {
+                            const authorNames = authorPart.substring(byPos + ByMarker.length).split(" and ")
+                            for (const authorName of authorNames) {
+                                if (!graphicsContributors.has(authorName)) {
                                     warn(fmRangeForValueInDef("support_files", authorName), `This person is not mentioned in the contributor list with role '${GraphicsRole}'`)
                                 }
+                                seenGraphicsContributors.add(authorName)
                             }
-                            const authorNames = authorPart.substring(byPos + ByMarker.length)
-                            authorNames.split(" and ").forEach(checkAuthorName)
+
                         }
                     }
                     // TODO validate file names, check missing licences
@@ -358,6 +354,12 @@ export function lint(text: string, filename: string, version?: string): LintOutp
                     warn(fmRangeForValueInDef("support_files", f), `This line should have the format:\n<filename> by <author>[, <work> by <author>] (<license>)\n\nPattern:\n${patterns.supportFile.source}`)
                 }
             })
+            for (const seenGraphicsContributor of seenGraphicsContributors) {
+                graphicsContributors.delete(seenGraphicsContributor)
+            }
+            for (const unseenGraphicsContributor of graphicsContributors) {
+                warn(fmRangeForValueInDef("contributors", unseenGraphicsContributor), `This person has the role '${GraphicsRole}' but is not listed in the details for the support files`)
+            }
         }
 
         let searchFrom = fmEnd
