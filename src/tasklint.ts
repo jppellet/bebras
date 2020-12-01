@@ -247,6 +247,12 @@ export function lint(text: string, filename: string, version?: string): LintOutp
             const countries = [] as string[]
             for (const c of contributors) {
                 if (match = patterns.contributor.exec(c)) {
+                    let email
+                    if (email = match.groups.email) {
+                        if (email.toLowerCase() !== email) {
+                            warn(fmRangeForValueInDef("contributors", email), `Email addresses should be normalized to lowercase.`)
+                        }
+                    }
                     let country
                     if (country = match.groups.country) {
                         if (!countries.includes(country)) {
@@ -266,7 +272,7 @@ export function lint(text: string, filename: string, version?: string): LintOutp
                         }
                     }
                 } else {
-                    warn(fmRangeForValueInDef("contributors", c), `Contributor should be formatted following the format:\nName (Country), email\nor\nName (Country), email (role)\nWrite [no email] if the email address is not known.\nMultiple roles should be separated by commas.\n\nPattern:\n${patterns.contributor.source}`)
+                    warn(fmRangeForValueInDef("contributors", c), `Contributor should have the format:\nName, email, country (role[s])\nWrite [no email] if the email address is not known.\nMultiple roles should be separated by commas.\n\nPattern:\n${patterns.contributor.source}`)
                 }
             }
 

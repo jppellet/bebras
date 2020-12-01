@@ -133,7 +133,7 @@ export const contributor = capturing<{
     email: maybe,
     roles: always,
 }>(
-    "^(?<name>[^\\(\\)]*), (?:\\[no email\\]|" + email.source + "), (?<country>[^,\\(\\)]*) \\((?<roles>[^\\(\\)]*)\\)$"
+    "^(?<name>[^\\(\\)]*), (?:\\[no email\\]|(?<email>" + email.source + ")), (?<country>[^,\\(\\)]*) \\((?<roles>[^\\(\\)]*)\\)$"
 )
 
 export const keyword = capturing<{
