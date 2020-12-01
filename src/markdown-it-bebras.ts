@@ -26,7 +26,18 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
       rowspan: true,
       headerless: true,
     }) // see https://www.npmjs.com/package/markdown-it-multimd-table
-    .use(require("markdown-it-toc-done-right"), { level: 2, listType: "ul", placeholder: '{{table_of_contents}}' })
+    .use(require("markdown-it-toc-done-right"), {
+      level: 2,
+      listType: "ul",
+      placeholder: '{{table_of_contents}}',
+    })
+
+  const customContainerPlugin = require('markdown-it-container')
+  md = md
+    .use(customContainerPlugin, "center")
+    .use(customContainerPlugin, "clear")
+
+
 
   const quotes = {
     eng: ['“', '”', '‘', '’'],
@@ -37,12 +48,11 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
 
   // ensure options
   md.set({
-    html: false,        // Disable HTML tags in source
-    xhtmlOut: false,    // Don't use '/' to close single tags (<br />).
-    breaks: false,      // Convert '\n' in paragraphs into <br>
-    langPrefix: 'language-', // CSS language prefix for fenced blocks. Can be
-    // useful for external highlighters.
-    linkify: false,     // Autoconvert URL-like text to links
+    html: false,             // Disable HTML tags in source
+    xhtmlOut: false,         // Don't use '/' to close single tags (<br />)
+    breaks: false,           // Convert newlines in paragraphs into <br>
+    langPrefix: 'language-', // CSS language prefix for fenced blocks
+    linkify: false,          // Autoconvert URL-like text to links
 
     // Enable some language-neutral replacement + quotes beautification
     typographer: true,
