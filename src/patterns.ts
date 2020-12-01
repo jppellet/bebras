@@ -93,6 +93,14 @@ export const markdownSectionNames = [
     "Comments",
 ] as const
 
+export const roleMainAuthor = "author"
+export const roleGraphics = "graphics"
+export const roleContributor = "contributor"
+export const roleTranslation = "translation"
+export const roleInspiration = "inspiration"
+export const validRoles = [roleMainAuthor, roleContributor, roleGraphics, roleTranslation, roleInspiration] as const
+
+
 // Regexes without captures (reused several times in other patterns)
 
 export const webUrl =
@@ -125,6 +133,13 @@ export const id = capturing<{
     variant: maybe,
 }>(
     "^(?<year>[0-9]{4})-(?<country_code>[A-Z]{2})-(?<num>[0-9]{2})(?<variant>[a-z])?$"
+)
+
+export const translation = capturing<{
+    from: always,
+    to: always,
+}>(
+    "^" + roleTranslation + " from (?<from>.*) into (?<to>.*)$"
 )
 
 export const contributor = capturing<{

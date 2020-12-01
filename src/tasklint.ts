@@ -241,13 +241,13 @@ export function lint(text: string, filename: string, version?: string): LintOutp
         }
 
         const contributors = metadata.contributors
-        const GraphicsRole = "graphics"
         const graphicsContributors = new Set<string>()
 
         if (!isArray(contributors) || !_.every(contributors, isString)) {
             error(fmRangeForDef("contributors"), "The contributors must be a list of strings")
         } else {
             const countries = [] as string[]
+            const mainAuthorCountries = [] as string[]
             for (const c of contributors) {
                 if (match = patterns.contributor.exec(c)) {
                     let email
@@ -269,21 +269,52 @@ export function lint(text: string, filename: string, version?: string): LintOutp
                                         suggStr = ` Did you mean of the following? ${sugg.join(", ")}`
                                     }
                                 }
-                                warn(fmRangeForValueInDef("contributors", country), `This country is not recognized.${suggStr}\nNote: we know this may be a sensible topic and mean no offense if your country is not listed here by mistake. Please contact us if you feel this is wrong.`)
+                                warn(fmRangeForValueInDef("contributors", country), `This country is not recognized.${suggStr}\nNote: we know this may be a sensible topic and mean no offense if your country is not recognized here by mistake. Please contact us if you feel this is wrong.`)
                             }
                             countries.push(country)
                         }
                     }
-                    if (match.groups.roles.includes(GraphicsRole)) {
-                        graphicsContributors.add(match.groups.name)
+                    const roles = match.groups.roles.split(new RegExp(", ?"))
+                    for (const role of roles) {
+                        if (role === patterns.roleMainAuthor) {
+                            if (country) {
+                                mainAuthorCountries.push(country)
+                            }
+                        } else if (role === patterns.roleGraphics) {
+                            graphicsContributors.add(match.groups.name)
+                        } else if (role.startsWith(patterns.roleTranslation)) {
+                            let submatch
+                            if (submatch = patterns.translation.exec(role)) {
+                                function checkLang(lang: string) {
+                                    if (isUndefined(codes.languageCodeByLanguageName[lang])) {
+                                        let suggStr = ""
+                                        const sugg = codes.languageSuggestionsFor(lang)
+                                        if (sugg.length !== 0) {
+                                            if (sugg.length === 1) {
+                                                suggStr = ` Did you mean ${sugg[0]}?`
+                                            } else {
+                                                suggStr = ` Did you mean of the following? ${sugg.join(", ")}`
+                                            }
+                                        }
+                                        warn(fmRangeForValueInDef("contributors", lang), `This language is not recognized.${suggStr}\nNote: we know this may be a sensible topic and mean no offense if your language is not recognized here by mistake. Please contact us if you feel this is wrong.`)
+                                    }
+                                }
+                                checkLang(submatch.groups.from)
+                                checkLang(submatch.groups.to)
+                            } else {
+                                warn(fmRangeForValueInDef("contributors", role), `The role '${patterns.roleTranslation}' should have the format:\ntranslation from <source language> into <target language>\n\nPattern:\n${patterns.translation.source}`)
+                            }
+                        } else if (!patterns.validRoles.includes(role as any)) {
+                            warn(fmRangeForValueInDef("contributors", role), `This role is not recognized. Expected one of:\n  - ${patterns.validRoles.join("\n  - ")}`)
+                        }
                     }
                 } else {
                     warn(fmRangeForValueInDef("contributors", c), `Contributor should have the format:\nName, email, country (role[s])\nWrite [no email] if the email address is not known.\nMultiple roles should be separated by commas.\n\nPattern:\n${patterns.contributor.source}`)
                 }
             }
 
-            if (!isUndefined(mainCountry) && !countries.includes(mainCountry)) {
-                warn(fmRangeForDef("contributors"), `No contributor from the main country ${mainCountry} was found`)
+            if (!isUndefined(mainCountry) && !mainAuthorCountries.includes(mainCountry)) {
+                warn(fmRangeForDef("contributors"), `No contributor with role '${patterns.roleMainAuthor}' from country ${mainCountry} was found`)
             }
         }
 
@@ -342,7 +373,7 @@ export function lint(text: string, filename: string, version?: string): LintOutp
                             const authorNames = authorPart.substring(byPos + ByMarker.length).split(" and ")
                             for (const authorName of authorNames) {
                                 if (!graphicsContributors.has(authorName)) {
-                                    warn(fmRangeForValueInDef("support_files", authorName), `This person is not mentioned in the contributor list with role '${GraphicsRole}'`)
+                                    warn(fmRangeForValueInDef("support_files", authorName), `This person is not mentioned in the contributor list with role '${patterns.roleGraphics}'`)
                                 }
                                 seenGraphicsContributors.add(authorName)
                             }
@@ -358,7 +389,7 @@ export function lint(text: string, filename: string, version?: string): LintOutp
                 graphicsContributors.delete(seenGraphicsContributor)
             }
             for (const unseenGraphicsContributor of graphicsContributors) {
-                warn(fmRangeForValueInDef("contributors", unseenGraphicsContributor), `This person has the role '${GraphicsRole}' but is not listed in the details for the support files`)
+                warn(fmRangeForValueInDef("contributors", unseenGraphicsContributor), `This person has the role '${patterns.roleGraphics}' but is not listed in the details for the support files`)
             }
         }
 

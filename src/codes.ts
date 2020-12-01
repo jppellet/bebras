@@ -449,12 +449,27 @@ export const languageNameByLanguageCode: Dictionary<string> = {
 	"zul": "Zulu",
 }
 
+export const languageCodeByLanguageName: Dictionary<string> = {}
+
+for (const langCode of Object.keys(languageNameByLanguageCode)) {
+	const langName = languageNameByLanguageCode[langCode]
+	languageCodeByLanguageName[langName] = langCode
+}
+
 export function countrySuggestionsFor(country: string): string[] {
+	return replacementSuggestionsFor(country, countryNameByCountryCodes, 3)
+}
+
+export function languageSuggestionsFor(lang: string): string[] {
+	return replacementSuggestionsFor(lang, languageNameByLanguageCode, 2)
+}
+
+function replacementSuggestionsFor(item: string, validValueSource: Dictionary<string>, maxDist: number) {
 	const sugg = [] as string[]
-	for (const c of Object.values(countryNameByCountryCodes)) {
-		const dist = levenshteinDistance(country, c)
-		if (dist <= 3) {
-			sugg.push(c)
+	for (const e of Object.values(validValueSource)) {
+		const dist = levenshteinDistance(item, e)
+		if (dist <= maxDist) {
+			sugg.push(e)
 		}
 	}
 	return sugg
