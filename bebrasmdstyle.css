@@ -69,7 +69,12 @@ img.only-img-in-p {
 }
 
 .center {
+    width: 100%;
     text-align: center;
+}
+
+.clear {
+    clear: both;
 }
 
 /* Useful for rendered LaTeX */

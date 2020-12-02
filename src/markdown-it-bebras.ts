@@ -17,6 +17,7 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
   md
     .use(require("markdown-it-sub"))
     .use(require("markdown-it-sup"))
+    .use(require('markdown-it-inline-comments'))
     .use(require("markdown-it-texmath"), {
       engine: require('katex'),
     })
