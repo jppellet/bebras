@@ -59,6 +59,8 @@ export function genLicense(metadata: TaskMetadata): LicenceInfo {
     )
 }
 
+export const DefaultLicenseShortTitle = "CC BY-SA 4.0"
+
 
 // String and structured constants
 
@@ -161,9 +163,9 @@ export const keyword = capturing<{
 export const supportFile = capturing<{
     filename: always,
     author_ext: always,
-    license: always,
+    license: maybe,
 }>(
-    "^(?<filename>.*?) (?<author_ext>by [^\\(\\)]*) \\((?<license>.*)\\)$"
+    "^(?<filename>.*?) (?<author_ext>by [^\\(\\)]*)( \\((?<license>.*)\\))?$"
 )
 
 

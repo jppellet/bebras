@@ -382,7 +382,7 @@ export function lint(text: string, filename: string, version?: string): LintOutp
                     }
                     // TODO validate file names, check missing licences
                 } else {
-                    warn(fmRangeForValueInDef("support_files", f), `This line should have the format:\n<filename> by <author>[, <work> by <author>] (<license>)\n\nPattern:\n${patterns.supportFile.source}`)
+                    warn(fmRangeForValueInDef("support_files", f), `This line should have the format:\n<filename> by <author>[, <work> by <author>] (<license>)\n\nIf omitted, the license is assumed to be ${patterns.DefaultLicenseShortTitle}.\n\nPattern:\n${patterns.supportFile.source}`)
                 }
             })
             for (const seenGraphicsContributor of seenGraphicsContributors) {
