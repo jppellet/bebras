@@ -37,6 +37,7 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
   md = md
     .use(customContainerPlugin, "center")
     .use(customContainerPlugin, "clear")
+    .use(customContainerPlugin, "indent")
 
 
 
