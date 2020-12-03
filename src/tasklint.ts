@@ -362,27 +362,37 @@ export function lint(text: string, filename: string, version?: string): LintOutp
             supportFiles.forEach(f => {
                 let match
                 if (match = patterns.supportFile.exec(f)) {
-                    const authorExt = match.groups.author_ext ?? ""
-                    const authorParts = authorExt.split(", ")
-                    const ByMarker = "by "
-                    for (const authorPart of authorParts) {
-                        const byPos = authorPart.indexOf(ByMarker)
-                        if (byPos === -1) {
-                            warn(fmRangeForValueInDef("support_files", authorPart), `This part should have the format:\n<work> by <author>`)
-                        } else {
-                            const authorNames = authorPart.substring(byPos + ByMarker.length).split(" and ")
-                            for (const authorName of authorNames) {
-                                if (!graphicsContributors.has(authorName)) {
-                                    warn(fmRangeForValueInDef("support_files", authorName), `This person is not mentioned in the contributor list with role '${patterns.roleGraphics}'`)
-                                }
-                                seenGraphicsContributors.add(authorName)
-                            }
+                    // TODO validate file names here
 
+                    const ByMarker = "by "
+                    if (match.groups.by === "by") {
+                        // "by" case
+                        const authorExt = match.groups.author_ext ?? ""
+                        const authorParts = authorExt.split(", ")
+                        for (const authorPart of authorParts) {
+                            const byPos = authorPart.indexOf(ByMarker)
+                            if (byPos === -1) {
+                                warn(fmRangeForValueInDef("support_files", authorPart), `This part should have the format:\n<work> by <author>`)
+                            } else {
+                                const authorNames = authorPart.substring(byPos + ByMarker.length).split(" and ")
+                                for (const authorName of authorNames) {
+                                    if (!graphicsContributors.has(authorName)) {
+                                        warn(fmRangeForValueInDef("support_files", authorName), `This person is not mentioned in the contributor list with role '${patterns.roleGraphics}'`)
+                                    }
+                                    seenGraphicsContributors.add(authorName)
+                                }
+
+                            }
                         }
+                        // TODO validate license
+                    } else if (match.groups.from === "from") {
+                        // "from" case
+                        // TODO validate license
+                    } else {
+                        warn(fmRangeForValueInDef("support_files", f), `Inconsistency; we'd need either a 'from' or a 'by' here.\n\nPattern:\n${patterns.supportFile.source}`)
                     }
-                    // TODO validate file names, check missing licences
                 } else {
-                    warn(fmRangeForValueInDef("support_files", f), `This line should have the format:\n<filename> by <author>[, <work> by <author>] (<license>)\n\nIf omitted, the license is assumed to be ${patterns.DefaultLicenseShortTitle}.\n\nPattern:\n${patterns.supportFile.source}`)
+                    warn(fmRangeForValueInDef("support_files", f), `This line should have the format:\n<file_pattern> by <author>[, <work> by <author>] (<license>) [if omitted, the license is assumed to be ${patterns.DefaultLicenseShortTitle}]\n--or--\n<file_pattern> from <source> (<license>) [license cannot be omitted]\n\nPattern:\n${patterns.supportFile.source}`)
                 }
             })
             for (const seenGraphicsContributor of seenGraphicsContributors) {

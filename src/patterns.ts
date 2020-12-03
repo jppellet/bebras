@@ -161,11 +161,20 @@ export const keyword = capturing<{
 )
 
 export const supportFile = capturing<{
-    filename: always,
-    author_ext: always,
-    license: maybe,
+    file_pattern: always,
+
+    // first case when by === "by"
+    by: maybe
+    author_ext: maybe,
+    license_by: maybe,
+
+    // second case when from === "from"
+    from: maybe
+    source: maybe,
+    license_from: maybe,
 }>(
-    "^(?<filename>.*?) (?<author_ext>by [^\\(\\)]*)( \\((?<license>.*)\\))?$"
+    // "^(?<file_pattern>.*?) (?<author_ext>by [^\\(\\)]*)( \\((?<license>.*)\\))?$"
+    "^(?<file_pattern>.*) (?:(?<author_ext>(?<by>by) .*)( \\((?<license_by>.*)\\))?|(?<from>from) (?<source>.*) \\((?<license_from>.*)\\))$"
 )
 
 
