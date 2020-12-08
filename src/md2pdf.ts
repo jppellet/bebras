@@ -10,7 +10,7 @@ import { PDFLoadingTask, PDFDocumentProxy, TextContentItem } from 'pdfjs-dist'
 import pdfjs = require("pdfjs-dist/es5/build/pdf.js")
 import templates from './templates'
 import { PdfBookmarkMetadata } from './json_schemas'
-import { TaskMetadata, toFileUrl } from './util'
+import { readFileSyncStrippingBom, TaskMetadata, toFileUrl } from './util'
 import { exec } from 'child_process'
 import hasbin = require("hasbin")
 
@@ -112,7 +112,7 @@ async function generatePdfBookmarkMetadata(pdfFilePath: string, sectionTitlesArr
 
 async function renderPdf(mdFilePath: string): Promise<[Uint8Array, util.TaskMetadata, string[]]> {
 
-    const textMd = fs.readFileSync(mdFilePath, 'utf-8')
+    const textMd = readFileSyncStrippingBom(mdFilePath)
 
     const [textHtml, metadata] = md2html.renderMarkdown(textMd, true)
 

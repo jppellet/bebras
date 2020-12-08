@@ -114,10 +114,6 @@ export const email =
 export const decimal = // 5, 0.5, 5.0005...
     new RegExp("\\d+\\.?\\d*", "g")
 
-export const texCharsPattern =
-    // we escape these: \ % _ $ &
-    new RegExp("[\\\\%_\\$&]", "g")
-
 
 // Regexes with semi-typed captures
 
@@ -128,13 +124,26 @@ export const prologue = capturing<{
     "^\\-{3}\\n(?:format: *Bebras Task(?: (?<version>[0-9\\.]+))?\\n)?"
 )
 
+const idPatternWithoutStartEndMarkers = "(?<year>[0-9]{4})-(?<country_code>[A-Z]{2})-(?<num>[0-9]{2})(?<variant>[a-z])?"
+
 export const id = capturing<{
     year: always,
     country_code: always,
     num: always,
     variant: maybe,
 }>(
-    "^(?<year>[0-9]{4})-(?<country_code>[A-Z]{2})-(?<num>[0-9]{2})(?<variant>[a-z])?$"
+    `^${idPatternWithoutStartEndMarkers}$`
+)
+
+export const taskFileName = capturing<{
+    id: always,
+    year: always,
+    country_code: always,
+    num: always,
+    variant: maybe,
+    lang_code: maybe,
+}>(
+    `^(?<id>${idPatternWithoutStartEndMarkers})(?:\\-(?<lang_code>[a-z]{3}))?\\.task\\.md$`
 )
 
 export const translation = capturing<{

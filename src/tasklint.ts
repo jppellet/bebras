@@ -3,7 +3,7 @@ import * as _ from 'lodash'
 
 import * as codes from './codes'
 import * as patterns from './patterns'
-import { isNullOrUndefined, s, isString, isUndefined, isArray, TaskMetadata } from "./util"
+import { isNullOrUndefined, s, isString, isUndefined, isArray, TaskMetadata, readFileSyncStrippingBom } from "./util"
 
 
 export type Severity = "error" | "warn"
@@ -428,7 +428,7 @@ export function lint(text: string, filename: string, version?: string): LintOutp
 export function runTerminal(filepath: string) {
     const fs = require('fs')
     const path = require('path')
-    const text = fs.readFileSync(filepath, 'utf8')
+    const text = readFileSyncStrippingBom(filepath)
     let filename: string = path.basename(filepath)
     if (filename.endsWith(patterns.taskFileExtension)) {
         filename = filename.slice(0, filename.length - patterns.taskFileExtension.length)

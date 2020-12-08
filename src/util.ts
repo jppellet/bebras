@@ -1,13 +1,12 @@
 import path = require('path')
 import patterns = require('./patterns')
 import fs = require('fs-extra')
+import codes = require("./codes")
 
-export type Dict<T> = { [key: string]: T | undefined }
-// this doesn't work:
-// export type Dict<K extends string, V> = { [key: K]: V | undefined };
+export type Dict<T> = Record<string, T | undefined>
 
+export function keysOf<K extends keyof any>(d: Record<K, any>): K[]
 export function keysOf<K extends {}>(o: K): (keyof K)[]
-export function keysOf<K>(d: Dict<K>): string[]
 
 export function keysOf(o: any) {
     return Object.keys(o)
@@ -226,12 +225,95 @@ export function defaultTaskMetadata(): TaskMetadata {
     }
 }
 
-export function texstr(text: string): string {
-    return text.replace(patterns.texCharsPattern, "\\$&")
+
+const texExpansionDefs: Dict<string | { pat: string, repl: string }> = {
+    // basic chars expanded with backslash: & $ { } % _ #
+    // (https://tex.stackexchange.com/a/34586/5035)
+    "&": { pat: "\\&", repl: "\\&" },
+    "$": { pat: "\\$", repl: "\\$" },
+    "{": { pat: "\\{", repl: "\\{" },
+    "}": { pat: "\\}", repl: "\\}" },
+    "%": "\\%",
+    "_": "\\_",
+    "#": "\\#",
+
+    // basic chars expanded with command
+    "\\": { pat: "\\\\", repl: "\\textbackslash{}" },
+    "^": { pat: "\\^", repl: "\\textasciicircum{}" },
+    "~": "\\textasciitilde{}",
+
+    // special 'go-through' backslash and curlies
+    "⍀": "\\",
+    "⦃": "{",
+    "⦄": "}",
+
+    // UTF chars expanded with command
+    // More: https://github.com/joom/latex-unicoder.vim/blob/master/autoload/unicoder.vim
+    "→": "\\ensuremath{\\rightarrow}",
+    "⇒": "\\ensuremath{\\Rightarrow}",
+    "×": "\\ensuremath{\\times}",
+    "⋅": "\\ensuremath{\\cdot}",
+    "∙": "\\ensuremath{\\cdot}",
+    "≤": "\\ensuremath{\\leq}",
+    "≥": "\\ensuremath{\\geq}",
+}
+
+
+
+const texExpansionPattern = (function () {
+    const pats: string[] = []
+    for (const key of keysOf(texExpansionDefs)) {
+        const value = texExpansionDefs[key]!
+        pats.push(isString(value) ? key : value.pat)
+    }
+    return new RegExp(pats.join("|"), "gi")
+})()
+
+export function texEscapeChars(text: string): string {
+    return text
+        .replace(texExpansionPattern, function (matched) {
+            const value = texExpansionDefs[matched]!
+            return isString(value) ? value : value.repl
+        })
 }
 
 export function texMathify(text: string): string {
     // sample in:  There is a room with 4 corners
     // sample out: There is a room with $4$ corners
     return text.replace(patterns.texInlineNumbersPattern, "$<pre>$$$<n>$$$<post>")
+}
+
+export function texMath(mathText: string): string {
+    // replace all no-break spaces with regular spaces, LaTeX will handle them
+    return mathText.replace(/[\u202F\u00A0]/g, " ")
+}
+
+export const DefaultHtmlWidthPx = 668 // 750 in bebrasmdstlye.css - 2*40 for padding - 2*1 for border
+
+export const DefaultTexWidthPx = 482 // as measured with width of some \includesvg[width=W]{} output
+
+export const HtmlToTexPixelRatio = DefaultTexWidthPx / DefaultHtmlWidthPx
+
+
+export function parseLanguageCodeFromTaskPath(filepath: string): string | undefined {
+    const filename = path.basename(filepath)
+    let match
+    if (match = patterns.taskFileName.exec(filename)) {
+        let langCode
+        if (langCode = match.groups.lang_code) {
+            if (!isUndefined(codes.languageNameByLanguageCode[langCode])) {
+                return langCode
+            }
+        }
+    }
+    return undefined
+}
+
+export function readFileSyncStrippingBom(filepath: string): string {
+    let content = fs.readFileSync(filepath, "utf8")
+    if (content.length > 0 && content.charCodeAt(0) === 0xFEFF) {
+        content = content.slice(1)
+        console.log("Warning: file was saved with a UTF-8 BOM, remove it for fewer unexpected results: " + filepath)
+    }
+    return content
 }

@@ -1,10 +1,12 @@
 import MarkdownIt = require('markdown-it')
 import fs = require('fs')
-import { defaultTaskMetadata, TaskMetadata } from './util'
+import { defaultTaskMetadata, readFileSyncStrippingBom, TaskMetadata } from './util'
 import Token = require('markdown-it/lib/token')
+import { stringify } from 'querystring'
+import { defaultLanguageCode } from './codes'
 
 export function runTerminal(fileIn: string, fileOut: string) {
-  const mdText = fs.readFileSync(fileIn, 'utf8')
+  const mdText = readFileSyncStrippingBom(fileIn)
   const [htmlText, metadata] = renderMarkdown(mdText, true)
   fs.writeFileSync(fileOut, htmlText)
   console.log(`Output written on ${fileOut}`)
@@ -37,8 +39,18 @@ export function renderMarkdown(text: string, fullHtml: boolean): [string, TaskMe
   return [htmlText, metadata]
 }
 
-export function parseMarkdown(text: string): [Token[], TaskMetadata] {
-  const md = MarkdownIt().use(require("./markdown-it-bebras"))
+export function defaultPluginOptions() {
+  return {
+    langCode: defaultLanguageCode(),
+    customQuotes: undefined as undefined | [string, string, string, string],
+    addToc: false,
+  }
+}
+
+export type PluginOptions = ReturnType<typeof defaultPluginOptions>
+
+export function parseMarkdown(text: string, parseOptions: Partial<PluginOptions>): [Token[], TaskMetadata] {
+  const md = MarkdownIt().use(require("./markdown-it-bebras"), parseOptions)
   const env: any = {}
   const tokens = md.parse(text, env)
   const metadata: TaskMetadata = env.taskMetadata ?? defaultTaskMetadata()

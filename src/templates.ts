@@ -1,11 +1,10 @@
 import fs = require('fs')
 import jsrender = require('jsrender')
-import { TaskMetadata } from './util'
-import { texstr } from './util'
+import { readFileSyncStrippingBom, TaskMetadata, texEscapeChars } from './util'
 import { PdfBookmarkMetadata } from './json_schemas'
 
 // JsRender setup
-jsrender.views.converters("texstr", texstr)
+jsrender.views.converters("texstr", texEscapeChars)
 jsrender.views.settings.allowCode(true)
 
 // A type-safe(r) version of JsViews.TemplateRender
@@ -32,7 +31,7 @@ class TemplateSpec<T extends { [key: string]: any }> {
     private _compiledTemplate?: JsViews.Template
 
     private get source(): string {
-        return this._source ?? (this._source = fs.readFileSync("src/templates/" + this.name, "utf8"))
+        return this._source ?? (this._source = readFileSyncStrippingBom("src/templates/" + this.name))
     }
 
     private get compiledTemplate(): JsViews.Template {

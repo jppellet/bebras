@@ -8,10 +8,13 @@ const slugify: (s: string) => string = require('slugify')
 import * as yaml from 'js-yaml'
 
 import * as patterns from './patterns'
-import { TaskMetadata, defaultTaskMetadata } from "./util"
+import { TaskMetadata, defaultTaskMetadata, Dict } from "./util"
+import { defaultPluginOptions, PluginOptions } from "./md2html"
 
 
-function bebrasPlugin(md: MarkdownIt, _options: any) {
+function bebrasPlugin(md: MarkdownIt, _parseOptions: any) {
+
+  const pluginOptions: PluginOptions = { ...defaultPluginOptions(), ..._parseOptions }
 
   // init plugins we need
   md
@@ -41,10 +44,10 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
 
 
 
-  const quotes = {
+  const quotes: Dict<[string, string, string, string]> = {
     eng: ['“', '”', '‘', '’'],
     fra: ['«\u202F', '\u202F»', '“', '”'],
-    deu: ['„', '“', '‚', '‘'],
+    deu: ['«', '»', '“', '”'],
     ita: ['«', '»', '“', '”'],
   }
 
@@ -54,22 +57,18 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
     xhtmlOut: false,         // Don't use '/' to close single tags (<br />)
     breaks: false,           // Convert newlines in paragraphs into <br>
     langPrefix: 'language-', // CSS language prefix for fenced blocks
-    linkify: false,          // Autoconvert URL-like text to links
+    linkify: true,           // Autoconvert URL-like text to links
 
     // Enable some language-neutral replacement + quotes beautification
     typographer: true,
 
     // Double + single quotes replacement pairs, when typographer enabled,
-    quotes: quotes.fra, // TODO set according to lang
+    quotes: pluginOptions.customQuotes ?? quotes[pluginOptions.langCode] ?? quotes.eng, // TODO set according to lang
   })
 
   const defaultOptions = {
     addToc: false,
   }
-
-  type PluginOptions = typeof defaultOptions
-
-  const options: PluginOptions = Object.assign({}, defaultOptions, _options)
 
   type MdGeneratorFunction = (metadata: TaskMetadata) => string
   type HtmlGeneratorFunction = (metadata: TaskMetadata) => string
@@ -228,7 +227,7 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
     }
 
     const prologueSections: TemplateName[] = ["title", "header"]
-    if (options.addToc) {
+    if (pluginOptions.addToc) {
       prologueSections.push("table_of_contents")
     }
 
@@ -446,14 +445,21 @@ function bebrasPlugin(md: MarkdownIt, _options: any) {
     token.content = state.getLines(startLine + 1, nextLine, len, true)
     token.map = [startLine, state.line]
 
-    console.log(token)
-
     return true
   }, { alt: ['paragraph', 'reference', 'blockquote', 'list'] })
 
   md.renderer.rules.raw = (tokens: Token[], idx: number, options: MarkdownIt.Options, env: any, self: Renderer) => {
     const token = tokens[idx]
-    if (token.info.length === 0 || token.info === "html") {
+    // TODO add rule that you can write:
+    //   <<<md-notex
+    //   Some **Markdown** content here
+    //   >>>
+    // ... and this gets parsed as Markdown for output formats other than tex. Or:
+    //   <<<md-html
+    //   Some **Markdown** content here
+    //   >>>
+    // ... and this gets parsed as Markdown for output formats HTML only.
+    if (token.info === "html") {
       return token.content
     } else {
       return ""
