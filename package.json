@@ -16,7 +16,8 @@
 	"contributes": {
 		"markdown.markdownItPlugins": true,
 		"markdown.previewStyles": [
-			"./bebrasmdstyle.css"
+			"./bebrasmdstyle.css",
+			"https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css"
 		]
 	},
 	"scripts": {
@@ -49,6 +50,7 @@
 	"dependencies": {
 		"@completely/cli": "0.0.10",
 		"@completely/zsh-generator": "0.0.4",
+		"@types/katex": "^0.11.0",
 		"@types/markdown-it": "^10.0.1",
 		"@types/pdfjs-dist": "^2.1.4",
 		"commander": "^6.2.0",

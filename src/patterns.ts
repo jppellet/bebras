@@ -95,6 +95,13 @@ export const markdownSectionNames = [
     "Comments",
 ] as const
 
+export type SectionName = typeof markdownSectionNames[number]
+export type SectionAssociatedData<T> = { [S in SectionName]: T }
+
+export function isStandardSectionName(sectionName: string): sectionName is SectionName {
+    return markdownSectionNames.includes(sectionName as any)
+}
+
 export const roleMainAuthor = "author"
 export const roleGraphics = "graphics"
 export const roleContributor = "contributor"
@@ -182,8 +189,7 @@ export const supportFile = capturing<{
     source: maybe,
     license_from: maybe,
 }>(
-    // "^(?<file_pattern>.*?) (?<author_ext>by [^\\(\\)]*)( \\((?<license>.*)\\))?$"
-    "^(?<file_pattern>.*) (?:(?<author_ext>(?<by>by) .*)( \\((?<license_by>.*)\\))?|(?<from>from) (?<source>.*) \\((?<license_from>.*)\\))$"
+    "^(?<file_pattern>.*?) (?:(?<author_ext>(?<by>by) .*)( \\((?<license_by>.*)\\))?|(?<from>from) (?<source>.*) \\((?<license_from>.*)\\))$"
 )
 
 

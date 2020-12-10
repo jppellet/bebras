@@ -7,6 +7,9 @@ import patterns = require("./patterns")
 import { texMathify, HtmlToTexPixelRatio, Dict, texEscapeChars, parseLanguageCodeFromTaskPath, readFileSyncStrippingBom, texMath } from './util'
 import codes = require("./codes")
 import { numberToString } from 'pdf-lib'
+import { stringify } from 'querystring'
+import { SectionAssociatedData } from './patterns'
+import { isString } from 'lodash'
 
 export function runTerminal(fileIn: string, fileOut: string) {
     const texData = renderTex(fileIn)
@@ -63,6 +66,8 @@ export function renderTex(filepath: string): string {
             validMultirows: [] as Array<{ colIndex: number, rowIndex: number, rowspan: number }>,
             lastRowTypeInThisTable: undefined as undefined | "header" | "body",
             hasCellOnThisLine: false,
+            closeSectionWith: "",
+            disableMathify: false,
         }
     }
 
@@ -95,15 +100,33 @@ export function renderTex(filepath: string): string {
         }
     }
 
-    type Rules = { [key: string]: undefined | ((tokens: Token[], idx: number, env: RendererEnv) => string) }
+    type Rules = { [key: string]: undefined | ((tokens: Token[], idx: number, env: RendererEnv) => string | { skipToNext: string }) }
 
     const sectionCommands: Array<[string, string]> = [
-        ["\\section*{\\centering", "}"],
+        ["\\section*{\\centering{} ", "}"],
         ["\\subsection*{", "}"],
         ["\\subsubsection*{", "}"],
         ["\\paragraph*{", "}"],
         ["\\subparagraph*{", "}"],
     ]
+
+    const FormatBrochure = true
+
+    const sectionRenderingData: Dict<{ skip: boolean, pre: string, post: string, disableMathify: boolean }> = {
+        "Body": { skip: false, pre: "", post: "", disableMathify: false },
+        "Question/Challenge": { skip: false, pre: "{\\em", post: "}", disableMathify: true },
+        "Answer Options/Interactivity Description": { skip: false, pre: "", post: "", disableMathify: false },
+        "Answer Explanation": { skip: false, pre: "", post: "", disableMathify: false },
+        "It's Informatics": { skip: false, pre: "", post: "", disableMathify: false },
+        "Keywords and Websites": { skip: false, pre: "{\\raggedright\n", post: "\n}", disableMathify: true },
+        "Wording and Phrases": { skip: FormatBrochure, pre: "", post: "", disableMathify: true },
+        "Comments": { skip: FormatBrochure, pre: "", post: "", disableMathify: true },
+        "Contributors": { skip: FormatBrochure, pre: "", post: "", disableMathify: true },
+        "Support Files": { skip: FormatBrochure, pre: "", post: "", disableMathify: true },
+        "License": { skip: FormatBrochure, pre: "", post: "", disableMathify: true },
+    }
+
+    const skipHeader = FormatBrochure
 
     function sectionCommandsForHeadingToken(t: Token): [string, string] {
         const level = parseInt(t.tag.slice(1))
@@ -115,6 +138,9 @@ export function renderTex(filepath: string): string {
     const expand: Rules = {
 
         "header": (tokens, idx, env) => {
+            if (skipHeader) {
+                return ""
+            }
 
             const ageCategories = patterns.ageCategories
             const categories = patterns.categories
@@ -183,7 +209,7 @@ export function renderTex(filepath: string): string {
         },
 
 
-        "license_html": (tokens, idx, env) => {
+        "license_body": (tokens, idx, env) => {
             // https://tex.stackexchange.com/questions/5433/can-i-use-an-image-located-on-the-web-in-a-latex-document
             // const licenseLogoPath = path.join(__dirname, "resources", "CC_by-sa.pdf")
             const licenseLogoPath = "/Users/jpp/Desktop/bebrastasksupport/src/resources/CC_by-sa.pdf"
@@ -206,7 +232,7 @@ export function renderTex(filepath: string): string {
         const lastRowType = env.state().lastRowTypeInThisTable
         if (lastRowType) {
             env.setState({ lastRowTypeInThisTable: undefined })
-            const lineIfNeeded = (lastRowType === "header") ? "\\hline\n" : ""
+            const lineIfNeeded = (lastRowType === "header") ? "\\hline\n" : "" // \topstrut doesn't work if followed by \muticolumn...
             return ` \\\\ \n${lineIfNeeded}`
         }
         return ""
@@ -244,7 +270,7 @@ export function renderTex(filepath: string): string {
             open = `\\thead{`
             close = `}`
         } else if (type === "makecell") {
-            open = `\\makecell{`
+            open = `\\makecell{` // TODO insert alignment spec
             close = `}`
         }
 
@@ -318,7 +344,8 @@ export function renderTex(filepath: string): string {
         "text": (tokens, idx, env) => {
             let text = tokens[idx].content
             text = texEscapeChars(text)
-            if (!env.state().isInHeading) {
+            const state = env.state()
+            if (!state.isInHeading && !state.disableMathify) {
                 text = texMathify(text)
             }
             return text
@@ -674,12 +701,30 @@ export function renderTex(filepath: string): string {
         },
 
 
+        "seccontainer_open": (tokens, idx, env) => {
+            let secData = { skip: false, pre: "", post: "", disableMathify: false }
+
+            const sectionName = tokens[idx].info
+            const specificSecData = sectionRenderingData[sectionName]
+            if (specificSecData) {
+                secData = specificSecData
+            }
+            if (secData.skip) {
+                return { skipToNext: "seccontainer_close" }
+            } else {
+                env.pushState({ closeSectionWith: secData.post, disableMathify: secData.disableMathify })
+                return secData.pre
+            }
+        },
+        "seccontainer_close": (tokens, idx, env) => {
+            const state = env.popState()
+            return state.closeSectionWith
+        },
+
         "main_open": skip,
         "main_close": skip,
         "secbody_open": skip,
         "secbody_close": skip,
-        "seccontainer_open": skip,
-        "seccontainer_close": skip,
 
         "tocOpen": skip,
         "tocBody": skip,
@@ -691,18 +736,27 @@ export function renderTex(filepath: string): string {
     function traverse(tokens: Token[], env: RendererEnv): string {
         const parts = [] as string[]
         let r
-        let idx = 0
-        for (const t of tokens) {
-            _currentToken = t
-            const rule = rules[t.type]
+
+        for (let idx = 0; idx < tokens.length; idx++) {
+            _currentToken = tokens[idx]
+            const rule = rules[_currentToken.type]
             if (rule) {
                 if (r = rule(tokens, idx, env)) {
-                    parts.push(r)
+                    if (isString(r)) {
+                        parts.push(r)
+                    } else {
+                        const { skipToNext } = r
+                        while (tokens[idx].type !== skipToNext) {
+                            idx++
+                            if (idx === tokens.length) {
+                                break
+                            }
+                        }
+                    }
                 }
             } else {
-                warn(`No renderer rule for ${t.type}`)
+                warn(`No renderer rule for ${_currentToken.type}`)
             }
-            idx++
         }
         return parts.join("")
     }
@@ -733,7 +787,23 @@ ${babel}
 
 \\usepackage[margin=2cm]{geometry}
 \\usepackage{changepage}
-\\AtBeginEnvironment{adjustwidth}{\\partopsep0pt}
+%\\AtBeginEnvironment{adjustwidth}{\\partopsep0pt}
+%\\newcommand\\topstrut{\\rule{0pt}{2.6ex}}
+%\\newcommand\\bottomstrut{\\rule[-0.9ex]{0pt}{0pt}}
+\\makeatletter
+\\renewenvironment{adjustwidth}[2]{%
+    \\begin{list}{}{%
+    \\partopsep\\z@%
+    \\topsep\\z@%
+    \\listparindent\\parindent%
+    \\parsep\\parskip%
+    \\@ifmtarg{#1}{\\setlength{\\leftmargin}{\\z@}}%
+                 {\\setlength{\\leftmargin}{#1}}%
+    \\@ifmtarg{#2}{\\setlength{\\rightmargin}{\\z@}}%
+                 {\\setlength{\\rightmargin}{#2}}%
+    }
+    \\item[]}{\\end{list}}
+\\makeatother
 
 
 \\usepackage{tabularx}

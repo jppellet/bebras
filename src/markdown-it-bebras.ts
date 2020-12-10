@@ -2,6 +2,7 @@ import MarkdownIt = require("markdown-it")
 import Token = require("markdown-it/lib/token")
 import Renderer = require("markdown-it/lib/renderer")
 import StateCore = require("markdown-it/lib/rules_core/state_core")
+import katex = require("katex")
 
 const slugify: (s: string) => string = require('slugify')
 
@@ -21,15 +22,25 @@ function bebrasPlugin(md: MarkdownIt, _parseOptions: any) {
     .use(require("markdown-it-sub"))
     .use(require("markdown-it-sup"))
     .use(require('markdown-it-inline-comments'))
-    .use(require("markdown-it-texmath"), {
-      engine: require('katex'),
-    })
     .use(require("markdown-it-anchor"))
+
+    // see https://github.com/goessner/markdown-it-texmath
+    .use(require("markdown-it-texmath"), {
+      engine: katex,
+      delimiters: 'dollars',
+      katexOptions: {
+        // https://katex.org/docs/options.html
+        fleqn: true,
+      },
+    })
+
+    // see https://www.npmjs.com/package/markdown-it-multimd-table
     .use(require("markdown-it-multimd-table"), {
       multiline: true,
       rowspan: true,
       headerless: true,
-    }) // see https://www.npmjs.com/package/markdown-it-multimd-table
+    })
+
     .use(require("markdown-it-toc-done-right"), {
       level: 2,
       listType: "ul",
@@ -97,7 +108,7 @@ function bebrasPlugin(md: MarkdownIt, _parseOptions: any) {
     },
 
     "license": (metadata: TaskMetadata) => {
-      const sectionBody = "{{license_html}}"
+      const sectionBody = "{{license_body}}"
       return `## License\n\n${sectionBody}`
     },
 
@@ -106,7 +117,7 @@ function bebrasPlugin(md: MarkdownIt, _parseOptions: any) {
 
   const HtmlGeneratorTemplates = {
 
-    "license_html": (metadata: TaskMetadata) => {
+    "license_body": (metadata: TaskMetadata) => {
       const license = patterns.genLicense(metadata)
       return "" +
         `<p>
@@ -181,7 +192,11 @@ function bebrasPlugin(md: MarkdownIt, _parseOptions: any) {
       //   </div>`
 
       return '' + // version without keywords for now, TODO
-        `<div class="bebras-header">
+        `
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex/dist/katex.min.css">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/markdown-it-texmath/css/texmath.min.css">
+      
+           <div class="bebras-header">
             <div class="bebras-ages">${ageRowCells}</div>
             <div class="bebras-answertype bebras-header-cell">${answerType}</div>
             <div class="bebras-categories bebras-header-cell">${catCell1}${catCell2}</div>
@@ -315,13 +330,15 @@ function bebrasPlugin(md: MarkdownIt, _parseOptions: any) {
         i += 2
 
       } else if (type === "heading_close") {
+        const headingName = tokensIn[i - 1].content
         tokensOut.push(tokensIn[i])
         const newToken = new state.Token('secbody_open', 'div', 1)
+        newToken.info = headingName
         const level = parseInt(tokensIn[i].tag.slice(1))
         if (level >= 2) {
           let specificClass = ``
           if (i > 0 && tokensIn[i - 1].type === "inline") {
-            specificClass = ` bebras-sectionbody-${slugify(tokensIn[i - 1].content.toLowerCase())}`
+            specificClass = ` bebras-sectionbody-${slugify(headingName.toLowerCase())}`
           }
           newToken.attrPush(["class", `bebras-sectionbody-${level}${specificClass}`])
           tokensOut.push(newToken)
@@ -334,12 +351,14 @@ function bebrasPlugin(md: MarkdownIt, _parseOptions: any) {
           tokensOut.push(new state.Token('seccontainer_close', 'div', -1))
           sectionOpen = false
         }
-        const newToken = new state.Token('secbody_open', 'div', 1)
+        const headingName = tokensIn[i + 1].content
+        const newToken = new state.Token('seccontainer_open', 'div', 1)
+        newToken.info = headingName
         const level = parseInt(tokensIn[i].tag.slice(1))
         if (level >= 2) {
           let specificClass = ``
           if (i < tokensIn.length - 1 && tokensIn[i + 1].type === "inline") {
-            specificClass = ` bebras-sectioncontainer-${slugify(tokensIn[i + 1].content.toLowerCase())}`
+            specificClass = ` bebras-sectioncontainer-${slugify(headingName.toLowerCase())}`
           }
           newToken.attrPush(["class", `bebras-sectioncontainer-${level}${specificClass}`])
           tokensOut.push(newToken)
