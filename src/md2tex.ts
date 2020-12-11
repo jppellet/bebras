@@ -60,6 +60,7 @@ export function renderTex(filepath: string): string {
     function defaultRendererState() {
         return {
             isInHeading: false,
+            currentTable: undefined as undefined | { cellAlignmentChars: Array<string>, closeWith: string },
             currentTableCell: undefined as undefined | { type: CellType, closeWith: string },
             currentTableRowIndex: -1,
             currentTableColumnIndex: -1,
@@ -232,7 +233,7 @@ export function renderTex(filepath: string): string {
         const lastRowType = env.state().lastRowTypeInThisTable
         if (lastRowType) {
             env.setState({ lastRowTypeInThisTable: undefined })
-            const lineIfNeeded = (lastRowType === "header") ? "\\hline\n" : "" // \topstrut doesn't work if followed by \muticolumn...
+            const lineIfNeeded = (lastRowType === "header") ? "\\hlineheader\n" : "" // \topstrut doesn't work if followed by \muticolumn...
             return ` \\\\ \n${lineIfNeeded}`
         }
         return ""
@@ -264,13 +265,23 @@ export function renderTex(filepath: string): string {
             state = env.setState({ currentTableColumnIndex: colIndex })
         }
 
+        function nonExpandingAlignment(possiblyExpandingAlignment: string): string {
+            if (possiblyExpandingAlignment === "J") {
+                return "l"
+            } else {
+                return possiblyExpandingAlignment.toLowerCase()
+            }
+        }
+
+        const align = nonExpandingAlignment(state.currentTable?.cellAlignmentChars[colIndex]!)
+
         let open = "" // default open and close markup
         let close = ""
         if (type === "thead") {
-            open = `\\thead{`
+            open = `\\thead[${align}]{`
             close = `}`
         } else if (type === "makecell") {
-            open = `\\makecell{` // TODO insert alignment spec
+            open = `\\makecell[${align}]{`
             close = `}`
         }
 
@@ -400,11 +411,12 @@ export function renderTex(filepath: string): string {
                 after = `\n\\end{center}`
             }
 
-            if (placement === "center") {
+            const isInTable = !!env.state().currentTableCell
+            if (placement === "center" || isInTable) {
                 if (isSurroundedBy("paragraph", 1, tokens, idx)) {
                     if (isSurroundedBy("td", 2, tokens, idx)) {
                         useMakecell()
-                    } else if (!env.state().currentTableCell) {
+                    } else if (!isInTable) {
                         useCenterEnv()
                     } else {
                         // in a table cell, not alone; leave as is
@@ -579,8 +591,6 @@ export function renderTex(filepath: string): string {
 
 
         "table_open": (tokens, idx, env) => {
-            env.pushState({ currentTableRowIndex: -1, validMultirows: [] })
-
             const t = tokens[idx]
 
             interface TableMetaSep {
@@ -597,6 +607,8 @@ export function renderTex(filepath: string): string {
             function columnSpec(alignString: string, hresize: boolean): string {
                 switch (alignString) {
                     case "":
+                        // default is justified
+                        return hresize ? "J" : "l"
                     case "left":
                         return hresize ? "L" : "l"
                     case "center":
@@ -612,17 +624,27 @@ export function renderTex(filepath: string): string {
             const tableMeta: TableMeta = t.meta
             const ncols = tableMeta.sep.aligns.length
             const specs: Array<string> = []
+            let hasAnyHResize = false
             for (let i = 0; i < ncols; i++) {
-                specs.push(columnSpec(tableMeta.sep.aligns[i], tableMeta.sep.wraps[i]))
+                const hresize = tableMeta.sep.wraps[i]
+                if (hresize) {
+                    hasAnyHResize = true
+                }
+                specs.push(columnSpec(tableMeta.sep.aligns[i], hresize))
             }
 
-            const spec = specs.join(" ")
-            return `\\begin{tabularx}{\\columnwidth}{ ${spec} }\n`
+            const spec = "@{} " + specs.join(" ") + " @{}"
+            const open = !hasAnyHResize ? `\\begin{tabular}{ ${spec} }\n` : `\\begin{tabularx}{\\columnwidth}{ ${spec} }\n`
+            const close = !hasAnyHResize ? `\n\\end{tabular}\n\n` : `\n\\end{tabularx}\n\n`
+
+            env.pushState({ currentTableRowIndex: -1, validMultirows: [], currentTable: { cellAlignmentChars: specs, closeWith: close } })
+
+            return open
         },
 
         "table_close": (tokens, idx, env) => {
-            env.popState()
-            return "\n\\end{tabularx}\n\n"
+            const state = env.popState()
+            return state.currentTable!.closeWith
         },
 
         "thead_open": skip,
@@ -790,6 +812,7 @@ ${babel}
 %\\AtBeginEnvironment{adjustwidth}{\\partopsep0pt}
 %\\newcommand\\topstrut{\\rule{0pt}{2.6ex}}
 %\\newcommand\\bottomstrut{\\rule[-0.9ex]{0pt}{0pt}}
+\\newcommand\\hlineheader{\\hline\\noalign{\\vskip 0.4em}}
 \\makeatletter
 \\renewenvironment{adjustwidth}[2]{%
     \\begin{list}{}{%
@@ -814,6 +837,7 @@ ${babel}
 \\newcolumntype{R}{>{\\raggedleft\\arraybackslash}X}
 \\newcolumntype{C}{>{\\centering\\arraybackslash}X}
 \\newcolumntype{L}{>{\\raggedright\\arraybackslash}X}
+\\newcolumntype{J}{>{\\arraybackslash}X}
 
 \\usepackage{amssymb}
 
