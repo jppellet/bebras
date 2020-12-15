@@ -242,6 +242,10 @@ const texExpansionDefs: Dict<string | { pat: string, repl: string }> = {
     "^": { pat: "\\^", repl: "\\textasciicircum{}" },
     "~": "\\textasciitilde{}",
 
+    // spaces
+    "\u00A0": "~",
+    "\u202F": "\\thinspace{}",
+
     // special 'go-through' backslash and curlies
     "⍀": "\\",
     "⦃": "{",

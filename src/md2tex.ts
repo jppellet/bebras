@@ -4,32 +4,22 @@ import md2html = require('./md2html')
 import _ = require('lodash')
 import Token = require('markdown-it/lib/token')
 import patterns = require("./patterns")
-import { texMathify, HtmlToTexPixelRatio, Dict, texEscapeChars, parseLanguageCodeFromTaskPath, readFileSyncStrippingBom, texMath } from './util'
+import { texMathify, HtmlToTexPixelRatio, Dict, texEscapeChars, parseLanguageCodeFromTaskPath, readFileSyncStrippingBom, texMath, TaskMetadata, siblingWithExtension } from './util'
 import codes = require("./codes")
 import { numberToString } from 'pdf-lib'
 import { stringify } from 'querystring'
 import { SectionAssociatedData } from './patterns'
-import { isString } from 'lodash'
+import { isString, isUndefined } from 'lodash'
 
 export function runTerminal(fileIn: string, fileOut: string) {
-    const texData = renderTex(fileIn)
-    fs.writeFileSync(fileOut, texData)
-    console.log(`Output written on ${fileOut}`)
-}
 
-export function renderTex(filepath: string): string {
-
-    const langCode = parseLanguageCodeFromTaskPath(filepath) ?? codes.defaultLanguageCode()
-
-    const textMd = readFileSyncStrippingBom(filepath)
-
+    const langCode = parseLanguageCodeFromTaskPath(fileIn) ?? codes.defaultLanguageCode()
+    const textMd = readFileSyncStrippingBom(fileIn)
     const [tokens, metadata] = md2html.parseMarkdown(textMd, {
         langCode,
         // we use ⍀ to avoid escaping \ to \\, and we later convert it back to \
         customQuotes: ["⍀enquote⦃", "⦄", "⍀enquote⦃", "⦄"],
     })
-
-
     const linealizedTokens = _.flatMap(tokens, t => {
         if (t.type === "inline") {
             return t.children ?? []
@@ -43,11 +33,26 @@ export function renderTex(filepath: string): string {
     // }
     // console.log(metadata)
 
+
+    const texDataStandalone = renderTex(linealizedTokens, langCode, metadata, fileIn, true)
+    fs.writeFileSync(fileOut, texDataStandalone)
+    console.log(`Output written on ${fileOut}`)
+
+
+    const texDataBrochure = renderTex(linealizedTokens, langCode, metadata, fileIn, false)
+    const fileOutBrochure = siblingWithExtension(fileOut, "_brochure.tex")
+    fs.writeFileSync(fileOutBrochure, texDataBrochure)
+    console.log(`Output written on ${fileOutBrochure}`)
+}
+
+export function renderTex(linealizedTokens: Token[], langCode: string, metadata: TaskMetadata, filepath: string, standalone: boolean,): string {
+
     const license = patterns.genLicense(metadata)
 
     const skip = () => ""
 
     let _currentToken: Token
+    let _currentSection: string = "prologue"
 
     function warn(msg: string) {
         console.log(`Warning: ${msg}`)
@@ -69,6 +74,7 @@ export function renderTex(filepath: string): string {
             hasCellOnThisLine: false,
             closeSectionWith: "",
             disableMathify: false,
+            noPageBreak: false,
         }
     }
 
@@ -115,7 +121,7 @@ export function renderTex(filepath: string): string {
 
     const sectionRenderingData: Dict<{ skip: boolean, pre: string, post: string, disableMathify: boolean }> = {
         "Body": { skip: false, pre: "", post: "", disableMathify: false },
-        "Question/Challenge": { skip: false, pre: "{\\em", post: "}", disableMathify: true },
+        "Question/Challenge": { skip: false, pre: "{\\em\n", post: "}", disableMathify: true },
         "Answer Options/Interactivity Description": { skip: false, pre: "", post: "", disableMathify: false },
         "Answer Explanation": { skip: false, pre: "", post: "", disableMathify: false },
         "It's Informatics": { skip: false, pre: "", post: "", disableMathify: false },
@@ -233,10 +239,18 @@ export function renderTex(filepath: string): string {
         const lastRowType = env.state().lastRowTypeInThisTable
         if (lastRowType) {
             env.setState({ lastRowTypeInThisTable: undefined })
-            const lineIfNeeded = (lastRowType === "header") ? "\\hlineheader\n" : "" // \topstrut doesn't work if followed by \muticolumn...
+            const lineIfNeeded = (lastRowType === "header") ? "\\midrule\n" : "" // \topstrut doesn't work if followed by \muticolumn...
             return ` \\\\ \n${lineIfNeeded}`
         }
         return ""
+    }
+
+    function nonExpandingAlignment(possiblyExpandingAlignment: string): string {
+        if (possiblyExpandingAlignment === "J") {
+            return "l"
+        } else {
+            return possiblyExpandingAlignment.toLowerCase()
+        }
     }
 
     function openCellPushingState(type: CellType, token: Token, env: RendererEnv): string {
@@ -265,21 +279,15 @@ export function renderTex(filepath: string): string {
             state = env.setState({ currentTableColumnIndex: colIndex })
         }
 
-        function nonExpandingAlignment(possiblyExpandingAlignment: string): string {
-            if (possiblyExpandingAlignment === "J") {
-                return "l"
-            } else {
-                return possiblyExpandingAlignment.toLowerCase()
-            }
-        }
-
         const align = nonExpandingAlignment(state.currentTable?.cellAlignmentChars[colIndex]!)
 
+        let disableMathify = false
         let open = "" // default open and close markup
         let close = ""
         if (type === "thead") {
             open = `\\thead[${align}]{`
             close = `}`
+            disableMathify = true
         } else if (type === "makecell") {
             open = `\\makecell[${align}]{`
             close = `}`
@@ -302,7 +310,7 @@ export function renderTex(filepath: string): string {
             close = close + `}`
         }
 
-        env.pushState({ currentTableCell: { type, closeWith: close } })
+        env.pushState({ currentTableCell: { type, closeWith: close }, disableMathify })
         const debug = ""
         // const debug = `(${rowIndex},${colIndex})--`
         return sep + open + debug
@@ -326,11 +334,18 @@ export function renderTex(filepath: string): string {
         return undefined
     }
 
-    function isSurroundedBy(item: string, distance: number, tokens: Array<Token>, idx: number,): boolean {
+    function isSurrounded(tokens: Array<Token>, idx: number, distance: number, item: string, itemClose?: string): boolean {
+        let itemOpen
+        if (isUndefined(itemClose)) {
+            itemOpen = `${item}_open`
+            itemClose = `${item}_close`
+        } else {
+            itemOpen = item
+        }
         const surrounded = idx - distance >= 0 &&
             idx + distance < tokens.length &&
-            tokens[idx - distance].type === `${item}_open` &&
-            tokens[idx + distance].type === `${item}_close`
+            tokens[idx - distance].type === itemOpen &&
+            tokens[idx + distance].type === itemClose
         return surrounded
     }
 
@@ -372,11 +387,11 @@ export function renderTex(filepath: string): string {
             }
 
             const imgPathIsAbsolute = imgPathForHtml.startsWith("/")
-            const imgPath = imgPathIsAbsolute ? imgPathForHtml : "../" + imgPathForHtml
+            const imgPath = imgPathIsAbsolute ? imgPathForHtml : "\\taskGraphicsFolder/" + imgPathForHtml
 
             let title = t.attrGet("title")
             let includeOpts = ""
-            let placement = "center"
+            let placement = "unspecified"
             let width: string | undefined = undefined
             let match
             if (title && (match = patterns.imageOptions.exec(title))) {
@@ -396,41 +411,61 @@ export function renderTex(filepath: string): string {
                 }
             }
 
+            const state = env.state()
             const includeCmd = `\\include${type}${includeOpts}{${imgPath}}`
 
             let before = ""
             let after = ""
 
             function useMakecell() {
-                before = `\\makecell[c]{`
+                const colIndex = state.currentTableColumnIndex
+                const align = nonExpandingAlignment(state.currentTable?.cellAlignmentChars[colIndex]!)
+                before = `\\makecell[${align}]{`
                 after = `}`
             }
 
             function useCenterEnv() {
-                before = `\\begin{center}\n`
-                after = `\n\\end{center}`
+                // before = `{\\centering%\\begin{center}\n`
+                // after = `\n\\end{center}`
+                before = `{\\centering%\n`
+                after = `\\par}`
             }
 
-            const isInTable = !!env.state().currentTableCell
-            if (placement === "center" || isInTable) {
-                if (isSurroundedBy("paragraph", 1, tokens, idx)) {
-                    if (isSurroundedBy("td", 2, tokens, idx)) {
+            function useRaisebox(ignoreHeight: boolean) {
+                const sizeopt = ignoreHeight ? "[0pt][0pt]" : ""
+                before = `\\raisebox{-0.5ex}${sizeopt}{`
+                after = `}`
+            }
+
+            const isInTable = !!state.currentTableCell
+            if (placement === "unspecified" || isInTable) {
+                if (isSurrounded(tokens, idx, 1, "paragraph")) {
+                    if (isSurrounded(tokens, idx, 2, "td")) {
                         useMakecell()
                     } else if (!isInTable) {
                         useCenterEnv()
                     } else {
-                        // in a table cell, not alone; leave as is
+                        // inline in table cell
+                        useRaisebox(false)
                     }
-                } else if (isSurroundedBy("td", 1, tokens, idx)) {
+                } else if (isSurrounded(tokens, idx, 1, "td")) {
                     useMakecell()
+                } else if (isSurrounded(tokens, idx, 1, "text", "text")) {
+                    // inline in paragraph
+                    let ignoreHeight = true
+                    try {
+                        // heuristic: if width is >= 30, then don't ignore
+                        ignoreHeight = parseInt(width?.replace(/px/, "") ?? "0") < 30
+                    } catch { }
+                    useRaisebox(ignoreHeight)
                 }
 
             } else {
                 // left or right
                 const placementSpec = placement[0].toUpperCase()
                 if (width) {
-                    before = `\\begin{wrapfigure}{${placementSpec}}{${width}}\n`
-                    after = `\n\\end{wrapfigure}`
+                    before = `\\begin{wrapfigure}{${placementSpec}}{${width}}\n\\raisebox{-.46cm}[\\height-.92cm][-.46cm]{`
+                    after = `}\n\\end{wrapfigure}`
 
                 } else {
                     warn(`Undefined width for floating image '${imgPathForHtml}'`)
@@ -502,13 +537,16 @@ export function renderTex(filepath: string): string {
         },
 
         "paragraph_close": (tokens, idx, env) => {
+            const state = env.state()
             let type
-            if (env.state().currentTableCell) {
+            if (state.currentTableCell) {
                 // ignore
                 return ""
             } else if (idx + 1 < tokens.length && (type = tokens[idx + 1].type).endsWith("_close") && type !== "secbody_close") {
                 // ignore, too... // TODO have a system that ensures a certain number of max newlines?
                 return ""
+            } else if (state.noPageBreak) {
+                return "\n\n\\nopagebreak\n\n"
             } else {
                 return "\n\n"
             }
@@ -554,10 +592,12 @@ export function renderTex(filepath: string): string {
 
 
         "strong_open": (tokens, idx, env) => {
+            env.pushState({ disableMathify: true })
             return `\\textbf{`
         },
 
         "strong_close": (tokens, idx, env) => {
+            env.popState()
             return `}`
         },
 
@@ -582,11 +622,11 @@ export function renderTex(filepath: string): string {
 
         "link_open": (tokens, idx, env) => {
             const t = tokens[idx]
-            return `\\href{${t.attrGet("href")}}{`
+            return `\\href{${t.attrGet("href")!.replace(/%/g, "\\%").replace(/#/g, "\\#")}}{\\BrochureUrlText{`
         },
 
         "link_close": (tokens, idx, env) => {
-            return `}`
+            return `}}`
         },
 
 
@@ -674,20 +714,20 @@ export function renderTex(filepath: string): string {
         },
 
         "td_open": (tokens, idx, env) => {
-            let hasSoftBreaks = false
+            let hasBreaks = false
             const itemsPreventingMakecell = ["table_open", "ordered_list_open", "bullet_list_open"]
             let hasItemPreventingMakecell = false
             for (let i = idx + 1; i < tokens.length; i++) {
                 const type = tokens[i].type
                 if (type === "td_close") {
                     break
-                } else if (type === "softbreak") {
-                    hasSoftBreaks = true
+                } else if (type === "softbreak" || type === "hardbreak") {
+                    hasBreaks = true
                 } else if (itemsPreventingMakecell.includes(type)) {
                     hasItemPreventingMakecell = true
                 }
             }
-            const cellType = (hasSoftBreaks && !hasItemPreventingMakecell) ? "makecell" : "plain"
+            const cellType = (hasBreaks && !hasItemPreventingMakecell) ? "makecell" : "plain"
             return openCellPushingState(cellType, tokens[idx], env)
         },
 
@@ -697,11 +737,13 @@ export function renderTex(filepath: string): string {
 
 
         "container_center_open": (tokens, idx, env) => {
-            return `\\begin{center}\n`
+            return `{\\centering%\n`
+            // return `\\begin{center}\n`
         },
 
         "container_center_close": (tokens, idx, env) => {
-            return `\n\\end{center}\n\n`
+            return `\\par}\n\n`
+            // return `\n\\end{center}\n\n`
         },
 
 
@@ -723,6 +765,17 @@ export function renderTex(filepath: string): string {
         },
 
 
+        "container_nobreak_open": (tokens, idx, env) => {
+            env.pushState({ noPageBreak: true })
+            return `\\begin{samepage}\n`
+        },
+
+        "container_nobreak_close": (tokens, idx, env) => {
+            env.popState()
+            return `\n\\end{samepage}\n\n`
+        },
+
+
         "seccontainer_open": (tokens, idx, env) => {
             let secData = { skip: false, pre: "", post: "", disableMathify: false }
 
@@ -738,21 +791,33 @@ export function renderTex(filepath: string): string {
                 return secData.pre
             }
         },
+
         "seccontainer_close": (tokens, idx, env) => {
             const state = env.popState()
             return state.closeSectionWith
         },
 
+        "secbody_open": (tokens, idx, env) => {
+            const sectionName = tokens[idx].info
+            _currentSection = sectionName
+            return ""
+        },
+
+        "secbody_close": (tokens, idx, env) => {
+            _currentSection = "intersection_text"
+            return ""
+        },
+
         "main_open": skip,
         "main_close": skip,
-        "secbody_open": skip,
-        "secbody_close": skip,
 
         "tocOpen": skip,
         "tocBody": skip,
         "tocClose": skip,
 
     }
+
+    const sectionStrs: Dict<Array<string>> = {}
 
 
     function traverse(tokens: Token[], env: RendererEnv): string {
@@ -766,6 +831,13 @@ export function renderTex(filepath: string): string {
                 if (r = rule(tokens, idx, env)) {
                     if (isString(r)) {
                         parts.push(r)
+                        let secParts = sectionStrs[_currentSection]
+                        if (isUndefined(secParts)) {
+                            secParts = [r]
+                            sectionStrs[_currentSection] = secParts
+                        } else {
+                            secParts.push(r)
+                        }
                     } else {
                         const { skipToNext } = r
                         while (tokens[idx].type !== skipToNext) {
@@ -797,8 +869,141 @@ export function renderTex(filepath: string): string {
 
     const babel = babels[langCode] ?? babels.eng
 
-    return '' +
-        `\\documentclass[a4paper,12pt]{report}
+
+    function difficultyIndex(ageCat: "6-8" | "8-10" | "10-12" | "12-14" | "14-16" | "16-19"): number {
+        const diffStr = metadata.ages[ageCat]
+        if (diffStr.startsWith("--")) {
+            return 0
+        }
+        if (diffStr === "easy") {
+            return 1
+        }
+        if (diffStr === "medium") {
+            return 2
+        }
+        if (diffStr === "hard") {
+            return 3
+        }
+        return 0
+    }
+
+    let countryCode = "??"
+    let match
+    if (match = patterns.id.exec(metadata.id)) {
+        countryCode = match.groups.country_code
+    }
+
+    function asciify(name: string): string {
+        // https://stackoverflow.com/questions/990904/remove-accents-diacritics-in-a-string-in-javascript
+        return name
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            .replace(/ł/g, "l")
+            .replace(/[\-]/g, "")
+    }
+
+    function normalizeAuthorName(fullName: string): [string, string] {
+        const parts = fullName.split(/ +/)
+        if (parts.length === 1) {
+            console.log(`WARNING: Cannot split full name '${fullName}'`)
+            return [asciify(parts[0]), "A"]
+        } else if (parts.length === 2) {
+            return [asciify(parts[1]), asciify(parts[0][0]).toUpperCase()]
+        } else {
+            const split: [string, string] = [asciify(parts[parts.length - 1]), asciify(parts[0][0]).toUpperCase()]
+            // console.log(`WARNING: Check split for full name '${fullName}': ${split}`)
+            return split
+        }
+    }
+
+    function authorDefs(): string {
+        const authorLines: Array<string> = []
+        metadata.contributors.forEach((contribLine) => {
+            const match = patterns.contributor.exec(contribLine)
+            if (match) {
+                const name = match.groups.name
+                const [lastname, firstnameInit] = normalizeAuthorName(name)
+                const authorCmd = `\\Author${lastname}${firstnameInit}`
+                const lowercaseCountryCode = codes.countryCodeByCountryName[match.groups.country]?.toLowerCase() ?? "aa"
+                if (lowercaseCountryCode === "aa") {
+                    console.log(`WARNING: unrecognized country '${match.groups.country}'`)
+                }
+                const texifiedName = name.replace(/\. /g, ".~")
+                const define = `\\ifdefined${authorCmd} \\BrochureFlag{${lowercaseCountryCode}}{} ${texifiedName}\\fi`
+                const marker = `\\def${authorCmd}{}`
+                authorLines.push(`${marker} % ${define}`)
+            }
+        })
+        return authorLines.join("\n")
+    }
+
+    function sectionTexFor(secName: string): string {
+        return (sectionStrs[secName] ?? ["TODO"]).join("")
+    }
+
+
+
+    if (!standalone) {
+        return `% Definition of the meta information: task difficulties, task ID, task title, task country; definition of the variables as well as their scope is in commands.tex
+\\setcounter{taskAgeDifficulty3to4}{${difficultyIndex("8-10")}}
+\\setcounter{taskAgeDifficulty5to6}{${difficultyIndex("10-12")}}
+\\setcounter{taskAgeDifficulty7to8}{${difficultyIndex("12-14")}}
+\\setcounter{taskAgeDifficulty9to10}{${difficultyIndex("14-16")}}
+\\setcounter{taskAgeDifficulty11to13}{${difficultyIndex("16-19")}}
+\\renewcommand{\\taskTitle}{${metadata.title}}
+\\renewcommand{\\taskCountry}{${countryCode}}
+
+% include this task only if for the age groups being processed this task is relevant
+\\ifthenelse{
+  \\(\\boolean{age3to4} \\AND \\(\\value{taskAgeDifficulty3to4} > 0\\)\\) \\OR
+  \\(\\boolean{age5to6} \\AND \\(\\value{taskAgeDifficulty5to6} > 0\\)\\) \\OR
+  \\(\\boolean{age7to8} \\AND \\(\\value{taskAgeDifficulty7to8} > 0\\)\\) \\OR
+  \\(\\boolean{age9to10} \\AND \\(\\value{taskAgeDifficulty9to10} > 0\\)\\) \\OR
+  \\(\\boolean{age11to13} \\AND \\(\\value{taskAgeDifficulty11to13} > 0\\)\\)}{
+
+\\newchapter{\\taskTitle}
+
+% task body
+${sectionTexFor("Body")}
+
+% question (as \\emph{})
+{\\em
+${sectionTexFor("Question/Challenge")}
+}
+
+% answer alternatives (as \\begin{enumerate}[A)]) or interactivity
+${sectionTexFor("Answer Options/Interactivity Description")}
+
+% from here on this is only included if solutions are processed
+\\ifthenelse{\\boolean{solutions}}{
+\\newpage
+
+% answer explanation
+\\section*{\\BrochureSolution}
+${sectionTexFor("Answer Explanation")}
+
+% it's informatics
+\\section*{\\BrochureItsInformatics}
+${sectionTexFor("It's Informatics")}
+
+% keywords and websites (as \\begin{itemize})
+\\section*{\\BrochureWebsitesAndKeywords}
+{\\raggedright
+${sectionTexFor("Keywords and Websites")}
+}
+
+% end of ifthen for excluding the solutions
+}{}
+
+% all authors
+% ATTENTION: you HAVE to make sure an according entry is in ../main/authors.tex.
+% Syntax: \\def\\AuthorLastnameF{} (Lastname is last name, F is first letter of first name, this serves as a marker for ../main/authors.tex)
+${authorDefs()}
+
+\\newpage}{}
+`
+    } else {
+        return '' +
+            `\\documentclass[a4paper,11pt]{report}
 \\usepackage[T1]{fontenc}
 \\usepackage[utf8]{inputenc}
 
@@ -809,10 +1014,6 @@ ${babel}
 
 \\usepackage[margin=2cm]{geometry}
 \\usepackage{changepage}
-%\\AtBeginEnvironment{adjustwidth}{\\partopsep0pt}
-%\\newcommand\\topstrut{\\rule{0pt}{2.6ex}}
-%\\newcommand\\bottomstrut{\\rule[-0.9ex]{0pt}{0pt}}
-\\newcommand\\hlineheader{\\hline\\noalign{\\vskip 0.4em}}
 \\makeatletter
 \\renewenvironment{adjustwidth}[2]{%
     \\begin{list}{}{%
@@ -828,8 +1029,12 @@ ${babel}
     \\item[]}{\\end{list}}
 \\makeatother
 
+\\newcommand{\\BrochureUrlText}[1]{\\texttt{#1}}
+\\usepackage{setspace}
+\\setstretch{1.15}
 
 \\usepackage{tabularx}
+\\usepackage{booktabs}
 \\usepackage{makecell}
 \\usepackage{multirow}
 \\renewcommand\\theadfont{\\bfseries}
@@ -870,10 +1075,12 @@ ${babel}
 \\cfoot{\\scriptsize\\itshape ${texEscapeChars(metadata.id)} ${texEscapeChars(metadata.title)}}
 \\rfoot{\\scriptsize Page~\\thepage{}/\\pageref*{LastPage}}
 
+\\newcommand{\\taskGraphicsFolder}{..}
+
 \\begin{document}
 ${taskTex}
 \\end{document}
 `
 
-};
-
+    }
+}

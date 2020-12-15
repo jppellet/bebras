@@ -52,6 +52,7 @@ function bebrasPlugin(md: MarkdownIt, _parseOptions: any) {
     .use(customContainerPlugin, "center")
     .use(customContainerPlugin, "clear")
     .use(customContainerPlugin, "indent")
+    .use(customContainerPlugin, "nobreak")
 
 
 
