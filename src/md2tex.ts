@@ -285,8 +285,10 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         let open = "" // default open and close markup
         let close = ""
         if (type === "thead") {
-            open = `\\thead[${align}]{`
-            close = `}`
+            // second char 'b' means 'bottom vertical alignement', which
+            // we should have for headers
+            open = `{\\setstretch{1.0}\\thead[${align}b]{`
+            close = `}}`
             disableMathify = true
         } else if (type === "makecell") {
             open = `\\makecell[${align}]{`
