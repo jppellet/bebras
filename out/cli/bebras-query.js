@@ -4,8 +4,8 @@ exports.makeCommand_query = void 0;
 const path = require("path");
 const fs = require("fs-extra");
 const commander_1 = require("commander");
-const patterns = require("./patterns");
-const util_1 = require("./util");
+const patterns = require("../patterns");
+const util_1 = require("../util");
 function makeCommand_query() {
     return new commander_1.Command()
         .name("query")
@@ -20,17 +20,17 @@ exports.makeCommand_query = makeCommand_query;
 function query(source, query, options) {
     const jsonOutput = !!options.json;
     if (!fs.existsSync(source)) {
-        (0, util_1.fatalError)("file does not exist: " + source);
+        util_1.fatalError("file does not exist: " + source);
     }
     const isFolder = fs.statSync(source).isDirectory();
     const taskFiles = !isFolder
-        ? [(0, util_1.ensureIsTaskFile)(source, false)]
+        ? [util_1.ensureIsTaskFile(source, false)]
         : findTaskFilesIn(source);
     if (taskFiles.length === 0) {
-        (0, util_1.fatalError)("no task files in folder: " + source);
+        util_1.fatalError("no task files in folder: " + source);
     }
     // TODO implement query with jq or yq
-    console.log(`TODO Would now run the query '${query}' on`, (0, util_1.mkStringCommaAnd)(taskFiles));
+    console.log(`TODO Would now run the query '${query}' on`, util_1.mkStringCommaAnd(taskFiles));
     console.log("  jsonOutput:", jsonOutput);
 }
 function findTaskFilesIn(folder) {
@@ -49,4 +49,4 @@ function findTaskFilesIn(folder) {
     }
     return taskFiles;
 }
-//# sourceMappingURL=cli-query.js.map
+//# sourceMappingURL=bebras-query.js.map

@@ -16,7 +16,7 @@ export type LintOutput = {
 }
 
 
-export function lint(text: string, filename: string, _formatVersion?: string): LintOutput[] {
+export function check(text: string, filename: string, _formatVersion?: string): LintOutput[] {
 
     const diags = [] as LintOutput[]
 
@@ -429,53 +429,4 @@ export function lint(text: string, filename: string, _formatVersion?: string): L
     })()
 
     return diags
-}
-
-export function runTerminal(filepath: string) {
-    const fs = require('fs')
-    const path = require('path')
-    const text = readFileSyncStrippingBom(filepath)
-    let filename: string = path.basename(filepath)
-    if (filename.endsWith(patterns.taskFileExtension)) {
-        filename = filename.slice(0, filename.length - patterns.taskFileExtension.length)
-    }
-    const diags = lint(text, filename)
-    const indent = "  "
-    if (diags.length === 0) {
-        console.log(`${filepath}: all checks passed`)
-    } else {
-        for (const diag of diags) {
-            const [line, offset] = lineOf(diag.start, text)
-            const length = Math.min(line.length - offset, diag.end - diag.start)
-            console.log(`[${diag.type}]: ${diag.msg}`)
-            console.log(indent + line)
-            const highlight = _.pad("", indent.length + offset, " ") + _.pad("", length, "^")
-            console.log(highlight)
-        }
-    }
-}
-
-function lineOf(position: number, source: string): [string, number] {
-    let start = position - 1
-    while (source.charCodeAt(start) !== 0x0A && start >= 0) {
-        start--
-    }
-    start++
-
-    const last = source.length - 1
-    let end = start
-    while (source.charCodeAt(end) !== 0x0A && end <= last) {
-        end++
-    }
-
-    let line = source.slice(start, end)
-    let offset = position - start
-
-    const ellipsis = "[...] "
-    const cutoff = 100
-    if (offset > cutoff) {
-        line = ellipsis + line.slice(cutoff)
-        offset -= cutoff - ellipsis.length
-    }
-    return [line, offset]
 }

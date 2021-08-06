@@ -4,13 +4,13 @@ import path = require('path')
 import fs = require('fs-extra')
 
 import { Command } from 'commander'
-import { makeCommand_convert } from './cli-convert'
-import { makeCommand_query } from './cli-query'
-import { makeCommand_check } from './cli-check'
+import { makeCommand_convert } from './bebras-convert'
+import { makeCommand_query } from './bebras-query'
+import { makeCommand_check } from './bebras-check'
 
 (() => {
 
-    const VERSION = require('../package.json').version
+    const VERSION = require('../../package.json').version
 
     const program = new Command()
         .name("bebras")

@@ -16,7 +16,7 @@ class TemplateSpec {
     }
     get source() {
         var _a;
-        return (_a = this._source) !== null && _a !== void 0 ? _a : (this._source = (0, util_1.readFileSyncStrippingBom)("src/templates/" + this.name));
+        return (_a = this._source) !== null && _a !== void 0 ? _a : (this._source = util_1.readFileSyncStrippingBom("src/templates/" + this.name));
     }
     get compiledTemplate() {
         var _a;

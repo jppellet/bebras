@@ -3,8 +3,8 @@ import fs = require('fs-extra')
 
 import { Command } from "commander"
 
-import patterns = require('./patterns')
-import { ensureIsTaskFile, fatalError, mkStringCommaAnd } from './util'
+import patterns = require('../patterns')
+import { ensureIsTaskFile, fatalError, mkStringCommaAnd } from '../util'
 
 export function makeCommand_query() {
     return new Command()

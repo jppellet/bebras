@@ -1,12 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.runTerminal = exports.lint = void 0;
+exports.check = void 0;
 const yaml = require("js-yaml");
 const _ = require("lodash");
 const codes = require("./codes");
 const patterns = require("./patterns");
 const util_1 = require("./util");
-function lint(text, filename, _formatVersion) {
+function check(text, filename, _formatVersion) {
     const diags = [];
     function newDiag([start, end], msg, sev) {
         diags.push({ type: sev, start, end, msg });
@@ -85,18 +85,18 @@ function lint(text, filename, _formatVersion) {
         const requiredFields = ["id", "title", "ages", "answer_type", "categories", "contributors", "support_files"];
         const missingFields = [];
         for (let f of requiredFields) {
-            if ((0, util_1.isNullOrUndefined)(metadata[f])) {
+            if (util_1.isNullOrUndefined(metadata[f])) {
                 missingFields.push(f);
             }
         }
         if (missingFields.length !== 0) {
-            error([fmStart, fmEnd], `Missing definition${(0, util_1.s)(missingFields.length)}: ${missingFields.join(", ")}`);
+            error([fmStart, fmEnd], `Missing definition${util_1.s(missingFields.length)}: ${missingFields.join(", ")}`);
             return;
         }
         const id = metadata.id;
         let mainCountry;
         let match;
-        if (!(0, util_1.isString)(id)) {
+        if (!util_1.isString(id)) {
             error(fmRangeForDef("id"), "The task ID should be a plain string");
         }
         else if (match = patterns.id.exec(id)) {
@@ -111,7 +111,7 @@ function lint(text, filename, _formatVersion) {
                     }
                     else {
                         const languageCode = trimmedFilename.slice(1);
-                        if ((0, util_1.isUndefined)(codes.languageNameByLanguageCode[languageCode])) {
+                        if (util_1.isUndefined(codes.languageNameByLanguageCode[languageCode])) {
                             error([0, 3], `Unknown language code '${languageCode}' in filename`);
                         }
                     }
@@ -119,7 +119,7 @@ function lint(text, filename, _formatVersion) {
             }
             const countryCode = (_a = match.groups.country_code) !== null && _a !== void 0 ? _a : "ZZ";
             mainCountry = codes.countryNameByCountryCodes[countryCode];
-            if ((0, util_1.isUndefined)(mainCountry)) {
+            if (util_1.isUndefined(mainCountry)) {
                 let [start, _] = fmRangeForValueInDef("id", id);
                 start += 5;
                 warn([start, start + 2], "This country code looks invalid");
@@ -129,7 +129,7 @@ function lint(text, filename, _formatVersion) {
             error(fmRangeForValueInDef("id", id), `The task ID should have the format YYYY-CC-00[x]\n\nPattern:\n${patterns.id.source}`);
         }
         const title = metadata.title;
-        if (!(0, util_1.isString)(title) || title.length === 0) {
+        if (!util_1.isString(title) || title.length === 0) {
             error(fmRangeForDef("title"), "The title should be a nonempty string");
         }
         else if (title.includes("TODO")) {
@@ -139,12 +139,12 @@ function lint(text, filename, _formatVersion) {
         const missingAgeCats = [];
         for (let a of requiredAgeCats) {
             const ageDiff = (_b = metadata.ages) === null || _b === void 0 ? void 0 : _b[a];
-            if ((0, util_1.isNullOrUndefined)(ageDiff)) {
+            if (util_1.isNullOrUndefined(ageDiff)) {
                 missingAgeCats.push(a);
             }
         }
         if (missingAgeCats.length !== 0) {
-            error(fmRangeForDef("ages"), `Missing age group${(0, util_1.s)(missingAgeCats.length)}: ${missingAgeCats.join(", ")}`);
+            error(fmRangeForDef("ages"), `Missing age group${util_1.s(missingAgeCats.length)}: ${missingAgeCats.join(", ")}`);
             return;
         }
         let lastLevel = NaN;
@@ -200,7 +200,7 @@ function lint(text, filename, _formatVersion) {
             "interactive (other)",
         ];
         const answerType = metadata.answer_type;
-        if (!(0, util_1.isString)(answerType)) {
+        if (!util_1.isString(answerType)) {
             error(fmRangeForDef("answer_type"), "The answer type must be a plain string");
         }
         else if (!validAnswerTypes.includes(answerType)) {
@@ -208,7 +208,7 @@ function lint(text, filename, _formatVersion) {
         }
         const validCategories = patterns.categories;
         const categories = metadata.categories;
-        if (!(0, util_1.isArray)(categories) || !_.every(categories, util_1.isString)) {
+        if (!util_1.isArray(categories) || !_.every(categories, util_1.isString)) {
             error(fmRangeForDef("categories"), "The categories must be a list of plain strings");
         }
         else {
@@ -221,7 +221,7 @@ function lint(text, filename, _formatVersion) {
         }
         const contributors = metadata.contributors;
         const graphicsContributors = new Set();
-        if (!(0, util_1.isArray)(contributors) || !_.every(contributors, util_1.isString)) {
+        if (!util_1.isArray(contributors) || !_.every(contributors, util_1.isString)) {
             error(fmRangeForDef("contributors"), "The contributors must be a list of strings");
         }
         else {
@@ -238,7 +238,7 @@ function lint(text, filename, _formatVersion) {
                     let country;
                     if (country = match.groups.country) {
                         if (!countries.includes(country)) {
-                            if ((0, util_1.isUndefined)(codes.countryCodeByCountryName[country])) {
+                            if (util_1.isUndefined(codes.countryCodeByCountryName[country])) {
                                 let suggStr = "";
                                 const sugg = codes.countrySuggestionsFor(country);
                                 if (sugg.length !== 0) {
@@ -268,7 +268,7 @@ function lint(text, filename, _formatVersion) {
                             let submatch;
                             if (submatch = patterns.translation.exec(role)) {
                                 function checkLang(lang) {
-                                    if ((0, util_1.isUndefined)(codes.languageCodeByLanguageName[lang])) {
+                                    if (util_1.isUndefined(codes.languageCodeByLanguageName[lang])) {
                                         let suggStr = "";
                                         const sugg = codes.languageSuggestionsFor(lang);
                                         if (sugg.length !== 0) {
@@ -298,14 +298,14 @@ function lint(text, filename, _formatVersion) {
                     warn(fmRangeForValueInDef("contributors", c), `Contributor should have the format:\nName, email, country (role[s])\nWrite [no email] if the email address is not known.\nMultiple roles should be separated by commas.\n\nPattern:\n${patterns.contributor.source}`);
                 }
             }
-            if (!(0, util_1.isUndefined)(mainCountry) && !mainAuthorCountries.includes(mainCountry)) {
+            if (!util_1.isUndefined(mainCountry) && !mainAuthorCountries.includes(mainCountry)) {
                 warn(fmRangeForDef("contributors"), `No contributor with role '${patterns.roleMainAuthor}' from country ${mainCountry} was found`);
             }
         }
         const keywords = ["TODO get from below"]; //metadata.keywords // TODO: load this from main text, not YAML preamble, as it is localized 
         const seenKeywords = new Set();
         const seenUrls = new Set();
-        if (!(0, util_1.isArray)(keywords) || !_.every(keywords, util_1.isString)) {
+        if (!util_1.isArray(keywords) || !_.every(keywords, util_1.isString)) {
             error(fmRangeForDef("keywords"), "The keywords must be a list of strings");
         }
         else {
@@ -342,7 +342,7 @@ function lint(text, filename, _formatVersion) {
             });
         }
         const supportFiles = metadata.support_files;
-        if (!(0, util_1.isArray)(supportFiles) || !_.every(supportFiles, util_1.isString)) {
+        if (!util_1.isArray(supportFiles) || !_.every(supportFiles, util_1.isString)) {
             error(fmRangeForDef("support_files"), "The support files must be a list of strings");
         }
         else {
@@ -407,56 +407,10 @@ function lint(text, filename, _formatVersion) {
             }
         });
         if (missingSections.length !== 0) {
-            error([fmEnd, text.length], `Missing or misplaced required section${(0, util_1.s)(missingSections.length)}:\n${missingSections.join("\n")}\n\nSections are expected in this order:\n${secPrefix}${patterns.markdownSectionNames.join("\n" + secPrefix)}`);
+            error([fmEnd, text.length], `Missing or misplaced required section${util_1.s(missingSections.length)}:\n${missingSections.join("\n")}\n\nSections are expected in this order:\n${secPrefix}${patterns.markdownSectionNames.join("\n" + secPrefix)}`);
         }
     })();
     return diags;
 }
-exports.lint = lint;
-function runTerminal(filepath) {
-    const fs = require('fs');
-    const path = require('path');
-    const text = (0, util_1.readFileSyncStrippingBom)(filepath);
-    let filename = path.basename(filepath);
-    if (filename.endsWith(patterns.taskFileExtension)) {
-        filename = filename.slice(0, filename.length - patterns.taskFileExtension.length);
-    }
-    const diags = lint(text, filename);
-    const indent = "  ";
-    if (diags.length === 0) {
-        console.log(`${filepath}: all checks passed`);
-    }
-    else {
-        for (const diag of diags) {
-            const [line, offset] = lineOf(diag.start, text);
-            const length = Math.min(line.length - offset, diag.end - diag.start);
-            console.log(`[${diag.type}]: ${diag.msg}`);
-            console.log(indent + line);
-            const highlight = _.pad("", indent.length + offset, " ") + _.pad("", length, "^");
-            console.log(highlight);
-        }
-    }
-}
-exports.runTerminal = runTerminal;
-function lineOf(position, source) {
-    let start = position - 1;
-    while (source.charCodeAt(start) !== 0x0A && start >= 0) {
-        start--;
-    }
-    start++;
-    const last = source.length - 1;
-    let end = start;
-    while (source.charCodeAt(end) !== 0x0A && end <= last) {
-        end++;
-    }
-    let line = source.slice(start, end);
-    let offset = position - start;
-    const ellipsis = "[...] ";
-    const cutoff = 100;
-    if (offset > cutoff) {
-        line = ellipsis + line.slice(cutoff);
-        offset -= cutoff - ellipsis.length;
-    }
-    return [line, offset];
-}
-//# sourceMappingURL=tasklint.js.map
+exports.check = check;
+//# sourceMappingURL=check.js.map

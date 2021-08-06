@@ -4,8 +4,8 @@ exports.makeCommand_convert = void 0;
 const path = require("path");
 const fs = require("fs-extra");
 const commander_1 = require("commander");
-const patterns = require("./patterns");
-const util_1 = require("./util");
+const patterns = require("../patterns");
+const util_1 = require("../util");
 function makeCommand_convert() {
     return new commander_1.Command()
         .name("convert")
@@ -22,11 +22,11 @@ function convert(format, taskFile, options) {
     var _a;
     const force = !!options.force;
     if (!util_1.OutputFormats.isValue(format)) {
-        (0, util_1.fatalError)("unknown format: " + format + ". Valid formats are " + (0, util_1.mkStringCommaAnd)(util_1.OutputFormats.values));
+        util_1.fatalError("unknown format: " + format + ". Valid formats are " + util_1.mkStringCommaAnd(util_1.OutputFormats.values));
     }
-    (0, util_1.ensureIsTaskFile)(taskFile, true);
+    util_1.ensureIsTaskFile(taskFile, true);
     const outputFile = "" + ((_a = options.outputFile) !== null && _a !== void 0 ? _a : standardOutputFile(taskFile, format));
-    if (!force && fs.existsSync(outputFile) && !(0, util_1.modificationDateIsLater)(taskFile, outputFile)) {
+    if (!force && fs.existsSync(outputFile) && !util_1.modificationDateIsLater(taskFile, outputFile)) {
         console.log(`Output file '${outputFile}' seems up to date.`);
         process.exit(0);
     }
@@ -34,7 +34,7 @@ function convert(format, taskFile, options) {
     if (!fs.existsSync(outputDir)) {
         fs.mkdirsSync(outputDir);
     }
-    require('./md2' + format).runTerminal(taskFile, outputFile);
+    require('../convert_' + format).convertTask(taskFile, outputFile);
 }
 function standardOutputFile(taskFile, format) {
     const outputOpts = util_1.OutputFormats.propsOf(format);
@@ -42,4 +42,4 @@ function standardOutputFile(taskFile, format) {
     const basename = path.basename(taskFile, patterns.taskFileExtension);
     return path.join(parentFolder, ...outputOpts.pathSegments, basename + outputOpts.extension);
 }
-//# sourceMappingURL=cli-convert.js.map
+//# sourceMappingURL=bebras-convert.js.map
