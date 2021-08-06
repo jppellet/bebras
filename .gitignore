@@ -1,0 +1,6 @@
+node_modules
+out/*.js.map
+.vscode-test/
+.metals/
+*.vsix
+.DS_Store
