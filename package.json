@@ -1,14 +1,13 @@
 {
   "name": "bebras-md",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Toolchain to support the editing of Bebras tasks in Markdown",
   "main": "index.js",
   "bin": {
-    "bebras-check": "./out/bebras-check.js",
-    "bebras-query": "./out/bebras-query.js"
+    "bebras": "./out/cli.js"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "lint": "eslint src --ext ts"
   },
   "keywords": [
     "bebras",
@@ -23,6 +22,19 @@
   "license": "AFL-3.0",
   "homepage": "https://github.com/jppellet/bebras-md",
   "devDependencies": {
-    "@types/node": "^16.4.13"
+    "@types/fs-extra": "^9.0.12",
+    "@types/js-yaml": "^4.0.2",
+    "@types/lodash": "^4.14.172",
+    "@types/node": "^16.4.13",
+    "@typescript-eslint/eslint-plugin": "^4.29.0",
+    "@typescript-eslint/parser": "^4.29.0",
+    "eslint": "^7.32.0"
+  },
+  "dependencies": {
+    "commander": "^8.1.0",
+    "fs-extra": "^10.0.0",
+    "js-yaml": "^4.1.0",
+    "jsrender": "^1.0.11",
+    "lodash": "^4.17.21"
   }
 }
