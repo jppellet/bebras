@@ -1,7 +1,8 @@
 import path = require('path')
 import patterns = require('./patterns')
-import fs = require('fs-extra')
+import * as fs from "fs"
 import codes = require("./codes")
+import hasbin = require('hasbin')
 
 export type Dict<T> = Record<string, T | undefined>
 
@@ -112,6 +113,14 @@ export function fatalError(msg: string): never {
     process.exit(1)
 }
 
+
+export async function ensureIsTaskFile(path: string, ensureExistenceToo: boolean): Promise<string> {
+    if (!path.endsWith(patterns.taskFileExtension) || (ensureExistenceToo && !(fs.existsSync(path)))) {
+        fatalError(`not a${ensureExistenceToo ? "n existing" : ""} task file: ${path}`)
+    }
+    return path
+}
+
 interface CheckBase<A> {
     fold<B>(f: (a: A) => B, g: (err: string) => B): B
 }
@@ -159,8 +168,10 @@ export function siblingWithExtension(filepath: string, ext: string) {
 }
 
 
-export function modificationDateIsLater(source: string, derived: string): boolean {
-    return fs.statSync(source).mtimeMs > fs.statSync(derived).mtimeMs
+export async function modificationDateIsLater(source: string, derived: string): Promise<boolean> {
+    const sourceStat = await fs.promises.stat(source)
+    const derivedStat = await fs.promises.stat(derived)
+    return sourceStat.mtimeMs > derivedStat.mtimeMs
 }
 
 
@@ -186,6 +197,14 @@ export const OutputFormats = RichStringEnum.withProps<{
 })
 
 export type OutputFormat = typeof OutputFormats.type
+
+export function defaultOutputFile(taskFile: string, format: OutputFormat): string {
+    const outputOpts = OutputFormats.propsOf(format)
+    const parentFolder = path.dirname(taskFile)
+    const basename = path.basename(taskFile, patterns.taskFileExtension)
+    return path.join(parentFolder, ...outputOpts.pathSegments, basename + outputOpts.extension)
+}
+
 
 export const Difficulties = ["--", "easy", "medium", "hard"] as const
 export type Difficulty = typeof Difficulties[number]
@@ -313,11 +332,17 @@ export function parseLanguageCodeFromTaskPath(filepath: string): string | undefi
     return undefined
 }
 
-export function readFileSyncStrippingBom(filepath: string): string {
-    let content = fs.readFileSync(filepath, "utf8")
+export async function readFileStrippingBom(filepath: string): Promise<string> {
+    let content = await fs.promises.readFile(filepath, "utf8")
     if (content.length > 0 && content.charCodeAt(0) === 0xFEFF) {
         content = content.slice(1)
         console.log("Warning: file was saved with a UTF-8 BOM, remove it for fewer unexpected results: " + filepath)
     }
     return content
+}
+
+export function isBinaryAvailable(binName: string): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+        hasbin(binName, resolve)
+    })
 }

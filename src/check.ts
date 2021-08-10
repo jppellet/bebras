@@ -3,7 +3,7 @@ import * as _ from 'lodash'
 
 import * as codes from './codes'
 import * as patterns from './patterns'
-import { isNullOrUndefined, s, isString, isUndefined, isArray, TaskMetadata, readFileSyncStrippingBom } from "./util"
+import { isNullOrUndefined, s, isString, isUndefined, isArray, TaskMetadata } from "./util"
 
 
 export type Severity = "error" | "warn"
@@ -16,7 +16,7 @@ export type LintOutput = {
 }
 
 
-export function lint(text: string, filename: string, version?: string): LintOutput[] {
+export function check(text: string, filename: string, _formatVersion?: string): LintOutput[] {
 
     const diags = [] as LintOutput[]
 
@@ -33,22 +33,28 @@ export function lint(text: string, filename: string, version?: string): LintOutp
     }
 
     (function () {
-        const fmStart = 4
-        const fmEnd = text.indexOf("\n---\n")
+        const metadataSep = "---"
+        const metadataStart = metadataSep + '\n'
+        if (!text.startsWith(metadataStart)) {
+            error([0, 1], `Metadata should open before this, on the first line, with '${metadataSep}'`)
+            return
+        }
+        const fmStart = metadataStart.length
+        const fmEnd = text.indexOf(`\n${metadataSep}\n`)
         if (fmEnd < 0) {
-            error([0, fmStart - 1], "Metadata opened here is not closed")
+            error([0, fmStart - 1], `Metadata opened here is not closed with '${metadataSep}'`)
             return
         }
 
         let fmStr = text.slice(fmStart, fmEnd)
         let metadata: Partial<TaskMetadata> = {}
         try {
-            metadata = yaml.safeLoad(fmStr, {
+            metadata = yaml.load(fmStr, {
                 onWarning: (e: yaml.YAMLException) => {
                     const [range, msg] = fmRangeFromException(e)
                     warn(range, `Malformed metadata markup: ${msg}`)
                 },
-            })
+            }) as Partial<TaskMetadata>
         } catch (e) {
             if (e instanceof yaml.YAMLException) {
                 const [range, msg] = fmRangeFromException(e)
@@ -423,53 +429,4 @@ export function lint(text: string, filename: string, version?: string): LintOutp
     })()
 
     return diags
-}
-
-export function runTerminal(filepath: string) {
-    const fs = require('fs')
-    const path = require('path')
-    const text = readFileSyncStrippingBom(filepath)
-    let filename: string = path.basename(filepath)
-    if (filename.endsWith(patterns.taskFileExtension)) {
-        filename = filename.slice(0, filename.length - patterns.taskFileExtension.length)
-    }
-    const diags = lint(text, filename)
-    const indent = "  "
-    if (diags.length === 0) {
-        console.log(`${filepath}: all checks passed`)
-    } else {
-        for (const diag of diags) {
-            const [line, offset] = lineOf(diag.start, text)
-            const length = Math.min(line.length - offset, diag.end - diag.start)
-            console.log(`[${diag.type}]: ${diag.msg}`)
-            console.log(indent + line)
-            const highlight = _.pad("", indent.length + offset, " ") + _.pad("", length, "^")
-            console.log(highlight)
-        }
-    }
-}
-
-function lineOf(position: number, source: string): [string, number] {
-    let start = position - 1
-    while (source.charCodeAt(start) !== 0x0A && start >= 0) {
-        start--
-    }
-    start++
-
-    const last = source.length - 1
-    let end = start
-    while (source.charCodeAt(end) !== 0x0A && end <= last) {
-        end++
-    }
-
-    let line = source.slice(start, end)
-    let offset = position - start
-
-    const ellipsis = "[...] "
-    const cutoff = 100
-    if (offset > cutoff) {
-        line = ellipsis + line.slice(cutoff)
-        offset -= cutoff - ellipsis.length
-    }
-    return [line, offset]
 }

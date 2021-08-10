@@ -13,9 +13,5 @@
 //         passwordCallback?: (fn: (password: string) => void, reason: string) => string,
 //         progressCallback?: (progressData: PDFProgressData) => void
 //     ): PDFLoadingTask<PDFDocumentProxy>;
-    
-// }
 
-declare module 'hasbin' {
-    function sync(binaryName: string): boolean
-}
+// }

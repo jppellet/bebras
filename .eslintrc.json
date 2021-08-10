@@ -8,10 +8,11 @@
     "plugins": [
         "@typescript-eslint"
     ],
+    "ignorePatterns": ["out/**"],
     "rules": {
         "semi": "off",
         "@typescript-eslint/semi": ["error", "never"],
-        "@typescript-eslint/class-name-casing": "warn",
+        // "@typescript-eslint/class-name-casing": "warn",
         // "@typescript-eslint/explicit-function-return-type": ["error"],
         // "@typescript-eslint/prefer-for-of": "warn",
         // "@typescript-eslint/switch-exhaustiveness-check": "error",

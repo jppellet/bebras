@@ -13,9 +13,9 @@ interface RichRegExp<T> extends globalThis.RegExp {
     exec(string: string): RichRegExpExecArray<T> | null;
 }
 
-// eslint-disable-next-line @typescript-eslint/class-name-casing
+// OFFeslint-disable-next-line @typescript-eslint/class-name-casing
 interface always { _tag: 'always' };
-// eslint-disable-next-line @typescript-eslint/class-name-casing
+// OFFeslint-disable-next-line @typescript-eslint/class-name-casing
 interface maybe { _tag: 'maybe' };
 
 type Captures<T> = {

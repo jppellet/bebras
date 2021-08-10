@@ -1,6 +1,7 @@
 {
 	"compilerOptions": {
 		"allowJs": true,
+		"watch": true,
 		"module": "commonjs",
 		"target": "es6",
 		"outDir": "out",
@@ -8,7 +9,9 @@
 			"es6"
 		],
 		"sourceMap": true,
+		"declaration": true,
 		"rootDir": "src",
+		"skipLibCheck": true,
 		"strict": true,
 		"noImplicitReturns": true,
 		"noFallthroughCasesInSwitch": true,

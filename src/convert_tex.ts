@@ -1,20 +1,18 @@
 import fs = require('fs')
 import path = require('path')
-import md2html = require('./md2html')
+import md2html = require('./convert_html')
 import _ = require('lodash')
 import Token = require('markdown-it/lib/token')
 import patterns = require("./patterns")
-import { texMathify, HtmlToTexPixelRatio, Dict, texEscapeChars, parseLanguageCodeFromTaskPath, readFileSyncStrippingBom, texMath, TaskMetadata, siblingWithExtension } from './util'
+import { texMathify, HtmlToTexPixelRatio, Dict, texEscapeChars, parseLanguageCodeFromTaskPath, readFileStrippingBom, texMath, TaskMetadata, siblingWithExtension } from './util'
 import codes = require("./codes")
-import { numberToString } from 'pdf-lib'
-import { stringify } from 'querystring'
-import { SectionAssociatedData } from './patterns'
+// import { numberToString } from 'pdf-lib'
 import { isString, isUndefined } from 'lodash'
 
-export function runTerminal(fileIn: string, fileOut: string) {
+export async function convertTask_tex(taskFile: string, fileOut: string) : Promise<string> {
 
-    const langCode = parseLanguageCodeFromTaskPath(fileIn) ?? codes.defaultLanguageCode()
-    const textMd = readFileSyncStrippingBom(fileIn)
+    const langCode = parseLanguageCodeFromTaskPath(taskFile) ?? codes.defaultLanguageCode()
+    const textMd = await readFileStrippingBom(taskFile)
     const [tokens, metadata] = md2html.parseMarkdown(textMd, {
         langCode,
         // we use ⍀ to avoid escaping \ to \\, and we later convert it back to \
@@ -34,15 +32,17 @@ export function runTerminal(fileIn: string, fileOut: string) {
     // console.log(metadata)
 
 
-    const texDataStandalone = renderTex(linealizedTokens, langCode, metadata, fileIn, true)
-    fs.writeFileSync(fileOut, texDataStandalone)
+    const texDataStandalone = renderTex(linealizedTokens, langCode, metadata, taskFile, true)
+    await fs.promises.writeFile(fileOut, texDataStandalone)
     console.log(`Output written on ${fileOut}`)
 
 
-    const texDataBrochure = renderTex(linealizedTokens, langCode, metadata, fileIn, false)
+    const texDataBrochure = renderTex(linealizedTokens, langCode, metadata, taskFile, false)
     const fileOutBrochure = siblingWithExtension(fileOut, "_brochure.tex")
-    fs.writeFileSync(fileOutBrochure, texDataBrochure)
+    await fs.promises.writeFile(fileOutBrochure, texDataBrochure)
     console.log(`Output written on ${fileOutBrochure}`)
+
+    return fileOut
 }
 
 export function renderTex(linealizedTokens: Token[], langCode: string, metadata: TaskMetadata, filepath: string, standalone: boolean,): string {
@@ -218,8 +218,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
         "license_body": (tokens, idx, env) => {
             // https://tex.stackexchange.com/questions/5433/can-i-use-an-image-located-on-the-web-in-a-latex-document
-            // const licenseLogoPath = path.join(__dirname, "resources", "CC_by-sa.pdf")
-            const licenseLogoPath = "/Users/jpp/Desktop/bebrastasksupport/src/resources/CC_by-sa.pdf"
+            const licenseLogoPath = path.join(__dirname, "..", "static", "CC_by-sa.pdf")
             return `
  \\renewcommand{\\tabularxcolumn}[1]{>{}m{#1}}
  {\\begin{tabularx}{\\columnwidth}{ l X }
@@ -1049,6 +1048,7 @@ ${babel}
 \\usepackage{amssymb}
 
 \\usepackage[babel=true,maxlevel=3]{csquotes}
+\\DeclareQuoteStyle{bebras-ch-eng}{“}[” ]{”}{‘}[”’ ]{’}\
 \\DeclareQuoteStyle{bebras-ch-deu}{«}[» ]{»}{“}[»› ]{”}
 \\DeclareQuoteStyle{bebras-ch-fra}{«\\thinspace{}}[» ]{\\thinspace{}»}{“}[»\\thinspace{}› ]{”}
 \\DeclareQuoteStyle{bebras-ch-ita}{«}[» ]{»}{“}[»› ]{”}

@@ -1,22 +1,23 @@
-# VSCode BebrasTaskSupport
+# bebras-md
 
-Extends the Markdown editor with support for `.task.md` Bebras tasks and metadata.
-
-## Features
-
-TBD
-
-## Requirements
-
-`jq`, `yq`, `puppeteer`?
-
-## Extension Settings
-
-None yet.
-
-## Release Notes
+A tool to manage Bebras task in a Markdown format
 
 
-### 0.1.0
+# Installation
 
-Initial release
+  1. If you don't have it yet, download Node from <https://nodejs.org/en/download/>.
+<!--      * On Windows, make sure to check the checkbox to install the additional compilation tools during the installation process -->
+  2. Run `npm install bebras-md`
+  3. Discover available commands by running `bebras --help` or `bebras <cmd> --help`
+
+
+# Commands
+
+## bebras check
+
+
+## bebras convert
+
+
+## bebras query
+

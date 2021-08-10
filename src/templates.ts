@@ -1,6 +1,7 @@
 import fs = require('fs')
+import path = require('path')
 import jsrender = require('jsrender')
-import { readFileSyncStrippingBom, TaskMetadata, texEscapeChars } from './util'
+import { readFileStrippingBom, TaskMetadata, texEscapeChars } from './util'
 import { PdfBookmarkMetadata } from './json_schemas'
 
 // JsRender setup
@@ -30,18 +31,34 @@ class TemplateSpec<T extends { [key: string]: any }> {
     private _source?: string
     private _compiledTemplate?: JsViews.Template
 
-    private get source(): string {
-        return this._source ?? (this._source = readFileSyncStrippingBom("src/templates/" + this.name))
+    private get source(): Promise<string> {
+        if (this._source) {
+            return Promise.resolve(this._source)
+        }
+        const templatePath = path.join(__dirname, "..", "templates", this.name)
+        return readFileStrippingBom(templatePath).then(source => {
+            this._source = source
+            return source
+        })
     }
 
-    private get compiledTemplate(): JsViews.Template {
-        return this._compiledTemplate ?? (this._compiledTemplate = jsrender.templates(this.source))
+    private get compiledTemplate(): Promise<JsViews.Template> {
+        if (this._compiledTemplate) {
+            return Promise.resolve(this._compiledTemplate)
+        }
+        return this.source.then(source => {
+            const compiledTemplate = jsrender.templates(source)
+            this._compiledTemplate = compiledTemplate
+            return compiledTemplate
+        })
     }
 
-    get render(): RichTemplateRender<T> {
+    get render(): Promise<RichTemplateRender<T>> {
         const dialectOpts = Dialects[this.dialect]
         jsrender.views.settings.delimiters(dialectOpts.open, dialectOpts.end)
-        return this.compiledTemplate.render.bind(this.compiledTemplate)
+        return this.compiledTemplate.then(template => {
+            return template.render.bind(template)
+        })
     }
 
 }

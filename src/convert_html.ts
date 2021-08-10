@@ -1,19 +1,20 @@
+import * as fs from 'fs'
 import MarkdownIt = require('markdown-it')
-import fs = require('fs')
-import { defaultTaskMetadata, readFileSyncStrippingBom, TaskMetadata } from './util'
 import Token = require('markdown-it/lib/token')
-import { stringify } from 'querystring'
+
+import { defaultTaskMetadata, readFileStrippingBom, TaskMetadata } from './util'
 import { defaultLanguageCode } from './codes'
 
-export function runTerminal(fileIn: string, fileOut: string) {
-  const mdText = readFileSyncStrippingBom(fileIn)
+export async function convertTask_html(taskFile: string, outputFile: string): Promise<string> {
+  const mdText = await readFileStrippingBom(taskFile)
   const [htmlText, metadata] = renderMarkdown(mdText, true)
-  fs.writeFileSync(fileOut, htmlText)
-  console.log(`Output written on ${fileOut}`)
+  const r = await fs.promises.writeFile(outputFile, htmlText)
+  console.log(`Output written on ${outputFile}`)
+  return outputFile
 }
 
 export function renderMarkdown(text: string, fullHtml: boolean): [string, TaskMetadata] {
-  const md = MarkdownIt().use(require("./markdown-it-bebras"))
+  const md = MarkdownIt().use(require("./convert_html_markdownit").plugin)
 
   const env: any = {}
   const result = md.render(text, env)
@@ -26,7 +27,7 @@ export function renderMarkdown(text: string, fullHtml: boolean): [string, TaskMe
          <meta charset="utf-8">
          <meta name="viewport" content="width=device-width, initial-scale=1">
          <title>${metadata.id} ${metadata.title}</title>
-        <link href="../bebrasmdstyle.css" rel="stylesheet" />
+        <link href="https://gitcdn.link/repo/jppellet/bebras-md/main/static/bebrasmdstyle.css" rel="stylesheet" />
        </head>
        <body>`
 
@@ -49,8 +50,9 @@ export function defaultPluginOptions() {
 
 export type PluginOptions = ReturnType<typeof defaultPluginOptions>
 
-export function parseMarkdown(text: string, parseOptions: Partial<PluginOptions>): [Token[], TaskMetadata] {
-  const md = MarkdownIt().use(require("./markdown-it-bebras"), parseOptions)
+export function parseMarkdown(text: string, parseOptions?: Partial<PluginOptions>): [Token[], TaskMetadata] {
+  const options = {...defaultPluginOptions(), ...parseOptions}
+  const md = MarkdownIt().use(require("./convert_html_markdownit").plugin, options)
   const env: any = {}
   const tokens = md.parse(text, env)
   const metadata: TaskMetadata = env.taskMetadata ?? defaultTaskMetadata()

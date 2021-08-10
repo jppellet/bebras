@@ -10,10 +10,10 @@ import * as yaml from 'js-yaml'
 
 import * as patterns from './patterns'
 import { TaskMetadata, defaultTaskMetadata, Dict } from "./util"
-import { defaultPluginOptions, PluginOptions } from "./md2html"
+import { defaultPluginOptions, PluginOptions } from "./convert_html"
 
 
-function bebrasPlugin(md: MarkdownIt, _parseOptions: any) {
+export function plugin(md: MarkdownIt, _parseOptions: any) {
 
   const pluginOptions: PluginOptions = { ...defaultPluginOptions(), ..._parseOptions }
 
@@ -224,7 +224,7 @@ function bebrasPlugin(md: MarkdownIt, _parseOptions: any) {
         // parse front matter as YAML
         const fmStr = state.src.slice(0, fmEnd)
         try {
-          parsedMetadata = yaml.safeLoad(fmStr)
+          parsedMetadata = yaml.load(fmStr) as object | undefined
         } catch { }
         state.src = state.src.slice(fmEnd + fmEndMarker.length)
       }
@@ -576,6 +576,3 @@ function bebrasPlugin(md: MarkdownIt, _parseOptions: any) {
 
 
 }
-
-
-export = bebrasPlugin

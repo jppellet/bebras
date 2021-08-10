@@ -1,44 +1,58 @@
 import { PDFDocument } from 'pdf-lib'
-import fs = require('fs-extra')
+import * as fs from 'fs'
 import path = require('path')
 import puppeteer = require('puppeteer')
-import md2html = require('./md2html')
+import md2html = require('./convert_html')
 import util = require("./util")
 import patterns = require('./patterns')
-import { PDFLoadingTask, PDFDocumentProxy, TextContentItem } from 'pdfjs-dist'
+
+// import { PDFLoadingTask, PDFDocumentProxy, TextContentItem } from 'pdfjs-dist'
+// // @ts-ignore
+// import pdfjs = require("pdfjs-dist/es5/build/pdf.js")
+
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf'
 // @ts-ignore
-import pdfjs = require("pdfjs-dist/es5/build/pdf.js")
+import PDFJSWorker from 'pdfjs-dist/legacy/build/pdf.worker.entry'
+import { TextContent, TextItem } from 'pdfjs-dist/types/display/api'
+
 import templates from './templates'
 import { PdfBookmarkMetadata } from './json_schemas'
-import { readFileSyncStrippingBom, TaskMetadata, toFileUrl } from './util'
+import { isBinaryAvailable, readFileStrippingBom, TaskMetadata, toFileUrl } from './util'
 import { exec } from 'child_process'
-import hasbin = require("hasbin")
 
-export async function runTerminal(mdFilePath: string, outPdfFilePath: string): Promise<void> {
+pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJSWorker
 
-    const [pdfData, metadata, sectionTitles] = await renderPdf(mdFilePath)
-    fs.writeFileSync(outPdfFilePath, pdfData)
 
-    const bookmarkMetadata = await generatePdfBookmarkMetadata(outPdfFilePath, sectionTitles, metadata)
+export async function convertTask_pdf(taskFile: string, outputFile: string): Promise<string> {
 
-    const outPdfmetaJsonFilePath = outPdfFilePath + "meta.json"
-    fs.writeFileSync(outPdfmetaJsonFilePath, JSON.stringify(bookmarkMetadata, null, 2))
+    const [pdfData, metadata, sectionTitles] = await renderPdf(taskFile)
+
+    // console.log("pdfData", pdfData)
+
+    await fs.promises.writeFile(outputFile, pdfData)
+
+    const bookmarkMetadata = await generatePdfBookmarkMetadata(outputFile, sectionTitles, metadata)
+
+    const outPdfmetaJsonFilePath = outputFile + "meta.json"
+    await fs.promises.writeFile(outPdfmetaJsonFilePath, JSON.stringify(bookmarkMetadata, null, 2))
 
     let withBookmarks = false
-    if (hasbin.sync("pdflatex")) {
-        withBookmarks = await addPdfBookmarks(outPdfFilePath, bookmarkMetadata)
+
+    if (await isBinaryAvailable("pdflatex")) {
+        withBookmarks = await addPdfBookmarks(outputFile, bookmarkMetadata)
     }
 
-    console.log(`${withBookmarks ? "Bookmarked " : ""}PDF written on ${outPdfFilePath}`)
+    console.log(`${withBookmarks ? "Bookmarked " : ""}PDF written on ${outputFile}`)
     console.log(`PDF bookmark metadata written on ${outPdfmetaJsonFilePath}`)
+    return outputFile
 }
 
-function addPdfBookmarks(pdfFilePath: string, bookmarkMetadata: PdfBookmarkMetadata): Promise<boolean> {
+async function addPdfBookmarks(pdfFilePath: string, bookmarkMetadata: PdfBookmarkMetadata): Promise<boolean> {
 
     // provide only name as we're going to run pdflatex in the same dir
     const pdfFileNameOnly = path.basename(pdfFilePath)
 
-    const texSource = templates.AddPdfBookmarks.render({
+    const texSource = (await templates.AddPdfBookmarks.render)({
         pdfFiles: [{
             filepath: pdfFileNameOnly,
             bookmarkMetadata,
@@ -46,26 +60,28 @@ function addPdfBookmarks(pdfFilePath: string, bookmarkMetadata: PdfBookmarkMetad
     })
 
     const texFile = util.siblingWithExtension(pdfFilePath, "_bookmarked.tex")
-    fs.writeFileSync(texFile, texSource)
+    await fs.promises.writeFile(texFile, texSource)
 
     const tempOutDir = util.siblingWithExtension(texFile, "")
     if (!fs.existsSync(tempOutDir)) {
-        fs.mkdirSync(tempOutDir)
+        await fs.promises.mkdir(tempOutDir)
     }
 
     return new Promise<boolean>(function (resolve, reject) {
         const cmd = `pdflatex "--output-directory=${path.basename(tempOutDir)}" ${path.basename(texFile)}`
         exec(cmd, {
             cwd: path.dirname(pdfFilePath),
-        }, function callback(error, stdout, stderr) {
+        }, async function callback(error, stdout, stderr) {
             let didIt = false
             const texPdfFile = path.join(tempOutDir, path.basename(util.siblingWithExtension(texFile, ".pdf")))
             if (fs.existsSync(texPdfFile)) {
-                fs.moveSync(texPdfFile, pdfFilePath, { overwrite: true })
+                await fs.promises.unlink(pdfFilePath)
+                await fs.promises.rename(texPdfFile, pdfFilePath)
                 didIt = true
             }
-            fs.removeSync(tempOutDir)
-            fs.unlinkSync(texFile)
+            // await fs.promises.rm(tempOutDir, { recursive: true, force: true }) // <- for newer nodes
+            await fs.promises.rmdir(tempOutDir, { recursive: true })
+            await fs.promises.unlink(texFile)
             resolve(didIt)
         })
     })
@@ -78,14 +94,14 @@ async function generatePdfBookmarkMetadata(pdfFilePath: string, sectionTitlesArr
     const sectionTitles = new Set<string>()
     sectionTitlesArray.forEach(c => sectionTitles.add(c))
 
-    const doc = await (pdfjs.getDocument(pdfFilePath) as PDFLoadingTask<PDFDocumentProxy>).promise
+    const doc = await pdfjsLib.getDocument(pdfFilePath).promise
 
     const numPages = doc.numPages
 
     async function loadPage(pageNum: number): Promise<void> {
         const page = await doc.getPage(pageNum)
-        const content = await page.getTextContent()
-        content.items.forEach(function (item: TextContentItem) {
+        const content = await page.getTextContent();
+        (content.items as TextItem[]).forEach(function (item) {
             if (sectionTitles.has(item.str)) {
                 sectionPageNumbers[item.str] = pageNum
             }
@@ -112,7 +128,7 @@ async function generatePdfBookmarkMetadata(pdfFilePath: string, sectionTitlesArr
 
 async function renderPdf(mdFilePath: string): Promise<[Uint8Array, util.TaskMetadata, string[]]> {
 
-    const textMd = readFileSyncStrippingBom(mdFilePath)
+    const textMd = await readFileStrippingBom(mdFilePath)
 
     const [textHtml, metadata] = md2html.renderMarkdown(textMd, true)
 
@@ -125,6 +141,7 @@ async function renderPdf(mdFilePath: string): Promise<[Uint8Array, util.TaskMeta
     await page.setContent(textHtml, { waitUntil: 'networkidle2' })
 
     const sectionTitles = await page.evaluate(_ => {
+        // @ts-ignore
         const h2s = document.getElementsByTagName("H2")
         const sectionTitles = [] as string[]
         for (let i = 0; i < h2s.length; i++) {
@@ -154,14 +171,14 @@ async function renderPdf(mdFilePath: string): Promise<[Uint8Array, util.TaskMeta
     const baseHeaderFooterStyle = baseHeaderFooterStyleParts.map(([name, value]) => `${name}: ${value} `).join(";")
 
     const footerTemplate = '' +
-        `< div style = "${baseHeaderFooterStyle}" class="pdffooter" >
-        <span style="flex:1 0 0; text-align: left" > ${ licence.shortCopyright()} </span>
-            < span style = "flex:1 0 0; text-align: center; font-style:italic" > ${ metadata.id} ${metadata.title} </span>
-                < span style = "flex:1 0 0; text-align: right" > Page < span class="pageNumber" > </span>/ < span class="totalPages" > </span>
-                    < /div>`
+        `<div style = "${baseHeaderFooterStyle}" class="pdffooter">
+        <span style="flex:1 0 0; text-align: left" > ${licence.shortCopyright()} </span>
+            <span style="flex:1 0 0; text-align: center; font-style:italic" > ${metadata.id} ${metadata.title} </span>
+                <span style="flex:1 0 0; text-align: right">Page <span class="pageNumber"></span>/<span class="totalPages"></span>
+                    </div>`
 
     const pdfData = await page.pdf({
-        format: 'A4',
+        format: 'a4',
         displayHeaderFooter: true,
         printBackground: true,
         headerTemplate: '<div/>',
