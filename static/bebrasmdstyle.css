@@ -81,6 +81,10 @@ img.only-img-in-p {
     margin-left: 30px;
 }
 
+.comment {
+    display: none;
+}
+
 /* Useful for rendered LaTeX */
 *[aria-hidden=true] {
     display: none;
