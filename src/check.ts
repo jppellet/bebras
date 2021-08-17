@@ -1,9 +1,12 @@
+import * as path from "path"
 import * as yaml from "js-yaml"
 import * as _ from 'lodash'
+import * as fs from 'fs'
 
 import * as codes from './codes'
 import * as patterns from './patterns'
-import { isNullOrUndefined, s, isString, isUndefined, isArray, TaskMetadata } from "./util"
+import { isNullOrUndefined, s, isString, isUndefined, isArray, TaskMetadata, Check, ErrorMessage, Value, isErrorMessage } from "./util"
+import { util } from "./main"
 
 
 export type Severity = "error" | "warn"
@@ -15,8 +18,75 @@ export type LintOutput = {
     msg: string
 }
 
+export function metadataStringFromContents(text: string): Check<[number, number, string, number, string]> {
+    const metadataSep = "---"
+    const metadataStart = metadataSep + '\n'
+    if (!text.startsWith(metadataStart)) {
+        return ErrorMessage(`Metadata should open before this, on the first line, with '${metadataSep}'`)
+    }
+    const fmStart = metadataStart.length
+    const fmEnd = text.indexOf(`\n${metadataSep}\n`)
+    if (fmEnd < 0) {
+        return ErrorMessage(`Metadata opened here is not closed with '${metadataSep}'`)
+    }
 
-export function check(text: string, filename: string, _formatVersion?: string): LintOutput[] {
+    const mdStart = fmEnd + metadataSep.length + 1
+    return Value([fmStart, fmEnd, text.slice(fmStart, fmEnd), mdStart, text.slice(mdStart)])
+}
+
+type ErrorWarningCallback = (range: readonly [number, number], msg: string) => void
+
+export function loadRawMetadata(text: string, warn?: ErrorWarningCallback, error?: ErrorWarningCallback): [number, number, string, Partial<TaskMetadata>, number, string] | undefined {
+
+    const metadataStringCheck = metadataStringFromContents(text)
+
+    if (isErrorMessage(metadataStringCheck)) {
+        error?.([0, 1], metadataStringCheck.error)
+        return
+    }
+
+    const [fmStart, fmEnd, fmStr, mdStart, mdStr] = metadataStringCheck.value
+
+    function fmRangeFromException(e: yaml.YAMLException): [[number, number], string] {
+        const msg = e.toString(true).replace("YAMLException: ", "")
+        // @ts-ignore
+        let errPos = e.mark?.position
+        // @ts-ignore
+        if (errPos === undefined) {
+            return [[fmStart, fmEnd], msg]
+        } else {
+            const start = fmStart + parseInt(errPos)
+            return [[start, start + 1], msg]
+        }
+    }
+
+    let metadata: Partial<TaskMetadata> = {}
+    try {
+        metadata = yaml.load(fmStr, {
+            onWarning: (e: yaml.YAMLException) => {
+                const [range, msg] = fmRangeFromException(e)
+                warn?.(range, `Malformed metadata markup: ${msg}`)
+            },
+        }) as Partial<TaskMetadata>
+    } catch (e) {
+        if (e instanceof yaml.YAMLException) {
+            const [range, msg] = fmRangeFromException(e)
+            error?.(range, `Malformed metadata markup: ${msg}`)
+            return
+        }
+    }
+
+    return [fmStart, fmEnd, fmStr, metadata, mdStart, mdStr]
+}
+
+
+export function check(text: string, taskFile: string, _formatVersion?: string): LintOutput[] {
+
+    const parentFolder = path.dirname(taskFile)
+    let filename: string = path.basename(taskFile)
+    if (filename.endsWith(patterns.taskFileExtension)) {
+        filename = filename.slice(0, filename.length - patterns.taskFileExtension.length)
+    }
 
     const diags = [] as LintOutput[]
 
@@ -33,46 +103,42 @@ export function check(text: string, filename: string, _formatVersion?: string): 
     }
 
     (function () {
-        const metadataSep = "---"
-        const metadataStart = metadataSep + '\n'
-        if (!text.startsWith(metadataStart)) {
-            error([0, 1], `Metadata should open before this, on the first line, with '${metadataSep}'`)
-            return
-        }
-        const fmStart = metadataStart.length
-        const fmEnd = text.indexOf(`\n${metadataSep}\n`)
-        if (fmEnd < 0) {
-            error([0, fmStart - 1], `Metadata opened here is not closed with '${metadataSep}'`)
+
+        const loadResult = loadRawMetadata(text, warn, error)
+        if (isUndefined(loadResult)) {
             return
         }
 
-        let fmStr = text.slice(fmStart, fmEnd)
-        let metadata: Partial<TaskMetadata> = {}
-        try {
-            metadata = yaml.load(fmStr, {
-                onWarning: (e: yaml.YAMLException) => {
-                    const [range, msg] = fmRangeFromException(e)
-                    warn(range, `Malformed metadata markup: ${msg}`)
-                },
-            }) as Partial<TaskMetadata>
-        } catch (e) {
-            if (e instanceof yaml.YAMLException) {
-                const [range, msg] = fmRangeFromException(e)
-                error(range, `Malformed metadata markup: ${msg}`)
-                return
-            }
+        const [fmStart, fmEnd, fmStr, metadata, mdStart, mdStr] = loadResult
+
+        function mdRangeForValueInMatch(substring: string, match: { index: number, [i: number]: string }): [number, number] {
+            const offset = match[0].indexOf(substring)
+            const start = mdStart + match.index + offset
+            const end = start + substring.length
+            return [start, end]
         }
 
-        function fmRangeFromException(e: yaml.YAMLException): [[number, number], string] {
-            const msg = e.toString(true).replace("YAMLException: ", "")
-            // @ts-ignore
-            let errPos = e.mark?.position
-            // @ts-ignore
-            if (errPos === undefined) {
-                return [[fmStart, fmEnd], msg]
-            } else {
-                const start = fmStart + parseInt(errPos)
-                return [[start, start + 1], msg]
+        for (const pattern of [patterns.mdInlineImage, patterns.mdLinkRef]) {
+            let match
+            while (match = pattern.exec(mdStr)) {
+                const ref = match.groups.filename
+                if (ref.startsWith("http://") || ref.startsWith("https://")) {
+                    continue
+                }
+                const refPath = path.join(parentFolder, ref)
+                if (!fs.existsSync(refPath)) {
+                    let suggStr = ""
+                    const sugg = fileSuggestionsForMissing(refPath)
+                    if (sugg.length !== 0) {
+                        if (sugg.length === 1) {
+                            suggStr = ` Did you mean ${sugg[0]}?`
+                        } else {
+                            suggStr = ` Did you mean of the following? \n${sugg.join("\n")}`
+                        }
+                    }
+
+                    error(mdRangeForValueInMatch(ref, match), "Referenced file not found." + suggStr)
+                }
             }
         }
 
@@ -429,4 +495,23 @@ export function check(text: string, filename: string, _formatVersion?: string): 
     })()
 
     return diags
+}
+
+function fileSuggestionsForMissing(missingFile: string): string[] {
+    const parent = path.dirname(missingFile)
+    if (!fs.existsSync(parent)) {
+        return []
+    }
+
+    const suggs = []
+    const missingName = path.basename(missingFile)
+    for (const filename of fs.readdirSync(parent)) {
+        let dist
+        if ((dist = util.levenshteinDistance(missingName, filename)) <= 2) {
+            suggs.push({ filename, dist })
+        }
+    }
+
+    suggs.sort((a, b) => a.dist - b.dist)
+    return suggs.map(a => a.filename)
 }

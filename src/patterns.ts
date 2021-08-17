@@ -1,6 +1,7 @@
 // The following allows us to type to some extend
 // the groups property of the RegExpExecArray object
 
+import { isString } from "markdown-it/lib/common/utils"
 import { TaskMetadata } from "./util"
 
 // @ts-ignore
@@ -24,8 +25,11 @@ type Captures<T> = {
 
 export type GroupNameOf<T> = T extends RichRegExp<infer H> ? keyof H : never
 
-function capturing<T>(pat: string, flags?: string): RichRegExp<Captures<T>> {
-    return new RegExp(pat, flags) as RichRegExp<Captures<T>>
+function capturing<T>(pat: RegExp): RichRegExp<Captures<T>>
+function capturing<T>(pat: string, flags?: string): RichRegExp<Captures<T>>
+
+function capturing<T>(patOrRegexp: RegExp | string, flags?: string): RichRegExp<Captures<T>> {
+    return (isString(patOrRegexp) ? new RegExp(patOrRegexp, flags) : patOrRegexp) as RichRegExp<Captures<T>>
 }
 
 
@@ -151,6 +155,22 @@ export const taskFileName = capturing<{
     lang_code: maybe,
 }>(
     `^(?<id>${idPatternWithoutStartEndMarkers})(?:\\-(?<lang_code>[a-z]{3}))?\\.task\\.md$`
+)
+
+export const mdInlineImage = capturing<{
+    label: always,
+    filename: always,
+    title: maybe,
+}>(
+    /!\[(?<label>[^\]]*)\]\((?<filename>.*?)\s*(?=\"|\))(?:\"(?<title>.*)\")?\)/g
+)
+
+export const mdLinkRef = capturing<{
+    label: always,
+    filename: always,
+    title: maybe,
+}>(
+    /^\[(?<label>[^\]]*)\]:\s*(?<filename>.*?)\s*(?=\"|\))(?:\"(?<title>.*)\")?\s*$/gm
 )
 
 export const translation = capturing<{

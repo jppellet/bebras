@@ -22,11 +22,7 @@ async function doCheck(taskFile: string, options: any) {
     await ensureIsTaskFile(taskFile, true)
 
     const text = await readFileStrippingBom(taskFile)
-    let filename: string = path.basename(taskFile)
-    if (filename.endsWith(patterns.taskFileExtension)) {
-        filename = filename.slice(0, filename.length - patterns.taskFileExtension.length)
-    }
-    const diags = check(text, filename)
+    const diags = check(text, taskFile)
     const indent = "  "
     if (diags.length === 0) {
         console.log(`${taskFile}: all checks passed`)
