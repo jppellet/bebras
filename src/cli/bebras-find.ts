@@ -7,7 +7,8 @@ import * as jmespath from 'jmespath'
 import * as codes from '../codes'
 import * as util from '../util'
 import * as patterns from '../patterns'
-import { astOf } from "../ast"
+import { astOf, TaskAST } from "../ast"
+import { isUndefined } from "lodash"
 
 const DefinedDifficulties = [...util.Difficulties]
 DefinedDifficulties.shift() // remove '--'
@@ -24,7 +25,12 @@ export function makeCommand_find() {
         .option('-n, --filename', 'output task filename (short for: -q filename)')
         .option('-p, --filepath', 'output task filepath (default; short for: -q filepath)')
         .option('-q, --query <projection>', 'a custom JMESPath projection, e.g. \'{id: id, name: title}\'')
-        .option('-s, --sort-by <field>', 'a field to sort by, or \'difficulty\' if a category is set')
+        .option('-s, --sort-by <field>', 'a (spaceless, comma-delimited list of) fields to sort by, or \'difficulty\' if a category is set')
+        .option('-o, --output <file>', 'a file to write the result to (stdout if not specified)')
+        .option('-a, --array', 'format output as a JSON array instead of lines of text')
+        .option('-u, --uniq', 'remove duplited output lines or objects')
+        .option('--indent <n>', 'JSON indentation (in spaces) to use in the output (default: 2)')
+        .option('--debug', 'prints additional debug information')
 
     for (let i = 0; i <= 5; i++) {
         cmd = cmd
@@ -37,6 +43,11 @@ export function makeCommand_find() {
 
 
 async function find(folder: string, options: any) {
+    const debug = !!options.debug
+    const asArray = !!options.array
+    const uniq = !!options.uniq
+    const indent = +(options.indent ?? "2")
+    const outputFile: string | undefined = options.output
     const projection = options.id ? "[].id" :
         options.title ? "[].title" :
             options.filename ? "[].filename" :
@@ -52,7 +63,7 @@ async function find(folder: string, options: any) {
             if (setCategory !== -1) {
                 fatalError(`Cannot specify both categories ${setCategory} and ${i}`)
             } if (value === true) {
-                filter = `[?ages."${util.AgeCategories[i]}" != \`--\`] | ` + filter
+                filter = `[?!contains(ages."${util.AgeCategories[i]}", \`--\`)] | ` + filter
             } else if (DefinedDifficulties.includes(value)) {
                 filter = `[?ages."${util.AgeCategories[i]}" == \`${value}\`] | ` + filter
             } else {
@@ -73,13 +84,14 @@ async function find(folder: string, options: any) {
     let sort = ""
     let optionsSortBy = options.sortBy
     if (isString(optionsSortBy)) {
-        if (optionsSortBy === "difficulty") {
-            if (setCategory === -1) {
-                fatalError("Cannot sort by difficulty when no age category is selected")
+        optionsSortBy.split(/, */).forEach(sortField => {
+            if (sortField === "difficulty") {
+                if (setCategory === -1) {
+                    fatalError("Cannot sort by difficulty when no age category is selected")
+                }
             }
-            optionsSortBy = `difficulties[${setCategory}]`
-        }
-        sort = `sort_by(@, &${optionsSortBy}) | `
+            sort = `sort_by(@, &${sortField}) | ` + sort
+        })
     }
 
     const q = `${filter}${sort}${projection}`
@@ -99,10 +111,19 @@ async function find(folder: string, options: any) {
         fatalError("no task files in folder: " + folder)
     }
 
+    const enrich: ((ast: TaskAST) => void) | undefined =
+        (setCategory === -1) ? undefined : ast => {
+            const diffIndex = ast.difficulties[setCategory]
+            ast.difficulty = diffIndex
+            ast.difficulty_str = util.Difficulties[diffIndex]
+        }
 
-    console.log("options", options)
-    console.log("query", q)
-    return runQueryOn(taskFiles, q)
+
+    if (debug) {
+        console.log("options =", options)
+        console.log("query =", q)
+    }
+    return runQueryOn(taskFiles, q, asArray, uniq, indent, outputFile, enrich)
 }
 
 
@@ -126,18 +147,47 @@ function findTaskFilesIn(folder: string) {
 }
 
 
-export async function runQueryOn(taskFiles: string[], query: string) {
+export async function runQueryOn(taskFiles: string[], query: string, asArray: boolean, uniq: boolean, indent: number, outputFile: string | undefined, enrich?: (ast: TaskAST) => void) {
     const FORCE_REGEN_AST = true
 
     const asts = await Promise.all(taskFiles.map(f => astOf(f, FORCE_REGEN_AST)))
+    if (enrich) {
+        asts.forEach(enrich)
+    }
     const res = jmespath.search(asts, query)
     if (!util.isNullOrUndefined(res)) {
-        if (util.isArray(res)) {
-            for (const line of res) {
-                console.log(line)
+
+        function toStringOrJSON(val: any): string {
+            return isString(val) ? val : JSON.stringify(val, null, indent)
+        }
+
+        let output: string
+        if (util.isArray(res) && !asArray) {
+            // walk the array
+            const outputParts: string[] = []
+            if (uniq) {
+                const added = new Set<string>()
+                for (let line of res) {
+                    line = toStringOrJSON(line)
+                    if (!added.has(line)) {
+                        outputParts.push(line)
+                        added.add(line)
+                    }
+                }
+            } else {
+                for (const line of res) {
+                    outputParts.push(toStringOrJSON(line))
+                }
             }
+            output = outputParts.join("\n")
         } else {
-            console.log(res)
+            output = toStringOrJSON(res)
+        }
+
+        if (isUndefined(outputFile)) {
+            console.log(output)
+        } else {
+            await fs.promises.writeFile(outputFile, output)
         }
     }
 

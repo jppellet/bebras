@@ -4,7 +4,7 @@ import * as fs from 'fs'
 import { Command } from 'commander'
 
 import patterns = require('../patterns')
-import { defaultOutputFile, ensureIsTaskFile, fatalError, mkStringCommaAnd, modificationDateIsLater, OutputFormat, OutputFormats } from '../util'
+import { defaultOutputFile, ensureIsTaskFile, fatalError, mkdirsOf, mkStringCommaAnd, modificationDateIsLater, OutputFormat, OutputFormats } from '../util'
 
 export function makeCommand_convert() {
     return new Command()
@@ -35,11 +35,7 @@ async function convert(format: string, taskFile: string, options: any): Promise<
         process.exit(0)
     }
 
-    const outputDir = path.dirname(outputFile)
-
-    if (!fs.existsSync(outputDir)) {
-        await fs.promises.mkdir(outputDir, { recursive: true })
-    }
+    await mkdirsOf(outputFile)
 
     const convModule = require('../convert_' + format)
     const res = await convModule["convertTask_" + format](taskFile, outputFile)

@@ -349,6 +349,14 @@ export async function readFileStrippingBom(filepath: string): Promise<string> {
     return content
 }
 
+export async function mkdirsOf(child: string): Promise<void> {
+    const parent = path.dirname(child)
+
+    if (!fs.existsSync(parent)) {
+        await fs.promises.mkdir(parent, { recursive: true })
+    }
+}
+
 export function isBinaryAvailable(binName: string): Promise<boolean> {
     return new Promise((resolve, reject) => {
         hasbin(binName, resolve)
