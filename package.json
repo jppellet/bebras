@@ -1,6 +1,6 @@
 {
-  "name": "bebras-md",
-  "version": "0.1.3",
+  "name": "bebras",
+  "version": "0.2.5",
   "description": "Tools to support the editing of Bebras tasks in Markdown",
   "main": "./out/main.js",
   "types": "./out/main.d.ts",
@@ -21,7 +21,7 @@
     "email": "jppellet@gmail.com"
   },
   "license": "MIT",
-  "homepage": "https://github.com/jppellet/bebras-md",
+  "homepage": "https://github.com/jppellet/bebras",
   "devDependencies": {
     "@types/hasbin": "^1.2.0",
     "@types/jmespath": "^0.15.0",
