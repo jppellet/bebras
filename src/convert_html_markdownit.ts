@@ -11,6 +11,7 @@ import * as yaml from 'js-yaml'
 import * as patterns from './patterns'
 import { TaskMetadata, defaultTaskMetadata, Dict } from "./util"
 import { defaultPluginOptions, PluginOptions } from "./convert_html"
+import { normalizeRawMetadataToStandardYaml } from "./check"
 
 
 export function plugin(md: MarkdownIt, _parseOptions: any) {
@@ -217,13 +218,25 @@ export function plugin(md: MarkdownIt, _parseOptions: any) {
   md.core.ruler.before('block', 'bebras_metadata', (state: StateCore) => {
     // check front matter
     let parsedMetadata: object | undefined
-    const fmStartMarker = "---\n"
-    const fmEndMarker = "\n---\n"
-    if (state.src.startsWith(fmStartMarker)) {
+    const fmStartMarkerLF = "---\n"
+    const fmStartMarkerCRLF = "---\r\n"
+    let fmStartMarker: string | undefined = undefined
+    let newline = "\n"
+    
+    if (state.src.startsWith(fmStartMarkerLF)) {
+      fmStartMarker = fmStartMarkerLF
+      newline = "\n"
+    } else if (state.src.startsWith(fmStartMarkerCRLF)) {
+      fmStartMarker = fmStartMarkerCRLF
+      newline = "\r\n"
+    } 
+
+    if (fmStartMarker) {
+      const fmEndMarker= `${newline}---${newline}`
       const fmEnd = state.src.indexOf(fmEndMarker, fmStartMarker.length)
       if (fmEnd >= 0) {
         // parse front matter as YAML
-        const fmStr = state.src.slice(0, fmEnd)
+        const fmStr = normalizeRawMetadataToStandardYaml(state.src.slice(0, fmEnd))
         try {
           parsedMetadata = yaml.load(fmStr) as object | undefined
         } catch { }

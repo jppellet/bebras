@@ -3,7 +3,7 @@ import * as path from 'path'
 import Token = require('markdown-it/lib/token')
 import { parseMarkdown } from './convert_html'
 
-import { defaultOutputFile, Difficulty, modificationDateIsLater, readFileStrippingBom, TaskMetadata } from "./util"
+import { defaultOutputFile, Difficulty, mkdirsOf, modificationDateIsLater, readFileStrippingBom, TaskMetadata } from "./util"
 import * as patterns from './patterns'
 import * as codes from './codes'
 import { util } from './main'
@@ -15,6 +15,9 @@ export type TaskAST_Saved = Omit<TaskMetadata, "contributors" | "support_files">
     parsed_id: ParsedID
 
     difficulties: number[]
+    ages: {
+        [level: number]: Difficulty
+    }
     contributors: ParsedContributor[]
     support_files: ParsedSupportFile[]
 }
@@ -22,6 +25,9 @@ export type TaskAST_Saved = Omit<TaskMetadata, "contributors" | "support_files">
 export type TaskAST = TaskAST_Saved & {
     filepath: string
     filename: string
+
+    difficulty?: number // transient, difficulty for a given category
+    difficulty_str?: Difficulty // same
 }
 
 export type ParsedID = {
@@ -55,7 +61,12 @@ export async function astOf(taskFile: string, forceRegen: boolean = false): Prom
     if (forceRegen || !fs.existsSync(jsonFile) || await modificationDateIsLater(taskFile, jsonFile)) {
         // console.log("Generating AST for " + path.basename(taskFile))
         const ast = await buildASTOf(taskFile)
-        await fs.promises.writeFile(jsonFile, JSON.stringify(ast, undefined, 4))
+        try {
+            await mkdirsOf(jsonFile)
+            await fs.promises.writeFile(jsonFile, JSON.stringify(ast, undefined, 4))
+        } catch (err) {
+            console.log("Couldn't write cached AST: " + err.message)
+        }
         return enrichAST(ast, taskFile)
     } else {
         // console.log("Loading cached AST from " + path.basename(jsonFile))
@@ -84,8 +95,10 @@ function toJsonRepr(tokens: Token[], taskFile: string, metadata: TaskMetadata): 
     }
 
     for (let i = 0; i < util.AgeCategories.length; i++) {
-        const diffIndex = util.Difficulties.indexOf(metadata.ages[util.AgeCategories[i]])
+        const diffStr = metadata.ages[util.AgeCategories[i]]
+        const diffIndex = util.Difficulties.indexOf(diffStr)
         parsedMetadata.difficulties!.push(diffIndex)
+        parsedMetadata.ages![i] = diffStr
     }
 
     let match

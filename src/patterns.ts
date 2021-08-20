@@ -117,13 +117,13 @@ export const validRoles = [roleMainAuthor, roleContributor, roleGraphics, roleTr
 // Regexes without captures (reused several times in other patterns)
 
 export const webUrl =
-    new RegExp("https?:\\/\\/[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[^\\s;,]*)", "g")
+    /https?:\/\/[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[^\s;,]*)/g
 
 export const email =
-    new RegExp("(?:[a-zA-Z0-9_\\-\\.]+)@(?:(?:\\[[0-9]{1,10}\\.[0-9]{1,10}\\.[0-9]{1,10}\\.)|(?:(?:[a-zA-Z0-9\\-]+\\.)+))(?:[a-zA-Z]{2,10}|[0-9]{1,10})(?:\\]?)", "g")
+    /(?:[a-zA-Z0-9_\-\.]+)@(?:(?:\[[0-9]{1,10}\.[0-9]{1,10}\.[0-9]{1,10}\.)|(?:(?:[a-zA-Z0-9\-]+\.)+))(?:[a-zA-Z]{2,10}|[0-9]{1,10})(?:\]?)/g
 
 export const decimal = // 5, 0.5, 5.0005...
-    new RegExp("\\d+\\.?\\d*", "g")
+    /\d+\.?\d*/g
 
 
 // Regexes with semi-typed captures
@@ -132,7 +132,7 @@ export const prologue = capturing<{
     format: always,
     version: maybe
 }>(
-    "^\\-{3}\\n(?:format: *Bebras Task(?: (?<version>[0-9\\.]+))?\\n)?"
+    /^\-{3}\r?\n(?:format: *Bebras Task(?: (?<version>[0-9\.]+))?\r?\n)?/
 )
 
 const idPatternWithoutStartEndMarkers = "(?<year>[0-9]{4})-(?<country_code>[A-Z]{2})-(?<num>[0-9]{2})(?<variant>[a-z])?"
@@ -210,6 +210,13 @@ export const supportFile = capturing<{
     license_from: maybe,
 }>(
     "^(?<file_pattern>.*?) (?:(?<author_ext>(?<by>by) .*)( \\((?<license_by>.*)\\))?|(?<from>from) (?<source>.*) \\((?<license_from>.*)\\))$"
+)
+
+export const supportFileStarCorrection = capturing<{
+    pre: always
+    post: always
+}>(
+    /^(?<pre>\s*-\s*)\*(?<post>.*)$/gm
 )
 
 

@@ -4,8 +4,7 @@ import * as fs from 'fs'
 import { Command } from 'commander'
 import _ = require('lodash')
 
-import patterns = require('../patterns')
-import { ensureIsTaskFile, fatalError, mkStringCommaAnd, modificationDateIsLater, OutputFormat, OutputFormats, readFileStrippingBom } from '../util'
+import { ensureIsTaskFile, readFileStrippingBom } from '../util'
 import { check } from '../check'
 
 export function makeCommand_check() {
@@ -23,17 +22,18 @@ async function doCheck(taskFile: string, options: any) {
 
     const text = await readFileStrippingBom(taskFile)
     const diags = check(text, taskFile)
-    const indent = "  "
     if (diags.length === 0) {
         console.log(`${taskFile}: all checks passed`)
     } else {
         for (const diag of diags) {
+            const linePrefix = `${diag.type.toUpperCase()}: `
+            const msgPrefix =  _.pad("",linePrefix.length - 3, " ") + "| "
             const [line, offset] = lineOf(diag.start, text)
             const length = Math.min(line.length - offset, diag.end - diag.start)
-            console.log(`[${diag.type}]: ${diag.msg}`)
-            console.log(indent + line)
-            const highlight = _.pad("", indent.length + offset, " ") + _.pad("", length, "^")
+            console.log(linePrefix + line)
+            const highlight = msgPrefix + _.pad("", linePrefix.length - msgPrefix.length + offset, " ") + _.pad("", length, "^")
             console.log(highlight)
+            console.log(msgPrefix + diag.msg.replace(/\n/g, '\n' + msgPrefix) + `\n`)
         }
     }
 }
@@ -47,7 +47,8 @@ function lineOf(position: number, source: string): [string, number] {
 
     const last = source.length - 1
     let end = start
-    while (source.charCodeAt(end) !== 0x0A && end <= last) {
+    let c: number
+    while ((c = source.charCodeAt(end)) !== 0x0A && c !== 13 && end <= last) {
         end++
     }
 

@@ -20,18 +20,34 @@ export type LintOutput = {
 
 export function metadataStringFromContents(text: string): Check<[number, number, string, number, string]> {
     const metadataSep = "---"
-    const metadataStart = metadataSep + '\n'
-    if (!text.startsWith(metadataStart)) {
+    const metadataStartLF = metadataSep + '\n'
+    const metadataStartCRLF = metadataSep + '\r\n'
+    let metadataStart: string
+    let newline: string
+    if (text.startsWith(metadataStartLF)) {
+        metadataStart = metadataStartLF
+        newline = "\n"
+    } else if (text.startsWith(metadataStartCRLF)) {
+        metadataStart = metadataStartCRLF
+        newline = "\r\n"
+    } else {
         return ErrorMessage(`Metadata should open before this, on the first line, with '${metadataSep}'`)
     }
+
     const fmStart = metadataStart.length
-    const fmEnd = text.indexOf(`\n${metadataSep}\n`)
+    const metadataStop = newline + metadataSep + newline
+    const fmEnd = text.indexOf(metadataStop)
     if (fmEnd < 0) {
         return ErrorMessage(`Metadata opened here is not closed with '${metadataSep}'`)
     }
+    const fmStr = normalizeRawMetadataToStandardYaml(text.slice(fmStart, fmEnd))
+    const mdStart = fmEnd + metadataStop.length
+    const mdStr = text.slice(mdStart)
+    return Value([fmStart, fmEnd, fmStr, mdStart, mdStr])
+}
 
-    const mdStart = fmEnd + metadataSep.length + 1
-    return Value([fmStart, fmEnd, text.slice(fmStart, fmEnd), mdStart, text.slice(mdStart)])
+export function normalizeRawMetadataToStandardYaml(rawFromFile: string): string {
+    return rawFromFile.replace(patterns.supportFileStarCorrection, "$1\\*$2")
 }
 
 type ErrorWarningCallback = (range: readonly [number, number], msg: string) => void
@@ -480,7 +496,7 @@ export function check(text: string, taskFile: string, _formatVersion?: string): 
         const secPrefix = "## "
         patterns.markdownSectionNames.forEach(secName => {
             const secMarker = secPrefix + secName
-            const secStart = text.indexOf('\n' + secMarker + '\n', searchFrom)
+            const secStart = text.indexOf('\n' + secMarker, searchFrom)
             if (secStart < 0) {
                 missingSections.push(secMarker)
             } else {
