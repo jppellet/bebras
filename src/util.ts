@@ -88,20 +88,20 @@ export function isNullOrUndefined(a: any): a is undefined | null {
     return a === null || a === undefined
 }
 
-export function mkStringCommaAnd(items: Array<any>): string {
+export function mkStringCommaAnd(items: ReadonlyArray<any>, conn: string = "and"): string {
     const len = items.length
     switch (len) {
         case 0: return ""
         case 1: return "" + items[0]
-        case 2: return "" + items[0] + " and " + items[1]
+        case 2: return "" + items[0] + " " + conn + " " + items[1]
         default:
             const parts: Array<string> = []
             items.forEach((item, index) => {
-                parts.push("" + item)
+                parts.push(String(item))
                 if (index < len - 2) {
                     parts.push(", ")
                 } else if (index < len - 1) {
-                    parts.push(", and ")
+                    parts.push(", ", conn, " ")
                 }
             })
             return parts.join("")
@@ -231,6 +231,8 @@ export interface TaskMetadata {
     support_files: string[]
     contributors: string[]
 }
+
+export type TaskMetadataField = keyof TaskMetadata
 
 export function defaultTaskMetadata(): TaskMetadata {
     return {
@@ -364,34 +366,34 @@ export function isBinaryAvailable(binName: string): Promise<boolean> {
 }
 
 export function levenshteinDistance(a: string, b: string): number {
-	if (a.length === 0) { return b.length }
-	if (b.length === 0) { return a.length }
+    if (a.length === 0) { return b.length }
+    if (b.length === 0) { return a.length }
 
-	const matrix = []
-	let i: number, j: number
+    const matrix = []
+    let i: number, j: number
 
-	// increment along the first column of each row
-	for (i = 0; i <= b.length; i++) {
-		matrix[i] = [i]
-	}
+    // increment along the first column of each row
+    for (i = 0; i <= b.length; i++) {
+        matrix[i] = [i]
+    }
 
-	// increment each column in the first row
-	for (j = 0; j <= a.length; j++) {
-		matrix[0][j] = j
-	}
+    // increment each column in the first row
+    for (j = 0; j <= a.length; j++) {
+        matrix[0][j] = j
+    }
 
-	// Fill in the rest of the matrix
-	for (i = 1; i <= b.length; i++) {
-		for (j = 1; j <= a.length; j++) {
-			if (b.charAt(i - 1) === a.charAt(j - 1)) {
-				matrix[i][j] = matrix[i - 1][j - 1]
-			} else {
-				matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, // substitution
-					Math.min(matrix[i][j - 1] + 1, // insertion
-						matrix[i - 1][j] + 1)) // deletion
-			}
-		}
-	}
+    // Fill in the rest of the matrix
+    for (i = 1; i <= b.length; i++) {
+        for (j = 1; j <= a.length; j++) {
+            if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1]
+            } else {
+                matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, // substitution
+                    Math.min(matrix[i][j - 1] + 1, // insertion
+                        matrix[i - 1][j] + 1)) // deletion
+            }
+        }
+    }
 
-	return matrix[b.length][a.length]
+    return matrix[b.length][a.length]
 };

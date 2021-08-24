@@ -9,6 +9,7 @@ import * as util from '../util'
 import * as patterns from '../patterns'
 import { astOf, TaskAST } from "../ast"
 import { isUndefined } from "lodash"
+import _ = require("lodash")
 
 const DefinedDifficulties = [...util.Difficulties]
 DefinedDifficulties.shift() // remove '--'
@@ -28,7 +29,7 @@ export function makeCommand_find() {
         .option('-s, --sort-by <field>', 'a (spaceless, comma-delimited list of) fields to sort by, or \'difficulty\' if a category is set')
         .option('-o, --output <file>', 'a file to write the result to (stdout if not specified)')
         .option('-a, --array', 'format output as a JSON array instead of lines of text')
-        .option('-u, --uniq', 'remove duplited output lines or objects')
+        .option('-u, --uniq', 'remove duplicated output lines or objects')
         .option('--indent <n>', 'JSON indentation (in spaces) to use in the output (default: 2)')
         .option('--debug', 'prints additional debug information')
 
@@ -147,14 +148,14 @@ function findTaskFilesIn(folder: string) {
 }
 
 
-export async function runQueryOn(taskFiles: string[], query: string, asArray: boolean, uniq: boolean, indent: number, outputFile: string | undefined, enrich?: (ast: TaskAST) => void) {
+export async function runQueryOn(taskFiles: string[], query: string, showAsArray: boolean, uniq: boolean, indent: number, outputFile: string | undefined, enrich?: (ast: TaskAST) => void) {
     const FORCE_REGEN_AST = true
 
     const asts = await Promise.all(taskFiles.map(f => astOf(f, FORCE_REGEN_AST)))
     if (enrich) {
         asts.forEach(enrich)
     }
-    const res = jmespath.search(asts, query)
+    let res = jmespath.search(asts, query)
     if (!util.isNullOrUndefined(res)) {
 
         function toStringOrJSON(val: any): string {
@@ -162,26 +163,23 @@ export async function runQueryOn(taskFiles: string[], query: string, asArray: bo
         }
 
         let output: string
-        if (util.isArray(res) && !asArray) {
-            // walk the array
-            const outputParts: string[] = []
-            if (uniq) {
-                const added = new Set<string>()
-                for (let line of res) {
-                    line = toStringOrJSON(line)
-                    if (!added.has(line)) {
-                        outputParts.push(line)
-                        added.add(line)
-                    }
-                }
-            } else {
-                for (const line of res) {
-                    outputParts.push(toStringOrJSON(line))
-                }
-            }
-            output = outputParts.join("\n")
-        } else {
+
+        if (!util.isArray(res)) {
             output = toStringOrJSON(res)
+        } else {
+            if (showAsArray) {
+                if (uniq) {
+                    res = _.uniqBy(res, toStringOrJSON)
+                }
+                output = toStringOrJSON(res)
+            } else {
+                // show each line as string
+                let outputParts = res.map(toStringOrJSON)
+                if (uniq) {
+                    outputParts = _.uniq(outputParts)
+                }
+                output = outputParts.join("\n")
+            }
         }
 
         if (isUndefined(outputFile)) {
@@ -190,23 +188,5 @@ export async function runQueryOn(taskFiles: string[], query: string, asArray: bo
             await fs.promises.writeFile(outputFile, output)
         }
     }
-
-
-    // for (const taskFile of taskFiles) {
-    //     const ast = await astOf(taskFile, FORCE_REGEN_AST)
-    //     try {
-    //         const res = jmespath.search(ast, query)
-    //         if (!isNullOrUndefined(res)) {
-    //             console.log(res)
-    //         }
-    //     } catch (err) {
-    //         let prefix = ""
-    //         if (err.name === "ParserError") {
-    //             prefix = "Cannot parse query. "
-    //         }
-    //         console.log(prefix + err.message)
-    //         break
-    //     }
-    // }
 }
 

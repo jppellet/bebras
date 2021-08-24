@@ -11,7 +11,8 @@ import * as yaml from 'js-yaml'
 import * as patterns from './patterns'
 import { TaskMetadata, defaultTaskMetadata, Dict } from "./util"
 import { defaultPluginOptions, PluginOptions } from "./convert_html"
-import { normalizeRawMetadataToStandardYaml } from "./check"
+import { normalizeRawMetadataToStandardYaml, postYamlLoadObjectCorrections } from "./check"
+import { isUndefined } from "lodash"
 
 
 export function plugin(md: MarkdownIt, _parseOptions: any) {
@@ -222,17 +223,17 @@ export function plugin(md: MarkdownIt, _parseOptions: any) {
     const fmStartMarkerCRLF = "---\r\n"
     let fmStartMarker: string | undefined = undefined
     let newline = "\n"
-    
+
     if (state.src.startsWith(fmStartMarkerLF)) {
       fmStartMarker = fmStartMarkerLF
       newline = "\n"
     } else if (state.src.startsWith(fmStartMarkerCRLF)) {
       fmStartMarker = fmStartMarkerCRLF
       newline = "\r\n"
-    } 
+    }
 
     if (fmStartMarker) {
-      const fmEndMarker= `${newline}---${newline}`
+      const fmEndMarker = `${newline}---${newline}`
       const fmEnd = state.src.indexOf(fmEndMarker, fmStartMarker.length)
       if (fmEnd >= 0) {
         // parse front matter as YAML
@@ -240,6 +241,9 @@ export function plugin(md: MarkdownIt, _parseOptions: any) {
         try {
           parsedMetadata = yaml.load(fmStr) as object | undefined
         } catch { }
+        if (parsedMetadata) {
+          postYamlLoadObjectCorrections(parsedMetadata)
+        }
         state.src = state.src.slice(fmEnd + fmEndMarker.length)
       }
     }

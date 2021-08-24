@@ -1,6 +1,6 @@
 {
   "name": "bebras",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Tools to support the editing of Bebras tasks in Markdown",
   "main": "./out/main.js",
   "types": "./out/main.d.ts",
@@ -29,6 +29,7 @@
     "@types/katex": "^0.11.1",
     "@types/lodash": "^4.14.172",
     "@types/markdown-it": "^12.0.3",
+    "@types/minimatch": "^3.0.5",
     "@types/node": "=12.12",
     "@types/puppeteer": "^5.4.4",
     "@typescript-eslint/eslint-plugin": "^4.29.0",
@@ -52,6 +53,7 @@
     "markdown-it-sup": "^1.0.0",
     "markdown-it-texmath": "^0.9.1",
     "markdown-it-toc-done-right": "^4.2.0",
+    "minimatch": "^3.0.4",
     "pdf-lib": "^1.16.0",
     "pdfjs-dist": "^2.9.359",
     "puppeteer": "^10.2.0",

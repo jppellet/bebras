@@ -5,20 +5,43 @@ import * as fs from 'fs'
 
 import * as codes from './codes'
 import * as patterns from './patterns'
-import { isNullOrUndefined, s, isString, isUndefined, isArray, TaskMetadata, Check, ErrorMessage, Value, isErrorMessage } from "./util"
+import { isNullOrUndefined, s, isString, isUndefined, isArray, TaskMetadata, Check, ErrorMessage, Value, isErrorMessage, TaskMetadataField } from "./util"
 import { util } from "./main"
+import * as minimatch from "minimatch"
 
 
 export type Severity = "error" | "warn"
+
+export type QuickFixReplacements = {
+    _type: "replacement"
+    values: readonly string[]
+}
+function QuickFixReplacements(values: readonly string[]): QuickFixReplacements {
+    return { _type: "replacement", values }
+}
+
+export type QuickFixAdditions = {
+    _type: "additions"
+    field: TaskMetadataField
+    newValues: readonly string[]
+}
+function QuickFixAdditions(field: TaskMetadataField, newValues: readonly string[]): QuickFixAdditions {
+    return { _type: "additions", field, newValues }
+}
+
+export type QuickFix =
+    | QuickFixReplacements
+    | QuickFixAdditions
 
 export type LintOutput = {
     type: Severity,
     start: number,
     end: number,
-    msg: string
+    msg: string,
+    quickFix?: QuickFix
 }
 
-export function metadataStringFromContents(text: string): Check<[number, number, string, number, string]> {
+export function metadataStringFromContents(text: string): Check<[number, number, string, string, number, string]> {
     const metadataSep = "---"
     const metadataStartLF = metadataSep + '\n'
     const metadataStartCRLF = metadataSep + '\r\n'
@@ -40,19 +63,33 @@ export function metadataStringFromContents(text: string): Check<[number, number,
     if (fmEnd < 0) {
         return ErrorMessage(`Metadata opened here is not closed with '${metadataSep}'`)
     }
-    const fmStr = normalizeRawMetadataToStandardYaml(text.slice(fmStart, fmEnd))
+    const fmStrRaw = text.slice(fmStart, fmEnd)
+    const fmStr = normalizeRawMetadataToStandardYaml(fmStrRaw)
     const mdStart = fmEnd + metadataStop.length
     const mdStr = text.slice(mdStart)
-    return Value([fmStart, fmEnd, fmStr, mdStart, mdStr])
+    return Value([fmStart, fmEnd, fmStrRaw, fmStr, mdStart, mdStr])
 }
 
 export function normalizeRawMetadataToStandardYaml(rawFromFile: string): string {
     return rawFromFile.replace(patterns.supportFileStarCorrection, "$1\\*$2")
 }
 
+export function postYamlLoadObjectCorrections<T extends object>(obj: T) {
+    for (const [key, value] of Object.entries(obj)) {
+        if (isArray(value) && _.every(value, isString)) {
+            for (let i = 0; i < value.length; i++) {
+                const str: string = value[i]
+                if (str.startsWith("\\*")) {
+                    value[i] = str.substring(1)
+                }
+            }
+        }
+    }
+}
+
 type ErrorWarningCallback = (range: readonly [number, number], msg: string) => void
 
-export function loadRawMetadata(text: string, warn?: ErrorWarningCallback, error?: ErrorWarningCallback): [number, number, string, Partial<TaskMetadata>, number, string] | undefined {
+export function loadRawMetadata(text: string, warn?: ErrorWarningCallback, error?: ErrorWarningCallback): [number, number, string, string, Partial<TaskMetadata>, number, string] | undefined {
 
     const metadataStringCheck = metadataStringFromContents(text)
 
@@ -61,7 +98,7 @@ export function loadRawMetadata(text: string, warn?: ErrorWarningCallback, error
         return
     }
 
-    const [fmStart, fmEnd, fmStr, mdStart, mdStr] = metadataStringCheck.value
+    const [fmStart, fmEnd, fmStrRaw, fmStr, mdStart, mdStr] = metadataStringCheck.value
 
     function fmRangeFromException(e: yaml.YAMLException): [[number, number], string] {
         const msg = e.toString(true).replace("YAMLException: ", "")
@@ -92,11 +129,13 @@ export function loadRawMetadata(text: string, warn?: ErrorWarningCallback, error
         }
     }
 
-    return [fmStart, fmEnd, fmStr, metadata, mdStart, mdStr]
+    postYamlLoadObjectCorrections(metadata)
+
+    return [fmStart, fmEnd, fmStrRaw, fmStr, metadata, mdStart, mdStr]
 }
 
 
-export function check(text: string, taskFile: string, _formatVersion?: string): LintOutput[] {
+export async function check(text: string, taskFile: string, _formatVersion?: string): Promise<LintOutput[]> {
 
     const parentFolder = path.dirname(taskFile)
     let filename: string = path.basename(taskFile)
@@ -106,26 +145,26 @@ export function check(text: string, taskFile: string, _formatVersion?: string): 
 
     const diags = [] as LintOutput[]
 
-    function newDiag([start, end]: readonly [number, number], msg: string, sev: Severity) {
-        diags.push({ type: sev, start, end, msg })
+    function newDiag([start, end]: readonly [number, number], msg: string, sev: Severity, quickFix?: QuickFix) {
+        diags.push({ type: sev, start, end, msg, quickFix })
     }
 
-    function warn(range: readonly [number, number], msg: string) {
-        newDiag(range, msg, "warn")
+    function warn(range: readonly [number, number], msg: string, quickFix?: QuickFix) {
+        newDiag(range, msg, "warn", quickFix)
     }
 
-    function error(range: readonly [number, number], msg: string) {
-        newDiag(range, msg, "error")
+    function error(range: readonly [number, number], msg: string, quickFix?: QuickFix) {
+        newDiag(range, msg, "error", quickFix)
     }
 
-    (function () {
+    await (async function () {
 
         const loadResult = loadRawMetadata(text, warn, error)
         if (isUndefined(loadResult)) {
             return
         }
 
-        const [fmStart, fmEnd, fmStr, metadata, mdStart, mdStr] = loadResult
+        const [fmStart, fmEnd, fmStrRaw, fmStr, metadata, mdStart, mdStr] = loadResult
 
         function mdRangeForValueInMatch(substring: string, match: { index: number, [i: number]: string }): [number, number] {
             const offset = match[0].indexOf(substring)
@@ -144,45 +183,44 @@ export function check(text: string, taskFile: string, _formatVersion?: string): 
                 const refPath = path.join(parentFolder, ref)
                 if (!fs.existsSync(refPath)) {
                     let suggStr = ""
-                    const sugg = fileSuggestionsForMissing(refPath)
+                    const sugg = fileSuggestionsForMissing(refPath, taskFile)
                     if (sugg.length !== 0) {
                         if (sugg.length === 1) {
-                            suggStr = ` Did you mean ${sugg[0]}?`
+                            suggStr = ` Did you mean ${sugg[0].displayAs}?`
                         } else {
-                            suggStr = ` Did you mean of the following? \n${sugg.join("\n")}`
+                            suggStr = ` Did you mean of the following? \n${sugg.map(s => s.displayAs).join("\n")}`
                         }
                     }
 
-                    error(mdRangeForValueInMatch(ref, match), "Referenced file not found." + suggStr)
+                    error(mdRangeForValueInMatch(ref, match), "Referenced file not found." + suggStr, QuickFixReplacements(sugg.map(s => s.replacement)))
                 }
             }
         }
 
-        function fmRangeForDef(field: MetadataField): [number, number] {
-            const start = fmStr.indexOf('\n' + field) + 1 + fmStart
+        function fmRangeForDef(field: TaskMetadataField): [number, number] {
+            const start = fmStrRaw.indexOf('\n' + field) + 1 + fmStart
             const end = start + field.length
             return [start, end]
         }
 
-        function fmRangeForValueInDef(field: MetadataField, value: string): [number, number] {
-            const fieldStart = fmStr.indexOf('\n' + field)
-            const start = fmStr.indexOf(value, fieldStart + field.length) + fmStart
+        function fmRangeForValueInDef(field: TaskMetadataField, value: string): [number, number] {
+            const fieldStart = fmStrRaw.indexOf('\n' + field)
+            const start = fmStrRaw.indexOf(value, fieldStart + field.length) + fmStart
             const end = start + value.length
             return [start, end]
         }
 
         function fmRangeForAgeValue(cat: MetadataAgeCategory): [number, number] {
-            let start = fmStr.indexOf(cat) + cat.length
+            let start = fmStrRaw.indexOf(cat) + cat.length
             let c
-            while ((c = fmStr.charCodeAt(start)) === 0x20 /* ' ' */ || c === 0x3A /* : */) {
+            while ((c = fmStrRaw.charCodeAt(start)) === 0x20 /* ' ' */ || c === 0x3A /* : */) {
                 start++
             }
-            const end = fmStr.indexOf("\n", start)
+            const end = fmStrRaw.indexOf("\n", start)
             return [start + fmStart, end + fmStart]
         }
 
-        type MetadataField = keyof TaskMetadata
-        const requiredFields: Array<MetadataField> = ["id", "title", "ages", "answer_type", "categories", "contributors", "support_files"]
+        const requiredFields: Array<TaskMetadataField> = ["id", "title", "ages", "answer_type", "categories", "contributors", "support_files"]
 
         const missingFields = [] as string[]
         for (let f of requiredFields) {
@@ -250,68 +288,56 @@ export function check(text: string, taskFile: string, _formatVersion?: string): 
 
         if (missingAgeCats.length !== 0) {
             error(fmRangeForDef("ages"), `Missing age group${s(missingAgeCats.length)}: ${missingAgeCats.join(", ")}`)
-            return
-        }
+        } else {
 
-        let lastLevel = NaN
-        let numDefined = 0 + requiredAgeCats.length
-        let closed = false
-        const LevelNotApplicable = "--"
-        const LevelNotApplicableKnownGap = "----"
-        for (let a of requiredAgeCats) {
-            const classif = `${metadata.ages?.[a] ?? LevelNotApplicable}`
-            let level: number
-            if (classif === LevelNotApplicable || classif === LevelNotApplicableKnownGap) {
-                level = NaN
-                numDefined--
-                if (!isNaN(lastLevel) && classif !== LevelNotApplicableKnownGap) {
-                    closed = true
+            let lastLevel = NaN
+            let numDefined = 0 + requiredAgeCats.length
+            let closed = false
+            const LevelNotApplicable = "--"
+            const LevelNotApplicableKnownGap = "----"
+            for (let a of requiredAgeCats) {
+                const classif = `${metadata.ages?.[a] ?? LevelNotApplicable}`
+                let level: number
+                if (classif === LevelNotApplicable || classif === LevelNotApplicableKnownGap) {
+                    level = NaN
+                    numDefined--
+                    if (!isNaN(lastLevel) && classif !== LevelNotApplicableKnownGap) {
+                        closed = true
+                    }
+                } else if (classif === "easy") {
+                    level = 1
+                } else if (classif === "medium") {
+                    level = 2
+                } else if (classif === "hard") {
+                    level = 3
+                } else {
+                    error(fmRangeForAgeValue(a), `Invalid value, should be one of easy, medium, hard, or ${LevelNotApplicable} if not applicable`, QuickFixReplacements(["easy", "medium", "hard", LevelNotApplicable]))
+                    return
                 }
-            } else if (classif === "easy") {
-                level = 1
-            } else if (classif === "medium") {
-                level = 2
-            } else if (classif === "hard") {
-                level = 3
-            } else {
-                error(fmRangeForAgeValue(a), `Invalid value, should be one of easy, medium, hard, or ${LevelNotApplicable} if not applicable`)
-                return
+
+                if (level > lastLevel) {
+                    error(fmRangeForAgeValue(a), `Inconsistent value, this should not be more difficult than the previous age group`)
+                }
+
+                if (!isNaN(level) && closed) {
+                    const range = fmRangeForAgeValue(requiredAgeCats[requiredAgeCats.indexOf(a) - 1])
+                    error(range, `There is a gap in the age definitions. Use ${LevelNotApplicableKnownGap} to signal it's meant to be so.`, QuickFixReplacements([LevelNotApplicableKnownGap]))
+                    closed = false
+                }
+
+                lastLevel = level
             }
 
-            if (level > lastLevel) {
-                error(fmRangeForAgeValue(a), `Inconsistent value, this should not be more difficult than the previous age group`)
+            if (numDefined === 0) {
+                warn(fmRangeForDef("ages"), `No age groups haven been assigned`)
             }
-
-            if (!isNaN(level) && closed) {
-                const range = fmRangeForAgeValue(requiredAgeCats[requiredAgeCats.indexOf(a) - 1])
-                error(range, `There is a gap in the age definitions. Use ${LevelNotApplicableKnownGap} to signal it's meant to be so.`)
-                closed = false
-            }
-
-            lastLevel = level
         }
-
-        if (numDefined === 0) {
-            warn(fmRangeForDef("ages"), `No age groups haven been assigned`)
-        }
-
-        const validAnswerTypes = [
-            "multiple choice",
-            "multiple choice with images",
-            "multiple select",
-            "dropdown select",
-            "open integer",
-            "open text",
-            "interactive (click-on-object)",
-            "interactive (drag-and-drop)",
-            "interactive (other)",
-        ]
 
         const answerType = metadata.answer_type
         if (!isString(answerType)) {
             error(fmRangeForDef("answer_type"), "The answer type must be a plain string")
-        } else if (!validAnswerTypes.includes(answerType)) {
-            warn(fmRangeForDef("answer_type"), `This answer type is not recognized. Expected one of:\n  - ${validAnswerTypes.join("\n  - ")}`)
+        } else if (!patterns.answerTypes.includes(answerType as any)) {
+            warn(fmRangeForValueInDef("answer_type", answerType), `This answer type is not recognized. Expected one of:\n  - ${patterns.answerTypes.join("\n  - ")}`, QuickFixReplacements(patterns.answerTypes))
         }
 
         const validCategories = patterns.categories as readonly string[]
@@ -321,7 +347,7 @@ export function check(text: string, taskFile: string, _formatVersion?: string): 
             error(fmRangeForDef("categories"), "The categories must be a list of plain strings")
         } else {
             _.filter(categories, c => !validCategories.includes(c)).forEach(c => {
-                error(fmRangeForValueInDef("categories", c), `Invalid category '${c}', should be one of:\n  - ${validCategories.join("\n  - ")}`)
+                error(fmRangeForValueInDef("categories", c), `Invalid category '${c}', should be one of:\n  - ${validCategories.join("\n  - ")}`, QuickFixReplacements(validCategories))
             })
             if (_.uniq(categories).length !== categories.length) {
                 warn(fmRangeForDef("categories"), `The categories should be unique`)
@@ -357,7 +383,7 @@ export function check(text: string, taskFile: string, _formatVersion?: string): 
                                         suggStr = ` Did you mean of the following? ${sugg.join(", ")}`
                                     }
                                 }
-                                warn(fmRangeForValueInDef("contributors", country), `This country is not recognized.${suggStr}\nNote: we know this may be a sensible topic and mean no offense if your country is not recognized here by mistake. Please contact us if you feel this is wrong.`)
+                                warn(fmRangeForValueInDef("contributors", country), `This country is not recognized.${suggStr}\nNote: we know this may be a sensible topic and mean no offense if your country is not recognized here by mistake. Please contact us if you feel this is wrong.`, QuickFixReplacements(sugg))
                             }
                             countries.push(country)
                         }
@@ -384,7 +410,7 @@ export function check(text: string, taskFile: string, _formatVersion?: string): 
                                                 suggStr = ` Did you mean of the following? ${sugg.join(", ")}`
                                             }
                                         }
-                                        warn(fmRangeForValueInDef("contributors", lang), `This language is not recognized.${suggStr}\nNote: we know this may be a sensible topic and mean no offense if your language is not recognized here by mistake. Please contact us if you feel this is wrong.`)
+                                        warn(fmRangeForValueInDef("contributors", lang), `This language is not recognized.${suggStr}\nNote: we know this may be a sensible topic and mean no offense if your language is not recognized here by mistake. Please contact us if you feel this is wrong.`, QuickFixReplacements(sugg))
                                     }
                                 }
                                 checkLang(submatch.groups.from)
@@ -393,7 +419,7 @@ export function check(text: string, taskFile: string, _formatVersion?: string): 
                                 warn(fmRangeForValueInDef("contributors", role), `The role '${patterns.roleTranslation}' should have the format:\ntranslation from <source language> into <target language>\n\nPattern:\n${patterns.translation.source}`)
                             }
                         } else if (!patterns.validRoles.includes(role as any)) {
-                            warn(fmRangeForValueInDef("contributors", role), `This role is not recognized. Expected one of:\n  - ${patterns.validRoles.join("\n  - ")}`)
+                            warn(fmRangeForValueInDef("contributors", role), `This role is not recognized. Expected one of:\n  - ${patterns.validRoles.join("\n  - ")}`, QuickFixReplacements(patterns.validRoles))
                         }
                     }
                 } else {
@@ -447,10 +473,13 @@ export function check(text: string, taskFile: string, _formatVersion?: string): 
             error(fmRangeForDef("support_files"), "The support files must be a list of strings")
         } else {
             const seenGraphicsContributors = new Set<string>()
+            const allFilePatterns: string[] = []
+
             supportFiles.forEach(f => {
                 let match
                 if (match = patterns.supportFile.exec(f)) {
-                    // TODO validate file names here
+                    const filePattern = match.groups.file_pattern
+                    allFilePatterns.push(filePattern)
 
                     const ByMarker = "by "
                     if (match.groups.by === "by") {
@@ -489,6 +518,34 @@ export function check(text: string, taskFile: string, _formatVersion?: string): 
             for (const unseenGraphicsContributor of graphicsContributors) {
                 warn(fmRangeForValueInDef("contributors", unseenGraphicsContributor), `This person has the role '${patterns.roleGraphics}' but is not listed in the details for the support files`)
             }
+
+            const unmatchedFilePatterns = new Set<string>(allFilePatterns)
+            const unlistedSupportFiles: string[] = []
+            const existingSupportFiles = await findAllSupportFilesFor(taskFile)
+
+            for (const existingFile of existingSupportFiles) {
+                let matchedBy: string | undefined = undefined
+                for (const pattern of allFilePatterns) {
+                    if (minimatch(existingFile, "**/" + pattern)) {
+                        matchedBy = pattern
+                        unmatchedFilePatterns.delete(pattern)
+                        break
+                    } else {
+                    }
+                }
+                if (isUndefined(matchedBy)) {
+                    unlistedSupportFiles.push(existingFile)
+                }
+            }
+
+            for (const unmatchedFilePattern of unmatchedFilePatterns) {
+                warn(fmRangeForValueInDef("support_files", unmatchedFilePattern), `This file pattern does not match any existing files`)
+            }
+
+            if (unlistedSupportFiles.length !== 0) {
+                warn(fmRangeForDef("support_files"), "The following files are not matched by any declaration here:\n" + unlistedSupportFiles.join("\n"), QuickFixAdditions("support_files", unlistedSupportFiles.map(f => f + " by ???")))
+            }
+
         }
 
         let searchFrom = fmEnd
@@ -513,7 +570,8 @@ export function check(text: string, taskFile: string, _formatVersion?: string): 
     return diags
 }
 
-function fileSuggestionsForMissing(missingFile: string): string[] {
+function fileSuggestionsForMissing(missingFile: string, taskFile: string): { replacement: string, displayAs: string }[] {
+    const taskContainerPrefix = path.dirname(taskFile) + path.sep
     const parent = path.dirname(missingFile)
     if (!fs.existsSync(parent)) {
         return []
@@ -522,12 +580,52 @@ function fileSuggestionsForMissing(missingFile: string): string[] {
     const suggs = []
     const missingName = path.basename(missingFile)
     for (const filename of fs.readdirSync(parent)) {
-        let dist
-        if ((dist = util.levenshteinDistance(missingName, filename)) <= 2) {
-            suggs.push({ filename, dist })
+        let filePath = path.join(parent, filename)
+        if (fs.statSync(filePath).isFile()) {
+            if (filePath.startsWith(taskContainerPrefix)) {
+                filePath = filePath.substring(taskContainerPrefix.length)
+            }
+            const dist = util.levenshteinDistance(missingName, filename)
+            if (dist <= 2) {
+                suggs.push({ filename, filePath, dist })
+            }
+
         }
     }
 
     suggs.sort((a, b) => a.dist - b.dist)
-    return suggs.map(a => a.filename)
+    return suggs.map(a => ({ replacement: a.filePath, displayAs: a.filename }))
+}
+
+export async function findAllSupportFilesFor(taskFile: string): Promise<string[]> {
+    const taskFolder = path.dirname(taskFile)
+    const names: string[] = []
+
+    let prefixSegments: string[] = []
+    await walkExistingFolder(taskFolder, [".task.md", ".html", ".odt", "derived"])
+
+    async function walkExistingFolder(folder: string, excludeSuffixPatterns: string[]) {
+        const localNames = await fs.promises.readdir(folder)
+        fileScan: for (const localName of localNames) {
+            if (localName.startsWith(".")) {
+                continue fileScan
+            }
+            for (const excludeSuffixPattern of excludeSuffixPatterns) {
+                if (localName.endsWith(excludeSuffixPattern)) {
+                    continue fileScan
+                }
+            }
+            const localFile = path.join(folder, localName)
+            const stats = await fs.promises.stat(localFile)
+            if (stats.isFile()) {
+                names.push(path.join(...prefixSegments, localName))
+            } else if (stats.isDirectory()) {
+                prefixSegments.push(localName)
+                await walkExistingFolder(path.join(folder, localName), excludeSuffixPatterns)
+                prefixSegments.pop()
+            }
+        }
+    }
+
+    return names
 }

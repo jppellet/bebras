@@ -21,7 +21,7 @@ async function doCheck(taskFile: string, options: any) {
     await ensureIsTaskFile(taskFile, true)
 
     const text = await readFileStrippingBom(taskFile)
-    const diags = check(text, taskFile)
+    const diags = await check(text, taskFile)
     if (diags.length === 0) {
         console.log(`${taskFile}: all checks passed`)
     } else {

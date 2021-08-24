@@ -88,6 +88,18 @@ export const categories = [
     "interactions, systems and society",
 ] as const
 
+export const answerTypes = [
+    "multiple choice",
+    "multiple choice with images",
+    "multiple select",
+    "dropdown select",
+    "open integer",
+    "open text",
+    "interactive (click-on-object)",
+    "interactive (drag-and-drop)",
+    "interactive (other)",
+] as const
+
 export const markdownSectionNames = [
     "Body",
     "Question/Challenge",
