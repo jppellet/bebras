@@ -10,7 +10,7 @@ import * as yaml from 'js-yaml'
 
 import * as patterns from './patterns'
 import { TaskMetadata, defaultTaskMetadata, Dict } from "./util"
-import { defaultPluginOptions, PluginOptions } from "./convert_html"
+import { CssStylesheet, defaultPluginOptions, PluginOptions } from "./convert_html"
 import { normalizeRawMetadataToStandardYaml, postYamlLoadObjectCorrections } from "./check"
 import { isUndefined } from "lodash"
 
@@ -195,10 +195,17 @@ export function plugin(md: MarkdownIt, _parseOptions: any) {
       //    <div class="bebras-keywords bebras-header-cell">${keywordsCell}</div>
       //   </div>`
 
+      const style =
+        isUndefined(CssStylesheet)
+          ? "" // link included above
+          : `<style>${CssStylesheet}</style>`
+
+
       return '' + // version without keywords for now, TODO
         `
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex/dist/katex.min.css">
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/markdown-it-texmath/css/texmath.min.css">
+        ${style}
       
            <div class="bebras-header">
             <div class="bebras-ages">${ageRowCells}</div>

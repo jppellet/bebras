@@ -121,9 +121,10 @@ export function isStandardSectionName(sectionName: string): sectionName is Secti
 export const roleMainAuthor = "author"
 export const roleGraphics = "graphics"
 export const roleContributor = "contributor"
+export const roleSupportFiles = "support files"
 export const roleTranslation = "translation"
 export const roleInspiration = "inspiration"
-export const validRoles = [roleMainAuthor, roleContributor, roleGraphics, roleTranslation, roleInspiration] as const
+export const validRoles = [roleMainAuthor, roleContributor, roleGraphics, roleSupportFiles, roleTranslation, roleInspiration] as const
 
 
 // Regexes without captures (reused several times in other patterns)

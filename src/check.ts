@@ -355,7 +355,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
         }
 
         const contributors = metadata.contributors
-        const graphicsContributors = new Set<string>()
+        const supportFileContributors = new Set<string>()
 
         if (!isArray(contributors) || !_.every(contributors, isString)) {
             error(fmRangeForDef("contributors"), "The contributors must be a list of strings")
@@ -394,8 +394,8 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
                             if (country) {
                                 mainAuthorCountries.push(country)
                             }
-                        } else if (role === patterns.roleGraphics) {
-                            graphicsContributors.add(match.groups.name)
+                        } else if (role === patterns.roleGraphics || role === patterns.roleSupportFiles) {
+                            supportFileContributors.add(match.groups.name)
                         } else if (role.startsWith(patterns.roleTranslation)) {
                             let submatch
                             if (submatch = patterns.translation.exec(role)) {
@@ -493,8 +493,8 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
                             } else {
                                 const authorNames = authorPart.substring(byPos + ByMarker.length).split(" and ")
                                 for (const authorName of authorNames) {
-                                    if (!graphicsContributors.has(authorName)) {
-                                        warn(fmRangeForValueInDef("support_files", authorName), `This person is not mentioned in the contributor list with role '${patterns.roleGraphics}'`)
+                                    if (!supportFileContributors.has(authorName)) {
+                                        warn(fmRangeForValueInDef("support_files", authorName), `This person is not mentioned in the contributor list with role '${patterns.roleGraphics}' or '${patterns.roleSupportFiles}'`)
                                     }
                                     seenGraphicsContributors.add(authorName)
                                 }
@@ -513,10 +513,10 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
                 }
             })
             for (const seenGraphicsContributor of seenGraphicsContributors) {
-                graphicsContributors.delete(seenGraphicsContributor)
+                supportFileContributors.delete(seenGraphicsContributor)
             }
-            for (const unseenGraphicsContributor of graphicsContributors) {
-                warn(fmRangeForValueInDef("contributors", unseenGraphicsContributor), `This person has the role '${patterns.roleGraphics}' but is not listed in the details for the support files`)
+            for (const unseenGraphicsContributor of supportFileContributors) {
+                warn(fmRangeForValueInDef("contributors", unseenGraphicsContributor), `This person has the role '${patterns.roleGraphics}' and/or '${patterns.roleSupportFiles}' but is not listed in the details for the support files`)
             }
 
             const unmatchedFilePatterns = new Set<string>(allFilePatterns)
@@ -628,4 +628,96 @@ export async function findAllSupportFilesFor(taskFile: string): Promise<string[]
     }
 
     return names
+}
+
+
+export function formatTable(orig: string, eol: string): string {
+    const rows = orig
+        .trimEnd()      // get rid of last eol and whitespace
+        .split(/\r?\n/) // split lines
+        .map(line =>
+            line.split('|')
+                .filter(cell => cell.length !== 0) // filter out last/first empty cells
+                .map(cell => cell.trim()))         // make sure we do the job of adding whitespace back
+
+    const numCols = _.max(rows.map(row => row.length))
+    if (isUndefined(numCols)) {
+        return orig
+    }
+    const headerContent = /[:\-+]+/
+
+    type Align = "l" | "c" | "r" | "j"
+
+    const maxColWidths = new Array(numCols).fill(2)
+    const colAlignments: Align[] = new Array(numCols).fill("j")
+    let headerRow = -1
+    let headerSeen = false
+    rows.forEach((row, rowIndex) => {
+        const isHeader = !headerSeen && _.every(row, cell => headerContent.test(cell))
+        if (isHeader) {
+            headerRow = rowIndex
+        }
+        row.forEach((cell, colIndex) => {
+            maxColWidths[colIndex] = Math.max(maxColWidths[colIndex], cell.length)
+            if (isHeader) {
+                let align: Align
+                const leftAnchor = cell.startsWith(":")
+                const rightAnchor = cell.endsWith(":") || cell.endsWith("+")
+                if (leftAnchor) {
+                    if (rightAnchor) {
+                        align = "c"
+                    } else {
+                        align = "l"
+                    }
+                } else {
+                    if (rightAnchor) {
+                        align = "r"
+                    } else {
+                        align = "j"
+                    }
+                }
+                colAlignments[colIndex] = align
+            }
+        })
+    })
+
+
+    rows.forEach((row, rowIndex) => {
+        const isHeader = headerRow === rowIndex
+        let emptyCell
+        let pad: (cell: string, toPad: number, align: Align) => string
+        if (isHeader) {
+            headerSeen = true
+            emptyCell = "--"
+            pad = (cell, toPad, _align) => {
+                const mid = Math.floor(cell.length / 2)
+                return cell.substring(0, mid) + _.pad("", toPad, "-") + cell.substring(mid)
+            }
+        } else {
+            emptyCell = "  "
+            pad = (cell, toPad, align) => {
+                switch (align) {
+                    case "l":
+                    case "j":
+                        return cell + _.pad("", toPad, " ")
+                    case "r":
+                        return _.pad("", toPad, " ") + cell
+                    case "c":
+                        const firstHalf = Math.floor(toPad / 2)
+                        const secondHalf = toPad - firstHalf
+                        return _.pad("", firstHalf, " ") + cell + _.pad("", secondHalf, " ")
+                }
+            }
+        }
+        for (let c = row.length; c < numCols; c++) {
+            row.push(emptyCell)
+        }
+        row.forEach((cell, colIndex) => {
+            const toPad = maxColWidths[colIndex] - cell.length
+            const padded = pad(cell, toPad, colAlignments[colIndex])
+            row[colIndex] = padded
+        })
+    })
+
+    return rows.map(row => "| " + row.join(" | ") + " |").join(eol) + eol
 }

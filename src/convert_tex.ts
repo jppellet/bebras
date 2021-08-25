@@ -9,7 +9,7 @@ import codes = require("./codes")
 // import { numberToString } from 'pdf-lib'
 import { isString, isUndefined } from 'lodash'
 
-export async function convertTask_tex(taskFile: string, fileOut: string) : Promise<string> {
+export async function convertTask_tex(taskFile: string, fileOut: string): Promise<string> {
 
     const langCode = parseLanguageCodeFromTaskPath(taskFile) ?? codes.defaultLanguageCode()
     const textMd = await readFileStrippingBom(taskFile)
@@ -244,8 +244,10 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         return ""
     }
 
-    function nonExpandingAlignment(possiblyExpandingAlignment: string): string {
+    function nonExpandingAlignment(possiblyExpandingAlignment?: string): string {
         if (possiblyExpandingAlignment === "J") {
+            return "l"
+        } else if (isUndefined(possiblyExpandingAlignment)) {
             return "l"
         } else {
             return possiblyExpandingAlignment.toLowerCase()
@@ -278,7 +280,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             state = env.setState({ currentTableColumnIndex: colIndex })
         }
 
-        const align = nonExpandingAlignment(state.currentTable?.cellAlignmentChars[colIndex]!)
+        const align = nonExpandingAlignment(state.currentTable?.cellAlignmentChars[colIndex])
 
         let disableMathify = false
         let open = "" // default open and close markup
@@ -420,7 +422,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
             function useMakecell() {
                 const colIndex = state.currentTableColumnIndex
-                const align = nonExpandingAlignment(state.currentTable?.cellAlignmentChars[colIndex]!)
+                const align = nonExpandingAlignment(state.currentTable?.cellAlignmentChars[colIndex])
                 before = `\\makecell[${align}]{`
                 after = `}`
             }
