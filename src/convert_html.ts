@@ -134,7 +134,17 @@ li {
 }
 
 img {
-   max-width: 100%;
+    max-width: unset;
+    max-height: unset;
+}
+
+th,
+td {
+    padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+    border-top: unset;
 }
 
 /* Center all paragraph-images by default */

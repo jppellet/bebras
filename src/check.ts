@@ -618,7 +618,11 @@ export async function findAllSupportFilesFor(taskFile: string): Promise<string[]
             const localFile = path.join(folder, localName)
             const stats = await fs.promises.stat(localFile)
             if (stats.isFile()) {
-                names.push(path.join(...prefixSegments, localName))
+                let subpath = path.join(...prefixSegments, localName)
+                if (path.sep === "\\") {
+                    subpath = subpath.replace(/\\/g, "/")
+                }
+                names.push(subpath)
             } else if (stats.isDirectory()) {
                 prefixSegments.push(localName)
                 await walkExistingFolder(path.join(folder, localName), excludeSuffixPatterns)
