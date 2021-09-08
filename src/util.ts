@@ -230,6 +230,11 @@ export interface TaskMetadata {
     keywords: string[]
     support_files: string[]
     contributors: string[]
+    settings: undefined | TaskSettings
+}
+
+export interface TaskSettings {
+    default_image_scale: undefined | number
 }
 
 export type TaskMetadataField = keyof TaskMetadata
@@ -251,6 +256,7 @@ export function defaultTaskMetadata(): TaskMetadata {
         support_files: [],
         answer_type: "((unspecified))",
         contributors: ["((unspecified))"],
+        settings: undefined,
     }
 }
 

@@ -1,3 +1,4 @@
+import * as path from 'path'
 import * as fs from 'fs'
 import MarkdownIt = require('markdown-it')
 import Token = require('markdown-it/lib/token')
@@ -8,14 +9,14 @@ import { isUndefined } from 'lodash'
 
 export async function convertTask_html(taskFile: string, outputFile: string): Promise<string> {
    const mdText = await readFileStrippingBom(taskFile)
-   const [htmlText, metadata] = renderMarkdown(mdText, true)
+   const [htmlText, metadata] = renderMarkdown(mdText, path.dirname(taskFile), true)
    const r = await fs.promises.writeFile(outputFile, htmlText)
    console.log(`Output written on ${outputFile}`)
    return outputFile
 }
 
-export function renderMarkdown(text: string, fullHtml: boolean): [string, TaskMetadata] {
-   const md = MarkdownIt().use(require("./convert_html_markdownit").plugin)
+export function renderMarkdown(text: string, basePath: string, fullHtml: boolean): [string, TaskMetadata] {
+   const md = MarkdownIt().use(require("./convert_html_markdownit").plugin(() => basePath))
 
    const env: any = {}
    const result = md.render(text, env)
@@ -58,9 +59,9 @@ export function defaultPluginOptions() {
 
 export type PluginOptions = ReturnType<typeof defaultPluginOptions>
 
-export function parseMarkdown(text: string, parseOptions?: Partial<PluginOptions>): [Token[], TaskMetadata] {
+export function parseMarkdown(text: string, basePath: string, parseOptions?: Partial<PluginOptions>): [Token[], TaskMetadata] {
    const options = { ...defaultPluginOptions(), ...parseOptions }
-   const md = MarkdownIt().use(require("./convert_html_markdownit").plugin, options)
+   const md = MarkdownIt().use(require("./convert_html_markdownit").plugin(() => basePath), options)
    const env: any = {}
    const tokens = md.parse(text, env)
    const metadata: TaskMetadata = env.taskMetadata ?? defaultTaskMetadata()

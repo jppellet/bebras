@@ -123,8 +123,10 @@ export const roleGraphics = "graphics"
 export const roleContributor = "contributor"
 export const roleSupportFiles = "support files"
 export const roleTranslation = "translation"
+export const roleInteractivity = "interactivity"
 export const roleInspiration = "inspiration"
-export const validRoles = [roleMainAuthor, roleContributor, roleGraphics, roleSupportFiles, roleTranslation, roleInspiration] as const
+export const validRoles = [roleMainAuthor, roleContributor, roleGraphics, roleSupportFiles, roleInteractivity, roleTranslation, roleInspiration] as const
+export const supportFilesRoles = [roleGraphics, roleSupportFiles, roleInteractivity] as const
 
 
 // Regexes without captures (reused several times in other patterns)

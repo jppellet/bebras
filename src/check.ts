@@ -5,7 +5,7 @@ import * as fs from 'fs'
 
 import * as codes from './codes'
 import * as patterns from './patterns'
-import { isNullOrUndefined, s, isString, isUndefined, isArray, TaskMetadata, Check, ErrorMessage, Value, isErrorMessage, TaskMetadataField } from "./util"
+import { isNullOrUndefined, s, isString, isUndefined, isArray, TaskMetadata, Check, ErrorMessage, Value, isErrorMessage, TaskMetadataField, mkStringCommaAnd } from "./util"
 import { util } from "./main"
 import * as minimatch from "minimatch"
 
@@ -394,7 +394,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
                             if (country) {
                                 mainAuthorCountries.push(country)
                             }
-                        } else if (role === patterns.roleGraphics || role === patterns.roleSupportFiles) {
+                        } else if (patterns.supportFilesRoles.includes(role as any)) {
                             supportFileContributors.add(match.groups.name)
                         } else if (role.startsWith(patterns.roleTranslation)) {
                             let submatch
@@ -494,7 +494,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
                                 const authorNames = authorPart.substring(byPos + ByMarker.length).split(" and ")
                                 for (const authorName of authorNames) {
                                     if (!supportFileContributors.has(authorName)) {
-                                        warn(fmRangeForValueInDef("support_files", authorName), `This person is not mentioned in the contributor list with role '${patterns.roleGraphics}' or '${patterns.roleSupportFiles}'`)
+                                        warn(fmRangeForValueInDef("support_files", authorName), `This person is not mentioned in the contributor list with role ${mkStringCommaAnd(patterns.supportFilesRoles.map(r => "'" + r + "'"), "or")}`)
                                     }
                                     seenGraphicsContributors.add(authorName)
                                 }
@@ -516,7 +516,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
                 supportFileContributors.delete(seenGraphicsContributor)
             }
             for (const unseenGraphicsContributor of supportFileContributors) {
-                warn(fmRangeForValueInDef("contributors", unseenGraphicsContributor), `This person has the role '${patterns.roleGraphics}' and/or '${patterns.roleSupportFiles}' but is not listed in the details for the support files`)
+                warn(fmRangeForValueInDef("contributors", unseenGraphicsContributor), `This person has the role ${mkStringCommaAnd(patterns.supportFilesRoles.map(r => "'" + r + "'"), "and/or")} but is not listed in the details for the support files`)
             }
 
             const unmatchedFilePatterns = new Set<string>(allFilePatterns)

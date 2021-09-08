@@ -13,7 +13,7 @@ export async function convertTask_tex(taskFile: string, fileOut: string): Promis
 
     const langCode = parseLanguageCodeFromTaskPath(taskFile) ?? codes.defaultLanguageCode()
     const textMd = await readFileStrippingBom(taskFile)
-    const [tokens, metadata] = md2html.parseMarkdown(textMd, {
+    const [tokens, metadata] = md2html.parseMarkdown(textMd, path.dirname(taskFile), {
         langCode,
         // we use ⍀ to avoid escaping \ to \\, and we later convert it back to \
         customQuotes: ["⍀enquote⦃", "⦄", "⍀enquote⦃", "⦄"],

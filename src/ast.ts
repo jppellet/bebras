@@ -65,7 +65,7 @@ export async function astOf(taskFile: string, forceRegen: boolean = false): Prom
             await mkdirsOf(jsonFile)
             await fs.promises.writeFile(jsonFile, JSON.stringify(ast, undefined, 4))
         } catch (err) {
-            console.log("Couldn't write cached AST: " + err.message)
+            console.log("Couldn't write cached AST: " + (err as any).message)
         }
         return enrichAST(ast, taskFile)
     } else {
@@ -82,7 +82,7 @@ async function loadASTFrom(jsonFile: string, taskFile: string): Promise<TaskAST>
 
 export async function buildASTOf(taskFile: string): Promise<TaskAST_Saved> {
     const mdText = await readFileStrippingBom(taskFile)
-    const [tokens, metadata] = parseMarkdown(mdText)
+    const [tokens, metadata] = parseMarkdown(mdText, path.dirname(taskFile))
     return toJsonRepr(tokens, taskFile, metadata)
 }
 
