@@ -1,6 +1,6 @@
 {
   "name": "bebras",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Tools to support the editing of Bebras tasks in Markdown",
   "main": "./out/main.js",
   "types": "./out/main.d.ts",
