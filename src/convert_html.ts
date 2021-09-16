@@ -173,11 +173,6 @@ img.only-img-in-p {
    border-left: 2px solid lightgrey;
 }
 
-/* Useful for rendered LaTeX */
-*[aria-hidden=true] {
-   display: none;
-}
-
 /* sub and sup rules to not disgracefully affect line-height */
 
 sup {

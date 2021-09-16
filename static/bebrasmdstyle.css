@@ -85,11 +85,6 @@ img.only-img-in-p {
     display: none;
 }
 
-/* Useful for rendered LaTeX */
-*[aria-hidden=true] {
-    display: none;
-}
-
 /* sub and sup rules to not disgracefully affect line-height */
 
 sup {

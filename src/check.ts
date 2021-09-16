@@ -648,6 +648,7 @@ export function formatTable(orig: string, eol: string): string {
     if (isUndefined(numCols)) {
         return orig
     }
+    const addOpeningTrainingBars = numCols > 2
     const headerContent = /[:\-+]+/
 
     type Align = "l" | "c" | "r" | "j"
@@ -717,11 +718,19 @@ export function formatTable(orig: string, eol: string): string {
             row.push(emptyCell)
         }
         row.forEach((cell, colIndex) => {
-            const toPad = maxColWidths[colIndex] - cell.length
-            const padded = pad(cell, toPad, colAlignments[colIndex])
-            row[colIndex] = padded
+            let cellContent
+            if (!addOpeningTrainingBars && colIndex === numCols - 1) {
+                // Don't pad last col
+                cellContent = cell
+            } else {
+                const toPad = maxColWidths[colIndex] - cell.length
+                cellContent = pad(cell, toPad, colAlignments[colIndex])
+            }
+            row[colIndex] = cellContent
         })
     })
 
-    return rows.map(row => "| " + row.join(" | ") + " |").join(eol) + eol
+    const [linePrefix, lineSuffix] = addOpeningTrainingBars ? ["| ", " |"] : ["", ""]
+
+    return rows.map(row => linePrefix + row.join(" | ") + lineSuffix).join(eol) + eol
 }
