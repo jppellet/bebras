@@ -311,7 +311,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
                 } else if (classif === "hard") {
                     level = 3
                 } else {
-                    error(fmRangeForAgeValue(a), `Invalid value, should be one of easy, medium, hard, or ${LevelNotApplicable} if not applicable`, QuickFixReplacements(["easy", "medium", "hard", LevelNotApplicable]))
+                    error(fmRangeForAgeValue(a), `Invalid value '${classif}', should be one of easy, medium, hard, or ${LevelNotApplicable} if not applicable`, QuickFixReplacements(["easy", "medium", "hard", LevelNotApplicable]))
                     return
                 }
 
@@ -337,7 +337,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
         if (!isString(answerType)) {
             error(fmRangeForDef("answer_type"), "The answer type must be a plain string")
         } else if (!patterns.answerTypes.includes(answerType as any)) {
-            warn(fmRangeForValueInDef("answer_type", answerType), `This answer type is not recognized. Expected one of:\n  - ${patterns.answerTypes.join("\n  - ")}`, QuickFixReplacements(patterns.answerTypes))
+            warn(fmRangeForValueInDef("answer_type", answerType), `Answer type '${answerType}' is not recognized. Expected one of:\n  - ${patterns.answerTypes.join("\n  - ")}`, QuickFixReplacements(patterns.answerTypes))
         }
 
         const validCategories = patterns.categories as readonly string[]
@@ -383,7 +383,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
                                         suggStr = ` Did you mean of the following? ${sugg.join(", ")}`
                                     }
                                 }
-                                warn(fmRangeForValueInDef("contributors", country), `This country is not recognized.${suggStr}\nNote: we know this may be a sensible topic and mean no offense if your country is not recognized here by mistake. Please contact us if you feel this is wrong.`, QuickFixReplacements(sugg))
+                                warn(fmRangeForValueInDef("contributors", country), `Country '${country}' is not recognized.${suggStr}\nNote: we know this may be a sensible topic and mean no offense if your country is not recognized here by mistake. Please contact us if you feel this is wrong.`, QuickFixReplacements(sugg))
                             }
                             countries.push(country)
                         }
@@ -410,7 +410,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
                                                 suggStr = ` Did you mean of the following? ${sugg.join(", ")}`
                                             }
                                         }
-                                        warn(fmRangeForValueInDef("contributors", lang), `This language is not recognized.${suggStr}\nNote: we know this may be a sensible topic and mean no offense if your language is not recognized here by mistake. Please contact us if you feel this is wrong.`, QuickFixReplacements(sugg))
+                                        warn(fmRangeForValueInDef("contributors", lang), `Language '${lang}' is not recognized.${suggStr}\nNote: we know this may be a sensible topic and mean no offense if your language is not recognized here by mistake. Please contact us if you feel this is wrong.`, QuickFixReplacements(sugg))
                                     }
                                 }
                                 checkLang(submatch.groups.from)
@@ -419,7 +419,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
                                 warn(fmRangeForValueInDef("contributors", role), `The role '${patterns.roleTranslation}' should have the format:\ntranslation from <source language> into <target language>\n\nPattern:\n${patterns.translation.source}`)
                             }
                         } else if (!patterns.validRoles.includes(role as any)) {
-                            warn(fmRangeForValueInDef("contributors", role), `This role is not recognized. Expected one of:\n  - ${patterns.validRoles.join("\n  - ")}`, QuickFixReplacements(patterns.validRoles))
+                            warn(fmRangeForValueInDef("contributors", role), `Role '${role}' is not recognized. Expected one of:\n  - ${patterns.validRoles.join("\n  - ")}`, QuickFixReplacements(patterns.validRoles))
                         }
                     }
                 } else {
@@ -444,7 +444,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
                 if (match = patterns.keyword.exec(f)) {
                     const keyword = match.groups.keyword
                     if (seenKeywords.has(keyword)) {
-                        warn(fmRangeForValueInDef("keywords", keyword), `This keyword is mentioned several times`)
+                        warn(fmRangeForValueInDef("keywords", keyword), `Keyword '${keyword}' is mentioned several times`)
                     } else {
                         seenKeywords.add(keyword)
                     }
@@ -456,7 +456,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
                         const urls = urlsStr.split(/ *, */)
                         for (const url of urls) {
                             if (seenUrls.has(url)) {
-                                warn(fmRangeForValueInDef("keywords", url), `This URL is mentioned several times`)
+                                warn(fmRangeForValueInDef("keywords", url), `URL '${url}' is mentioned several times`)
                             } else {
                                 seenUrls.add(url)
                             }
@@ -494,7 +494,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
                                 const authorNames = authorPart.substring(byPos + ByMarker.length).split(" and ")
                                 for (const authorName of authorNames) {
                                     if (!supportFileContributors.has(authorName)) {
-                                        warn(fmRangeForValueInDef("support_files", authorName), `This person is not mentioned in the contributor list with role ${mkStringCommaAnd(patterns.supportFilesRoles.map(r => "'" + r + "'"), "or")}`)
+                                        warn(fmRangeForValueInDef("support_files", authorName), `Person '${authorName}' is not mentioned in the contributor list with role ${mkStringCommaAnd(patterns.supportFilesRoles.map(r => "'" + r + "'"), "or")}`)
                                     }
                                     seenGraphicsContributors.add(authorName)
                                 }
@@ -516,7 +516,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
                 supportFileContributors.delete(seenGraphicsContributor)
             }
             for (const unseenGraphicsContributor of supportFileContributors) {
-                warn(fmRangeForValueInDef("contributors", unseenGraphicsContributor), `This person has the role ${mkStringCommaAnd(patterns.supportFilesRoles.map(r => "'" + r + "'"), "and/or")} but is not listed in the details for the support files`)
+                warn(fmRangeForValueInDef("contributors", unseenGraphicsContributor), `Person '${unseenGraphicsContributor}' has the role ${mkStringCommaAnd(patterns.supportFilesRoles.map(r => "'" + r + "'"), "and/or")} but is not listed in the details for the support files`)
             }
 
             const unmatchedFilePatterns = new Set<string>(allFilePatterns)
@@ -636,52 +636,85 @@ export async function findAllSupportFilesFor(taskFile: string): Promise<string[]
 
 
 export function formatTable(orig: string, eol: string): string {
+
+    type Row = { cells: string[], hasTrailingBackslash: boolean }
+
+    function rowFromLine(line: string): Row {
+        let hasTrailingBackslash = false
+        const cells = line.split(/(?:\||‖)/)
+            .filter(cell => cell.length !== 0) // filter out last/first empty cells
+            .map(cell => cell.trim())          // make sure we do the job of adding whitespace back // TODO: this may strip 3+ more spaces at the beginning, which have semantic meaning! Don't strip!
+        const lastCell = cells[cells.length - 1]
+        if (lastCell === "\\") {
+            cells.pop()
+            hasTrailingBackslash = true
+        } else if (lastCell.endsWith("\\")) {
+            hasTrailingBackslash = true
+            cells[cells.length - 1] = lastCell.substring(0, lastCell.length - 1).trimEnd()
+        }
+        return { cells, hasTrailingBackslash }
+    }
+
     const rows = orig
         .trimEnd()      // get rid of last eol and whitespace
         .split(/\r?\n/) // split lines
-        .map(line =>
-            line.split('|')
-                .filter(cell => cell.length !== 0) // filter out last/first empty cells
-                .map(cell => cell.trim()))         // make sure we do the job of adding whitespace back
+        .map(rowFromLine)
 
-    const numCols = _.max(rows.map(row => row.length))
+    const numCols = _.max(rows.map(row => row.cells.length))
     if (isUndefined(numCols)) {
         return orig
     }
     const addOpeningTrainingBars = numCols > 2
-    const headerContent = /[:\-+]+/
+    const headerContent = /:?(?:\^|v)?\-+:?/
 
-    type Align = "l" | "c" | "r" | "j"
+    type HAlign = "l" | "c" | "r" | "j"
+    type VAlign = "t" | "m" | "b"
 
     const maxColWidths = new Array(numCols).fill(2)
-    const colAlignments: Align[] = new Array(numCols).fill("j")
+    const hAligns: HAlign[] = new Array(numCols).fill("j")
+    const vAligns: VAlign[] = new Array(numCols).fill("m")
     let headerRow = -1
     let headerSeen = false
     rows.forEach((row, rowIndex) => {
-        const isHeader = !headerSeen && _.every(row, cell => headerContent.test(cell))
+        const isHeader = !headerSeen && _.every(row.cells, cell => headerContent.test(cell))
         if (isHeader) {
             headerRow = rowIndex
+            for (let i = 0; i < row.cells.length; i++) {
+                row.cells[i] = row.cells[i].replace(/--+/g, "--")
+            }
         }
-        row.forEach((cell, colIndex) => {
+        row.cells.forEach((cell, colIndex) => {
             maxColWidths[colIndex] = Math.max(maxColWidths[colIndex], cell.length)
             if (isHeader) {
-                let align: Align
+                let hAlign: HAlign
+                let vAlign: VAlign
+                let strippedCell
                 const leftAnchor = cell.startsWith(":")
                 const rightAnchor = cell.endsWith(":") || cell.endsWith("+")
                 if (leftAnchor) {
+                    strippedCell = cell.substring(1)
                     if (rightAnchor) {
-                        align = "c"
+                        hAlign = "c"
                     } else {
-                        align = "l"
+                        hAlign = "l"
                     }
                 } else {
+                    strippedCell = cell
                     if (rightAnchor) {
-                        align = "r"
+                        hAlign = "r"
                     } else {
-                        align = "j"
+                        hAlign = "j"
                     }
                 }
-                colAlignments[colIndex] = align
+                hAligns[colIndex] = hAlign
+                if (strippedCell.startsWith("^")) {
+                    vAlign = "t"
+                } else if (strippedCell.startsWith("v")) {
+                    vAlign = "b"
+                } else {
+                    vAlign = "m"
+                }
+                vAligns[colIndex] = vAlign
             }
         })
     })
@@ -690,7 +723,7 @@ export function formatTable(orig: string, eol: string): string {
     rows.forEach((row, rowIndex) => {
         const isHeader = headerRow === rowIndex
         let emptyCell
-        let pad: (cell: string, toPad: number, align: Align) => string
+        let pad: (cell: string, toPad: number, hAlign: HAlign) => string
         if (isHeader) {
             headerSeen = true
             emptyCell = "--"
@@ -700,37 +733,38 @@ export function formatTable(orig: string, eol: string): string {
             }
         } else {
             emptyCell = "  "
-            pad = (cell, toPad, align) => {
-                switch (align) {
+            pad = (cell, toPad, hAlign) => {
+                switch (hAlign) {
                     case "l":
                     case "j":
                         return cell + _.pad("", toPad, " ")
                     case "r":
                         return _.pad("", toPad, " ") + cell
                     case "c":
-                        const firstHalf = Math.floor(toPad / 2)
+                        const firstHalf = Math.min(2, Math.floor(toPad / 2)) // not more than 2, otherwise interpreted as code
                         const secondHalf = toPad - firstHalf
                         return _.pad("", firstHalf, " ") + cell + _.pad("", secondHalf, " ")
                 }
             }
         }
-        for (let c = row.length; c < numCols; c++) {
-            row.push(emptyCell)
+        for (let c = row.cells.length; c < numCols; c++) {
+            row.cells.push(emptyCell)
         }
-        row.forEach((cell, colIndex) => {
+        row.cells.forEach((cell, colIndex) => {
             let cellContent
-            if (!addOpeningTrainingBars && colIndex === numCols - 1) {
+            if (!addOpeningTrainingBars && colIndex === numCols - 1 && headerRow === 0) {
                 // Don't pad last col
                 cellContent = cell
             } else {
                 const toPad = maxColWidths[colIndex] - cell.length
-                cellContent = pad(cell, toPad, colAlignments[colIndex])
+                cellContent = pad(cell, toPad, hAligns[colIndex])
             }
-            row[colIndex] = cellContent
+            row.cells[colIndex] = cellContent
         })
     })
 
     const [linePrefix, lineSuffix] = addOpeningTrainingBars ? ["| ", " |"] : ["", ""]
+    const getLineSuffix = (r: Row) => r.hasTrailingBackslash ? " \\" : lineSuffix
 
-    return rows.map(row => linePrefix + row.join(" | ") + lineSuffix).join(eol) + eol
+    return rows.map(row => linePrefix + row.cells.join(" | ") + getLineSuffix(row)).join(eol) + eol
 }

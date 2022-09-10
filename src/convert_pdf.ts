@@ -17,7 +17,7 @@ import { TextContent, TextItem } from 'pdfjs-dist/types/display/api'
 
 import templates from './templates'
 import { PdfBookmarkMetadata } from './json_schemas'
-import { isBinaryAvailable, readFileStrippingBom, TaskMetadata, toFileUrl } from './util'
+import { isBinaryAvailable, mkdirsOf, readFileStrippingBom, TaskMetadata, toFileUrl } from './util'
 import { exec } from 'child_process'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJSWorker
@@ -29,6 +29,7 @@ export async function convertTask_pdf(taskFile: string, outputFile: string): Pro
 
     // console.log("pdfData", pdfData)
 
+    await mkdirsOf(outputFile)
     await fs.promises.writeFile(outputFile, pdfData)
 
     const bookmarkMetadata = await generatePdfBookmarkMetadata(outputFile, sectionTitles, metadata)

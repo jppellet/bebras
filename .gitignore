@@ -5,3 +5,4 @@ out
 *.vsix
 .DS_Store
 /test-task-files
+/HOWTO_jpp.md

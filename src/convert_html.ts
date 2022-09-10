@@ -3,13 +3,14 @@ import * as fs from 'fs'
 import MarkdownIt = require('markdown-it')
 import Token = require('markdown-it/lib/token')
 
-import { defaultTaskMetadata, readFileStrippingBom, TaskMetadata } from './util'
+import { defaultTaskMetadata, mkdirsOf, readFileStrippingBom, TaskMetadata } from './util'
 import { defaultLanguageCode } from './codes'
 import { isUndefined } from 'lodash'
 
 export async function convertTask_html(taskFile: string, outputFile: string): Promise<string> {
    const mdText = await readFileStrippingBom(taskFile)
    const [htmlText, metadata] = renderMarkdown(mdText, path.dirname(taskFile), true)
+   await mkdirsOf(outputFile)
    const r = await fs.promises.writeFile(outputFile, htmlText)
    console.log(`Output written on ${outputFile}`)
    return outputFile

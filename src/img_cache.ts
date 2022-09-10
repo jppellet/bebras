@@ -7,7 +7,12 @@ export function getImageSize(path: string) {
     if (width) {
         return width
     }
-    width = imageSize(path).width ?? 0
-    cache.set(path, width)
+    width = 0
+    try {
+        width = imageSize(path).width ?? 0
+        cache.set(path, width)
+    } catch (err) {
+        console.log(`Couldn't find size of image '${path}': ` + (err as any).message ?? String(err))
+    }
     return width
 }

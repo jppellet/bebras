@@ -31,6 +31,13 @@ export function plugin(getBasePath: () => string) {
       .use(require('markdown-it-inline-comments'))
       .use(require("markdown-it-anchor"))
 
+      // see https://www.npmjs.com/package/markdown-it-multimd-table
+      .use(require("markdown-it-multimd-table-ext"), {
+        multiline: true,
+        rowspan: true,
+        headerless: true,
+      })
+
       // see https://github.com/goessner/markdown-it-texmath
       .use(require("markdown-it-texmath"), {
         engine: katex,
@@ -39,13 +46,6 @@ export function plugin(getBasePath: () => string) {
           // https://katex.org/docs/options.html
           fleqn: true,
         },
-      })
-
-      // see https://www.npmjs.com/package/markdown-it-multimd-table
-      .use(require("markdown-it-multimd-table"), {
-        multiline: true,
-        rowspan: true,
-        headerless: true,
       })
 
       .use(require("markdown-it-toc-done-right"), {
@@ -556,13 +556,23 @@ export function plugin(getBasePath: () => string) {
           ["width_min", "min-width", addStylePx],
           ["width_max", "max-width", addStylePx],
           ["height_abs", "height", addStylePx],
-          ["placement", "float", addStyle],
         ]
 
         for (const [groupName, cssName, doAddStyle] of parserElems) {
           if (value = match.groups[groupName]) {
             doAddStyle(cssName, value)
           }
+        }
+
+        if (value = match.groups.placement) {
+          if (value === "left" || value === "right") {
+            addStyle("float", value)
+          }
+        }
+
+        if (value = match.groups.placement_args) {
+          addStyle("position", "relative")
+          addStyle("bottom", value)
         }
       }
 

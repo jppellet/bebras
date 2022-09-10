@@ -4,10 +4,13 @@ import md2html = require('./convert_html')
 import _ = require('lodash')
 import Token = require('markdown-it/lib/token')
 import patterns = require("./patterns")
-import { texMathify, HtmlToTexPixelRatio, Dict, texEscapeChars, parseLanguageCodeFromTaskPath, readFileStrippingBom, texMath, TaskMetadata, siblingWithExtension } from './util'
+import { texMathify, HtmlToTexPixelRatio, Dict, texEscapeChars, parseLanguageCodeFromTaskPath, readFileStrippingBom, texMath, TaskMetadata, siblingWithExtension, mkdirsOf } from './util'
 import codes = require("./codes")
 // import { numberToString } from 'pdf-lib'
 import { isString, isUndefined } from 'lodash'
+import { getImageSize } from './img_cache'
+
+const DUMP_TOKENS = false
 
 export async function convertTask_tex(taskFile: string, fileOut: string): Promise<string> {
 
@@ -26,11 +29,14 @@ export async function convertTask_tex(taskFile: string, fileOut: string): Promis
         }
     })
 
-    // for (const t of linealizedTokens) {
-    //     console.log(t)
-    // }
-    // console.log(metadata)
+    if (DUMP_TOKENS) {
+        for (const t of linealizedTokens) {
+            console.log(t)
+        }
+        console.log(metadata)
+    }
 
+    await mkdirsOf(fileOut)
 
     const texDataStandalone = renderTex(linealizedTokens, langCode, metadata, taskFile, true)
     await fs.promises.writeFile(fileOut, texDataStandalone)
@@ -45,7 +51,7 @@ export async function convertTask_tex(taskFile: string, fileOut: string): Promis
     return fileOut
 }
 
-export function renderTex(linealizedTokens: Token[], langCode: string, metadata: TaskMetadata, filepath: string, standalone: boolean,): string {
+export function renderTex(linealizedTokens: Token[], langCode: string, metadata: TaskMetadata, taskFile: string, standalone: boolean,): string {
 
     const license = patterns.genLicense(metadata)
 
@@ -65,6 +71,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
     function defaultRendererState() {
         return {
             isInHeading: false,
+            isInBold: false,
             currentTable: undefined as undefined | { cellAlignmentChars: Array<string>, closeWith: string },
             currentTableCell: undefined as undefined | { type: CellType, closeWith: string },
             currentTableRowIndex: -1,
@@ -122,7 +129,10 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
     const sectionRenderingData: Dict<{ skip: boolean, pre: string, post: string, disableMathify: boolean }> = {
         "Body": { skip: false, pre: "", post: "", disableMathify: false },
         "Question/Challenge": { skip: false, pre: "{\\em\n", post: "}", disableMathify: true },
-        "Answer Options/Interactivity Description": { skip: false, pre: "", post: "", disableMathify: false },
+        "Question/Challenge - for the brochures": { skip: false, pre: "{\\em\n\n", post: "}\n\n", disableMathify: true },
+        // "Question/Challenge - for the online challenge": { skip: false, pre: "{\\em\n", post: "}", disableMathify: true },
+        "Question/Challenge - for the online challenge": { skip: FormatBrochure, pre: "{\\em\n\n", post: "}\n\n", disableMathify: true },
+        "Answer Options/Interactivity Description": { skip: false, pre: "\\begingroup\n\\renewcommand{\\arraystretch}{1.5}", post: "\\endgroup\n", disableMathify: false },
         "Answer Explanation": { skip: false, pre: "", post: "", disableMathify: false },
         "It's Informatics": { skip: false, pre: "", post: "", disableMathify: false },
         "Keywords and Websites": { skip: false, pre: "{\\raggedright\n", post: "\n}", disableMathify: true },
@@ -283,6 +293,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         const align = nonExpandingAlignment(state.currentTable?.cellAlignmentChars[colIndex])
 
         let disableMathify = false
+        let isInBold = false
         let open = "" // default open and close markup
         let close = ""
         if (type === "thead") {
@@ -291,6 +302,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             open = `{\\setstretch{1.0}\\thead[${align}b]{`
             close = `}}`
             disableMathify = true
+            isInBold = true
         } else if (type === "makecell") {
             open = `\\makecell[${align}]{`
             close = `}`
@@ -313,7 +325,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             close = close + `}`
         }
 
-        env.pushState({ currentTableCell: { type, closeWith: close }, disableMathify })
+        env.pushState({ currentTableCell: { type, closeWith: close }, disableMathify, isInBold })
         const debug = ""
         // const debug = `(${rowIndex},${colIndex})--`
         return sep + open + debug
@@ -380,6 +392,15 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             return text
         },
 
+        "code_inline": (tokens, idx, env) => {
+            const content = texEscapeChars(tokens[idx].content)
+            return `\\BrochureInlineCode{${content}}`
+        },
+
+        "math_inline_double": (tokens, idx, env) => {
+            return `$${tokens[idx].content}$`
+        },
+
         "image": (tokens, idx, env) => {
             const t = tokens[idx]
 
@@ -395,23 +416,32 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             let title = t.attrGet("title")
             let includeOpts = ""
             let placement = "unspecified"
-            let width: string | undefined = undefined
-            let match
+            let placementArgs = undefined as string | undefined
+            let widthStr: string | undefined = undefined
+            let scale: number | undefined = undefined
+            let match, value
             if (title && (match = patterns.imageOptions.exec(title))) {
                 title = title.replace(patterns.imageOptions, "")
-                let value
                 if (value = match.groups.width_abs) {
                     const f = roundTenth(parseFloat(value) * HtmlToTexPixelRatio)
-                    width = `${f}px`
-                    includeOpts = `[width=${width}]`
+                    widthStr = `${f}px`
+                    includeOpts = `[width=${widthStr}]`
                 } else if (value = match.groups.width_rel) {
                     const f = roundTenth(parseFloat(value.slice(0, value.length - 1)) / 100)
-                    width = `${f}\\linewidth`
-                    includeOpts = `[width=${width}]`
+                    widthStr = `${f}\\linewidth`
+                    includeOpts = `[width=${widthStr}]`
                 }
                 if (value = match.groups.placement) {
                     placement = value
                 }
+                if (value = match.groups.placement_args) {
+                    placementArgs = value
+                }
+            }
+
+            if (includeOpts.length === 0 && (value = metadata.settings?.default_image_scale)) {
+                scale = value
+                includeOpts = `[scale=${value}]`
             }
 
             const state = env.state()
@@ -434,42 +464,67 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                 after = `\\par}`
             }
 
-            function useRaisebox(ignoreHeight: boolean) {
+            function useRaisebox(ignoreHeight: boolean, vAdjust?: string) {
+                const baseOffset = "-0.5ex"
+                const raiseboxParam = isUndefined(vAdjust)
+                    ? baseOffset
+                    : `\\dimexpr ${baseOffset} ${vAdjust} \\relax`
                 const sizeopt = ignoreHeight ? "[0pt][0pt]" : ""
-                before = `\\raisebox{-0.5ex}${sizeopt}{`
+                before = `\\raisebox{${raiseboxParam}}${sizeopt}{`
                 after = `}`
             }
 
             const isInTable = !!state.currentTableCell
-            if (placement === "unspecified" || isInTable) {
+            // console.log({ imgPath, placement, placementArgs })
+            if (placement === "unspecified" || placement === "inline" || isInTable) {
                 if (isSurrounded(tokens, idx, 1, "paragraph")) {
                     if (isSurrounded(tokens, idx, 2, "td")) {
+                        // console.log("use makecell1")
                         useMakecell()
                     } else if (!isInTable) {
+                        // console.log("use center env")
                         useCenterEnv()
                     } else {
                         // inline in table cell
-                        useRaisebox(false)
+                        // console.log("use raisebox1")
+                        useRaisebox(false, placementArgs)
                     }
                 } else if (isSurrounded(tokens, idx, 1, "td")) {
+                    // console.log("use makecell2")
                     useMakecell()
-                } else if (isSurrounded(tokens, idx, 1, "text", "text")) {
+                } else if (isSurrounded(tokens, idx, 1, "text", "text")
+                    || isSurrounded(tokens, idx, 1, "text", "paragraph_close")
+                    || isSurrounded(tokens, idx, 1, "paragraph_open", "text")
+                    || isSurrounded(tokens, idx, 1, "text", "image")
+                    || isSurrounded(tokens, idx, 1, "image", "text")
+                    || isSurrounded(tokens, idx, 1, "image", "image")
+                ) {
                     // inline in paragraph
                     let ignoreHeight = true
                     try {
                         // heuristic: if width is >= 30, then don't ignore
-                        ignoreHeight = parseInt(width?.replace(/px/, "") ?? "0") < 30
+                        ignoreHeight = parseInt(widthStr?.replace(/px/, "") ?? "0") < 30
                     } catch { }
-                    useRaisebox(ignoreHeight)
+                    // console.log("use raisebox2, ignoreHeight=" + ignoreHeight)
+                    useRaisebox(ignoreHeight, placementArgs)
+                } else {
+                    // console.log("use raw")
+                    // console.log(tokens.slice(idx - 5, idx + 5))
                 }
 
             } else {
                 // left or right
                 const placementSpec = placement[0].toUpperCase()
-                if (width) {
-                    before = `\\begin{wrapfigure}{${placementSpec}}{${width}}\n\\raisebox{-.46cm}[\\height-.92cm][-.46cm]{`
-                    after = `}\n\\end{wrapfigure}`
+                if (!widthStr && !isUndefined(scale)) {
+                    // read teh image wto know its width
+                    const realImgPath = path.join(path.dirname(taskFile), imgPathForHtml)
+                    const imgSize = getImageSize(realImgPath)
+                    widthStr = (scale * imgSize) + "px"
+                }
 
+                if (widthStr) {
+                    before = `\\begin{wrapfigure}{${placementSpec}}{${widthStr}}\n\\raisebox{-.46cm}[\\dimexpr \\height-.92cm \\relax][-.46cm]{`
+                    after = `}\n\\end{wrapfigure}`
                 } else {
                     warn(`Undefined width for floating image '${imgPathForHtml}'`)
                 }
@@ -498,13 +553,14 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         },
 
         "math_block": (tokens, idx, env) => {
-            return '$$' + texMath(tokens[idx].content) + '$$'
+            return '$$' + texMath(tokens[idx].content) + '$$\n\n'
         },
 
         "math_block_eqno": (tokens, idx, env) => {
-            return '$$' + texMath(tokens[idx].content) + '$$' // TODO add eqno?
+            return '$$' + texMath(tokens[idx].content) + '$$\n\n' // TODO add eqno?
         },
 
+        "math_block_end": skip,
 
         "hardbreak": (tokens, idx, env) => {
             let value
@@ -535,9 +591,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         },
 
 
-        "paragraph_open": (tokens, idx, env) => {
-            return ""
-        },
+        "paragraph_open": skip,
 
         "paragraph_close": (tokens, idx, env) => {
             const state = env.state()
@@ -567,7 +621,9 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
 
         "ordered_list_open": (tokens, idx, env) => {
-            return `\\begin{enumerate}\n`
+            const start = tokens[idx].attrGet("start")
+            const startTex = start === null ? "" : `  \\setcounter{enumi}{${parseInt(start) - 1}}\n`
+            return `\\begin{enumerate}\n${startTex}`
         },
 
         "ordered_list_close": (tokens, idx, env) => {
@@ -595,8 +651,9 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
 
         "strong_open": (tokens, idx, env) => {
-            env.pushState({ disableMathify: true })
-            return `\\textbf{`
+            const alreadyBold = env.state().isInBold
+            env.pushState({ disableMathify: true, isInBold: !alreadyBold })
+            return alreadyBold ? `\\textnormal{` : `\\textbf{`
         },
 
         "strong_close": (tokens, idx, env) => {
@@ -638,6 +695,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
             interface TableMetaSep {
                 aligns: Array<string>
+                valigns: Array<string>
                 wraps: Array<boolean>
                 map: [number, number]
             }
@@ -818,6 +876,11 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         "tocBody": skip,
         "tocClose": skip,
 
+        "container_comment_open": () => {
+            return { skipToNext: "container_comment_close" }
+        },
+        "container_comment_close": skip,
+
     }
 
     const sectionStrs: Dict<Array<string>> = {}
@@ -939,8 +1002,21 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         return authorLines.join("\n")
     }
 
-    function sectionTexFor(secName: string): string {
-        return (sectionStrs[secName] ?? ["TODO"]).join("")
+    function sectionTexFor(secName: string, fallbackSecName?: string): string {
+
+        function defaultContents() {
+            console.log(`WARNING: No content for section '${secName}'` + (isUndefined(fallbackSecName) ? "" : ` (fallback name: '${fallbackSecName}')`))
+            console.log(Object.keys(sectionStrs))
+            return ["TODO"]
+        }
+
+        sectionStrs
+
+        return (
+            sectionStrs[secName]
+            ?? (isUndefined(fallbackSecName) ? undefined : sectionStrs[fallbackSecName])
+            ?? defaultContents()
+        ).join("")
     }
 
 
@@ -970,7 +1046,7 @@ ${sectionTexFor("Body")}
 
 % question (as \\emph{})
 {\\em
-${sectionTexFor("Question/Challenge")}
+${sectionTexFor("Question/Challenge", "Question/Challenge - for the brochures")}
 }
 
 % answer alternatives (as \\begin{enumerate}[A)]) or interactivity
@@ -1047,7 +1123,10 @@ ${babel}
 \\newcolumntype{L}{>{\\raggedright\\arraybackslash}X}
 \\newcolumntype{J}{>{\\arraybackslash}X}
 
+\\newcommand{\\BrochureInlineCode}[1]{{\\ttfamily #1}}
+
 \\usepackage{amssymb}
+\\usepackage{amsmath}
 
 \\usepackage[babel=true,maxlevel=3]{csquotes}
 \\DeclareQuoteStyle{bebras-ch-eng}{“}[” ]{”}{‘}[”’ ]{’}\

@@ -1,10 +1,8 @@
-import path = require('path')
 import * as fs from 'fs'
 
 import { Command } from 'commander'
 
-import patterns = require('../patterns')
-import { defaultOutputFile, ensureIsTaskFile, fatalError, mkdirsOf, mkStringCommaAnd, modificationDateIsLater, OutputFormat, OutputFormats } from '../util'
+import { defaultOutputFile, ensureIsTaskFile, fatalError, mkStringCommaAnd, modificationDateIsLater, OutputFormats } from '../util'
 
 export function makeCommand_convert() {
     return new Command()
@@ -34,8 +32,6 @@ async function convert(format: string, taskFile: string, options: any): Promise<
         console.log(`Output file '${outputFile}' seems up to date.`)
         process.exit(0)
     }
-
-    await mkdirsOf(outputFile)
 
     const convModule = require('../convert_' + format)
     const res = await convModule["convertTask_" + format](taskFile, outputFile)

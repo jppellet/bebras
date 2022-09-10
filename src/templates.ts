@@ -20,6 +20,7 @@ const Dialects = {
 } as const
 
 type Dialect = keyof typeof Dialects
+type DialectOptions = typeof Dialects[Dialect]
 
 class TemplateSpec<T extends { [key: string]: any }> {
 
