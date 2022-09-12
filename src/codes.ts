@@ -168,7 +168,7 @@ export const countryNameByCountryCodes: Dict<string> = {
 	"NG": "Nigeria",
 	"NU": "Niue",
 	"NF": "Norfolk Island",
-	"MK": "Macedonia",
+	"MK": "North Macedonia",
 	"MP": "Northern Mariana Islands",
 	"NO": "Norway",
 	"OM": "Oman",

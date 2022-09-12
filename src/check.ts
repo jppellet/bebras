@@ -8,6 +8,7 @@ import * as patterns from './patterns'
 import { isNullOrUndefined, s, isString, isUndefined, isArray, TaskMetadata, Check, ErrorMessage, Value, isErrorMessage, TaskMetadataField, mkStringCommaAnd } from "./util"
 import { util } from "./main"
 import * as minimatch from "minimatch"
+import { TaskYear } from "./patterns"
 
 
 export type Severity = "error" | "warn"
@@ -134,6 +135,13 @@ export function loadRawMetadata(text: string, warn?: ErrorWarningCallback, error
     return [fmStart, fmEnd, fmStrRaw, fmStr, metadata, mdStart, mdStr]
 }
 
+export function adjustLoadedMetadataFor(year: TaskYear, metadata: Partial<TaskMetadata>) {
+    if (year <= 2021) {
+        metadata.computer_science_areas = (metadata as any).categories
+        metadata.computational_thinking_skills = []
+    }
+}
+
 
 export async function check(text: string, taskFile: string, _formatVersion?: string): Promise<LintOutput[]> {
 
@@ -220,24 +228,13 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
             return [start + fmStart, end + fmStart]
         }
 
-        const requiredFields: Array<TaskMetadataField> = ["id", "title", "ages", "answer_type", "categories", "contributors", "support_files"]
-
-        const missingFields = [] as string[]
-        for (let f of requiredFields) {
-            if (isNullOrUndefined(metadata[f])) {
-                missingFields.push(f)
-            }
-        }
-
-        if (missingFields.length !== 0) {
-            error([fmStart, fmEnd], `Missing definition${s(missingFields.length)}: ${missingFields.join(", ")}`)
-            return
-        }
-
         const id = metadata.id
         let mainCountry: string | undefined
+        let year: number | "latest" = "latest"
         let match
-        if (!isString(id)) {
+        if (isUndefined(id)) {
+            error([fmStart, fmEnd], "The id field is missing")
+        } else if (!isString(id)) {
             error(fmRangeForDef("id"), "The task ID should be a plain string")
         } else if (match = patterns.id.exec(id)) {
 
@@ -259,6 +256,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
 
             const countryCode = match.groups.country_code ?? "ZZ"
             mainCountry = codes.countryNameByCountryCodes[countryCode]
+            year = parseInt(match.groups.year)
             if (isUndefined(mainCountry)) {
                 let [start, _] = fmRangeForValueInDef("id", id)
                 start += 5
@@ -266,6 +264,22 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
             }
         } else {
             error(fmRangeForValueInDef("id", id), `The task ID should have the format YYYY-CC-00[x]\n\nPattern:\n${patterns.id.source}`)
+        }
+
+        adjustLoadedMetadataFor(year, metadata)
+
+        const requiredFields = patterns.requiredMetadataFieldsCurrentFor(year)
+
+        const missingFields = [] as string[]
+        for (let f of requiredFields) {
+            if (isNullOrUndefined((metadata as any)[f])) {
+                missingFields.push(f)
+            }
+        }
+
+        if (missingFields.length !== 0) {
+            error([fmStart, fmEnd], `Missing definition${s(missingFields.length)}: ${missingFields.join(", ")}`)
+            return
         }
 
         const title = metadata.title
@@ -333,24 +347,37 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
             }
         }
 
+        const answerTypes = patterns.answerTypesFor(year)
         const answerType = metadata.answer_type
         if (!isString(answerType)) {
             error(fmRangeForDef("answer_type"), "The answer type must be a plain string")
-        } else if (!patterns.answerTypes.includes(answerType as any)) {
-            warn(fmRangeForValueInDef("answer_type", answerType), `Answer type '${answerType}' is not recognized. Expected one of:\n  - ${patterns.answerTypes.join("\n  - ")}`, QuickFixReplacements(patterns.answerTypes))
+        } else if (!answerTypes.includes(answerType as any)) {
+            warn(fmRangeForValueInDef("answer_type", answerType), `Answer type '${answerType}' is not recognized. Expected one of:\n  - ${answerTypes.join("\n  - ")}`, QuickFixReplacements(answerTypes))
         }
 
-        const validCategories = patterns.categories as readonly string[]
-
-        const categories = metadata.categories
-        if (!isArray(categories) || !_.every(categories, isString)) {
-            error(fmRangeForDef("categories"), "The categories must be a list of plain strings")
+        const validCSAreas = patterns.csAreas as readonly string[]
+        const computer_science_areas = metadata.computer_science_areas
+        if (!isArray(computer_science_areas) || !_.every(computer_science_areas, isString)) {
+            error(fmRangeForDef("computer_science_areas"), "The computer science areas must be a list of plain strings")
         } else {
-            _.filter(categories, c => !validCategories.includes(c)).forEach(c => {
-                error(fmRangeForValueInDef("categories", c), `Invalid category '${c}', should be one of:\n  - ${validCategories.join("\n  - ")}`, QuickFixReplacements(validCategories))
+            _.filter(computer_science_areas, c => !validCSAreas.includes(c)).forEach(c => {
+                error(fmRangeForValueInDef("computer_science_areas", c), `Invalid computer science area '${c}', should be one of:\n  - ${validCSAreas.join("\n  - ")}`, QuickFixReplacements(validCSAreas))
             })
-            if (_.uniq(categories).length !== categories.length) {
-                warn(fmRangeForDef("categories"), `The categories should be unique`)
+            if (_.uniq(computer_science_areas).length !== computer_science_areas.length) {
+                warn(fmRangeForDef("computer_science_areas"), `The computer science areas should be unique`)
+            }
+        }
+
+        const validCTSkills = patterns.ctSkills as readonly string[]
+        const computational_thinking_skills = metadata.computational_thinking_skills
+        if (!isArray(computational_thinking_skills) || !_.every(computational_thinking_skills, isString)) {
+            error(fmRangeForDef("computational_thinking_skills"), "The computational thinking skills must be a list of plain strings")
+        } else {
+            _.filter(computational_thinking_skills, c => !validCTSkills.includes(c)).forEach(c => {
+                error(fmRangeForValueInDef("computational_thinking_skills", c), `Invalid computational thinking skill '${c}', should be one of:\n  - ${validCTSkills.join("\n  - ")}`, QuickFixReplacements(validCTSkills))
+            })
+            if (_.uniq(computational_thinking_skills).length !== computational_thinking_skills.length) {
+                warn(fmRangeForDef("computational_thinking_skills"), `The computational thinking skills should be unique`)
             }
         }
 
@@ -551,7 +578,8 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
         let searchFrom = fmEnd
         const missingSections = [] as string[]
         const secPrefix = "## "
-        patterns.markdownSectionNames.forEach(secName => {
+        const markdownSectionNames = patterns.markdownSectionNamesFor(year)
+        markdownSectionNames.forEach(secName => {
             const secMarker = secPrefix + secName
             const secStart = text.indexOf('\n' + secMarker, searchFrom)
             if (secStart < 0) {
@@ -562,7 +590,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
         })
 
         if (missingSections.length !== 0) {
-            error([fmEnd, text.length], `Missing or misplaced required section${s(missingSections.length)}:\n${missingSections.join("\n")}\n\nSections are expected in this order:\n${secPrefix}${patterns.markdownSectionNames.join("\n" + secPrefix)}`)
+            error([fmEnd, text.length], `Missing or misplaced required section${s(missingSections.length)}:\n${missingSections.join("\n")}\n\nSections are expected in this order:\n${secPrefix}${markdownSectionNames.join("\n" + secPrefix)}`)
         }
 
     })()

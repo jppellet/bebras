@@ -381,11 +381,17 @@ sub {
    border-left-color:rgba(128,128,128,0.2);
 }
 
-.bebras-sectionbody-questionchallenge {
+.bebras-sectionbody-questionchallenge,
+.bebras-sectionbody-questionchallenge-for-the-online-challenge,
+.bebras-sectionbody-questionchallenge-for-the-brochures,
+.bebras-sectionbody-interactivity-instructions {
    font-style: italic;
 }
 
-.bebras-sectionbody-questionchallenge em, .bebras-sectionbody-questionchallenge i {
+.bebras-sectionbody-questionchallenge em, .bebras-sectionbody-questionchallenge i,
+.bebras-sectionbody-questionchallenge-for-the-online-challenge em, .bebras-sectionbody-questionchallenge-for-the-online-challenge i,
+.bebras-sectionbody-questionchallenge-for-the-brochures em, .bebras-sectionbody-questionchallenge-for-the-brochures i,
+.bebras-sectionbody-interactivity-instructions em, .bebras-sectionbody-interactivity-instructions i {
    font-style: normal;
 }
 

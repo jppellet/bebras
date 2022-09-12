@@ -220,17 +220,20 @@ export type Difficulty = typeof Difficulties[number]
 export const AgeCategories = ["6-8", "8-10", "10-12", "12-14", "14-16", "16-19"] as const
 export type AgeCategory = typeof AgeCategories[number]
 
+export class TaskMetadata {
+    constructor(
+        public id: string,
+        public title: string,
+        public ages: { [key in AgeCategory]: Difficulty },
+        public computer_science_areas: string[],
+        public computational_thinking_skills: string[],
+        public answer_type: string,
+        public keywords: string[],
+        public support_files: string[],
+        public contributors: string[],
+        public settings: undefined | TaskSettings,
+    ) { }
 
-export interface TaskMetadata {
-    id: string
-    title: string
-    ages: { [key in AgeCategory]: Difficulty }
-    categories: string[]
-    answer_type: string
-    keywords: string[]
-    support_files: string[]
-    contributors: string[]
-    settings: undefined | TaskSettings
 }
 
 export interface TaskSettings {
@@ -239,11 +242,11 @@ export interface TaskSettings {
 
 export type TaskMetadataField = keyof TaskMetadata
 
-export function defaultTaskMetadata(): TaskMetadata {
-    return {
-        id: "0000-AA-01",
-        title: "((Untitled Task))",
-        ages: {
+export function defaultTaskMetadata() {
+    return new TaskMetadata(
+        "0000-AA-01",
+        "((Untitled Task))",
+        {
             "6-8": "--",
             "8-10": "--",
             "10-12": "--",
@@ -251,13 +254,14 @@ export function defaultTaskMetadata(): TaskMetadata {
             "14-16": "--",
             "16-19": "--",
         } as const,
-        categories: [],
-        keywords: [],
-        support_files: [],
-        answer_type: "((unspecified))",
-        contributors: ["((unspecified))"],
-        settings: undefined,
-    }
+        [],
+        [],
+        "((unspecified))",
+        [],
+        [],
+        ["((unspecified))"],
+        undefined,
+    )
 }
 
 

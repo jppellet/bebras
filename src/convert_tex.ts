@@ -160,7 +160,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             }
 
             const ageCategories = patterns.ageCategories
-            const categories = patterns.categories
+            const csAreas = patterns.csAreas
 
             const ageCatTitles = (Object.keys(ageCategories) as Array<keyof typeof ageCategories>)
             const ageCatTitleCells = ageCatTitles.map(c => `\\textit{${c}:}`).join(" & ")
@@ -171,30 +171,32 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                 return catValue
             }).join(" & ")
 
-            const numCat1 = Math.floor(categories.length / 2)
+            const numCat1 = Math.floor(csAreas.length / 2)
 
             const checkedBox = `$\\boxtimes$`
             const uncheckedBox = `$\\square$`
 
             function catToRow(catName: string) {
-                const isRelated = metadata.categories.includes(catName)
+                const isRelated = metadata.computer_science_areas.includes(catName)
                 const catChecked = isRelated ? checkedBox : uncheckedBox
                 return `${catChecked} ${texEscapeChars(catName)}`
             }
 
             let catCell1 = `\\textit{Categories:}`
             for (let i = 0; i < numCat1; i++) {
-                catCell1 += `\\newline ${catToRow(categories[i])}`
+                catCell1 += `\\newline ${catToRow(csAreas[i])}`
             }
 
             let catCell2 = ``
-            for (let i = numCat1; i < categories.length; i++) {
+            for (let i = numCat1; i < csAreas.length; i++) {
                 if (i !== numCat1) {
                     catCell2 += "\\newline "
 
                 }
-                catCell2 += catToRow(categories[i])
+                catCell2 += catToRow(csAreas[i])
             }
+
+            // TODO CTSKILLS
 
             const keywordsCaption = `\\textit{Keywords: }`
             const keywords = metadata.keywords.map(kwLine => {

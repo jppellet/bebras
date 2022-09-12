@@ -65,11 +65,44 @@ export function genLicense(metadata: TaskMetadata): LicenceInfo {
 
 export const DefaultLicenseShortTitle = "CC BY-SA 4.0"
 
+export type TaskYear = number | "latest"
 
 // String and structured constants
 
 export const taskFileExtension =
     ".task.md"
+
+const _requiredMetadataFields2021 = [
+    "id",
+    "title",
+    "ages",
+    "answer_type",
+    "categories",
+    "contributors",
+    "support_files",
+] as const
+
+const _requiredMetadataFieldsCurrent = [
+    "id",
+    "title",
+    "ages",
+    "answer_type",
+    "computer_science_areas",
+    "computational_thinking_skills",
+    "contributors",
+    "support_files",
+] as const
+
+export function requiredMetadataFieldsCurrentFor(year: TaskYear) {
+    if (year === "latest") {
+        return _requiredMetadataFieldsCurrent
+    }
+    if (year <= 2021) {
+        return _requiredMetadataFieldsCurrent
+    }
+    return _requiredMetadataFieldsCurrent
+
+}
 
 export const ageCategories = {
     "6yo–8yo": "6-8",
@@ -80,7 +113,7 @@ export const ageCategories = {
     "16yo–19yo": "16-19",
 } as const
 
-export const categories = [
+export const csAreas = [
     "algorithms and programming",
     "data structures and representations",
     "computer processes and hardware",
@@ -88,7 +121,15 @@ export const categories = [
     "interactions, systems and society",
 ] as const
 
-export const answerTypes = [
+export const ctSkills = [
+    "abstraction",
+    "algorithmic thinking",
+    "decomposition",
+    "evaluation",
+    "pattern recognition",
+]
+
+const _answerTypes2021 = [
     "multiple choice",
     "multiple choice with images",
     "multiple select",
@@ -100,7 +141,30 @@ export const answerTypes = [
     "interactive (other)",
 ] as const
 
-export const markdownSectionNames = [
+const _answerTypesCurrent = [
+    "multiple choice",
+    "multiple choice with images",
+    "multiple select",
+    "dropdown select",
+    "open integer",
+    "open text",
+    "interactive (click-to-select)",
+    "interactive (click-to-change)",
+    "interactive (drag-and-drop)",
+    "interactive (other)",
+] as const
+
+export function answerTypesFor(year: TaskYear) {
+    if (year === "latest") {
+        return _answerTypesCurrent
+    }
+    if (year <= 2021) {
+        return _answerTypes2021
+    }
+    return _answerTypesCurrent
+}
+
+const _markdownSectionNames2021 = [
     "Body",
     "Question/Challenge",
     "Answer Options/Interactivity Description",
@@ -111,11 +175,34 @@ export const markdownSectionNames = [
     "Comments",
 ] as const
 
-export type SectionName = typeof markdownSectionNames[number]
+const _markdownSectionNamesCurrent = [
+    "Body",
+    "Question/Challenge",
+    "Interactivity Instructions",
+    "Answer Options/Interactivity Description",
+    "Answer Explanation",
+    "It's Informatics",
+    "Keywords and Websites",
+    "Wording and Phrases",
+    "Comments",
+] as const
+
+export function markdownSectionNamesFor(year: TaskYear) {
+    if (year === "latest") {
+        return _markdownSectionNamesCurrent
+    }
+    if (year <= 2021) {
+        return _markdownSectionNames2021
+    }
+    return _markdownSectionNamesCurrent
+}
+
+
+export type SectionName = ReturnType<typeof markdownSectionNamesFor>[number]
 export type SectionAssociatedData<T> = { [S in SectionName]: T }
 
-export function isStandardSectionName(sectionName: string): sectionName is SectionName {
-    return markdownSectionNames.includes(sectionName as any)
+export function isStandardSectionName(sectionName: string, year: TaskYear): sectionName is SectionName {
+    return markdownSectionNamesFor(year).includes(sectionName as any)
 }
 
 export const roleMainAuthor = "author"

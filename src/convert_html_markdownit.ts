@@ -144,7 +144,6 @@ export function plugin(getBasePath: () => string) {
       "header": (metadata: TaskMetadata) => {
 
         const ageCategories = patterns.ageCategories
-        const categories = patterns.categories
 
         const ageRowCells =
           (Object.keys(ageCategories) as Array<keyof typeof ageCategories>).map(catName => {
@@ -158,28 +157,38 @@ export function plugin(getBasePath: () => string) {
 
         const answerType = `<span class="bebras-header-caption">Answer Type</span><span class="bebras-header-value">${metadata.answer_type}</span>`
 
-        const numCat1 = Math.floor(categories.length / 2)
-
         const checkedBox = `☒`
         const uncheckedBox = `☐`
 
-        function catToRow(catName: string) {
-          const isRelated = metadata.categories.includes(catName)
+        function catToRow(catName: string, taskValues: string[]) {
+          const isRelated = taskValues.includes(catName)
           const catChecked = isRelated ? checkedBox : uncheckedBox
           return `${catChecked} ${catName}`
         }
 
-        let catCell1 = `<div class="bebras-categories-cell"><span class="bebras-header-caption">Categories</span>`
-        for (let i = 0; i < numCat1; i++) {
-          catCell1 += `<span class="bebras-header-value">${catToRow(categories[i])}</span>`
-        }
-        catCell1 += `</div>`
+        function makeCategoryCells(title: string, allValues: readonly string[], taskValues: string[]) {
+          const numCat1 = Math.floor(allValues.length / 2)
 
-        let catCell2 = `<div class="bebras-categories-cell">`
-        for (let i = numCat1; i < categories.length; i++) {
-          catCell2 += `<span class="bebras-header-value">${catToRow(categories[i])}</span>`
+          let catCell1 = `<div class="bebras-categories-cell"><span class="bebras-header-caption">${title}</span>`
+          for (let i = 0; i < numCat1; i++) {
+            catCell1 += `<span class="bebras-header-value">${catToRow(allValues[i], taskValues)}</span>`
+          }
+          catCell1 += `</div>`
+
+          let catCell2 = `<div class="bebras-categories-cell">`
+          for (let i = numCat1; i < allValues.length; i++) {
+            catCell2 += `<span class="bebras-header-value">${catToRow(allValues[i], taskValues)}</span>`
+          }
+          catCell2 += `</div>`
+
+          return [catCell1, catCell2]
         }
-        catCell2 += `</div>`
+
+        const [csAreaCell1, csAreaCell2] = makeCategoryCells("Computer Science Areas", patterns.csAreas, metadata.computer_science_areas)
+        const [skillsCell1, skillsCell2] = makeCategoryCells("Computational Thinking Skills", patterns.ctSkills, metadata.computational_thinking_skills)
+
+
+        // TODO CTSKILLS
 
         const keywords = metadata.keywords.map(kwLine => {
           const match = patterns.keyword.exec(kwLine)
@@ -215,7 +224,8 @@ export function plugin(getBasePath: () => string) {
              <div class="bebras-header">
               <div class="bebras-ages">${ageRowCells}</div>
               <div class="bebras-answertype bebras-header-cell">${answerType}</div>
-              <div class="bebras-categories bebras-header-cell">${catCell1}${catCell2}</div>
+              <div class="bebras-categories bebras-header-cell">${csAreaCell1}${csAreaCell2}</div>
+              <div class="bebras-categories bebras-header-cell">${skillsCell1}${skillsCell2}</div>
              </div>`
       },
     }
