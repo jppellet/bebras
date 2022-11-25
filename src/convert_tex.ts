@@ -313,7 +313,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         const rowspanStr = token.attrGet("rowspan")
         let rowspan
         if (rowspanStr && (rowspan = parseInt(rowspanStr)) >= 2) {
-            // multicolumn
+            // multirow
             open = `\\multirow{${rowspan}}{*}{` + open
             close = close + `}`
             state.validMultirows.push({ colIndex, rowIndex, rowspan })
@@ -323,7 +323,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         let colspan
         if (colspanStr && (colspan = parseInt(colspanStr)) >= 2) {
             // multicolumn
-            open = `\\multicolumn{${colspan}}{c}{` + open
+            open = `\\multicolumn{${colspan}}{${align}}{` + open
             close = close + `}`
         }
 
@@ -479,6 +479,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             const isInTable = !!state.currentTableCell
             // console.log({ imgPath, placement, placementArgs })
             if (placement === "unspecified" || placement === "inline" || isInTable) {
+                const elemsConsideredSurroundingText = ["text", "paragraph_open", "paragraph_close", "image", "softbreak"]
                 if (isSurrounded(tokens, idx, 1, "paragraph")) {
                     if (isSurrounded(tokens, idx, 2, "td")) {
                         // console.log("use makecell1")
@@ -494,20 +495,25 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                 } else if (isSurrounded(tokens, idx, 1, "td")) {
                     // console.log("use makecell2")
                     useMakecell()
-                } else if (isSurrounded(tokens, idx, 1, "text", "text")
-                    || isSurrounded(tokens, idx, 1, "text", "paragraph_close")
-                    || isSurrounded(tokens, idx, 1, "paragraph_open", "text")
-                    || isSurrounded(tokens, idx, 1, "text", "image")
-                    || isSurrounded(tokens, idx, 1, "image", "text")
-                    || isSurrounded(tokens, idx, 1, "image", "image")
+                } else if (
+                    (idx > 0 && elemsConsideredSurroundingText.includes(tokens[idx - 1].type))
+                    || idx < tokens.length - 1 && elemsConsideredSurroundingText.includes(tokens[idx + 1].type)
                 ) {
                     // inline in paragraph
                     let ignoreHeight = true
+                    let referenceWidth
                     try {
                         // heuristic: if width is >= 30, then don't ignore
-                        ignoreHeight = parseInt(widthStr?.replace(/px/, "") ?? "0") < 30
+                        const indicatedWidthOr0 = parseInt(widthStr?.replace(/px/, "") ?? "0")
+                        if (indicatedWidthOr0 !== 0) {
+                            referenceWidth = indicatedWidthOr0
+                        } else {
+                            const realImgPath = path.join(path.dirname(taskFile), imgPathForHtml)
+                            referenceWidth = (scale ?? 1) * getImageSize(realImgPath)
+                        }
+                        ignoreHeight = referenceWidth < 30
                     } catch { }
-                    // console.log("use raisebox2, ignoreHeight=" + ignoreHeight)
+                    // console.log("use raisebox2, ignoreHeight=" + ignoreHeight + ", referenceWidth=" + referenceWidth)
                     useRaisebox(ignoreHeight, placementArgs)
                 } else {
                     // console.log("use raw")
@@ -839,6 +845,15 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         },
 
 
+        "container_fullwidth_open": (tokens, idx, env) => {
+            return `\\resizebox{\\textwidth}{!}{%\n`
+        },
+
+        "container_fullwidth_close": (tokens, idx, env) => {
+            return `\n}\n\n`
+        },
+
+
         "seccontainer_open": (tokens, idx, env) => {
             let secData = { skip: false, pre: "", post: "", disableMathify: false }
 
@@ -1143,6 +1158,7 @@ ${babel}
 \\usepackage{hyperref}
 \\usepackage{graphicx}
 \\usepackage{svg}
+\\svgsetup{inkscapeversion=1,inkscapearea=page}
 \\usepackage{wrapfig}
 
 \\usepackage{enumitem}

@@ -61,6 +61,7 @@ export function plugin(getBasePath: () => string) {
       .use(customContainerPlugin, "indent")
       .use(customContainerPlugin, "nobreak")
       .use(customContainerPlugin, "comment")
+      .use(customContainerPlugin, "fullwidth")
 
 
 
