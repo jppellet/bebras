@@ -2,7 +2,8 @@ import { util } from "./main"
 import { Dict } from "./util"
 
 
-// ISO 3166-1 for country codes; country names slightly normalized
+// ISO 3166-1 for country codes; country names slightly normalized;
+// also using UK instead of GB as is done in the community
 export const countryNameByCountryCodes: Dict<string> = {
 	"AF": "Afghanistan",
 	"AX": "Åland Islands",
@@ -239,6 +240,7 @@ export const countryNameByCountryCodes: Dict<string> = {
 	"UA": "Ukraine",
 	"AE": "United Arab Emirates",
 	"GB": "United Kingdom",
+	"UK": "United Kingdom",
 	"US": "USA",
 	"UM": "United States Minor Outlying Islands",
 	"UY": "Uruguay",
