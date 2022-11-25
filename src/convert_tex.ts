@@ -952,6 +952,9 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         if (diffStr === "hard") {
             return 3
         }
+        if (diffStr === "bonus") {
+            return 4
+        }
         return 0
     }
 

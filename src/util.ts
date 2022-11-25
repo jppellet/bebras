@@ -214,7 +214,7 @@ export function defaultOutputFile(taskFile: string, format: OutputFormat): strin
 }
 
 
-export const Difficulties = ["--", "easy", "medium", "hard"] as const
+export const Difficulties = ["--", "easy", "medium", "hard", "bonus"] as const
 export type Difficulty = typeof Difficulties[number]
 
 export const AgeCategories = ["6-8", "8-10", "10-12", "12-14", "14-16", "16-19"] as const

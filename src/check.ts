@@ -324,8 +324,10 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
                     level = 2
                 } else if (classif === "hard") {
                     level = 3
+                } else if (classif === "bonus") {
+                    level = 4
                 } else {
-                    error(fmRangeForAgeValue(a), `Invalid value '${classif}', should be one of easy, medium, hard, or ${LevelNotApplicable} if not applicable`, QuickFixReplacements(["easy", "medium", "hard", LevelNotApplicable]))
+                    error(fmRangeForAgeValue(a), `Invalid value '${classif}', should be one of easy, medium, hard, or ${LevelNotApplicable} if not applicable`, QuickFixReplacements(["easy", "medium", "hard", "bonus", LevelNotApplicable]))
                     return
                 }
 
