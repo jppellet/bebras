@@ -550,7 +550,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
 
             const unmatchedFilePatterns = new Set<string>(allFilePatterns)
             const unlistedSupportFiles: string[] = []
-            const existingSupportFiles = await findAllSupportFilesFor(taskFile)
+            const [baseFolder, existingSupportFiles] = await findAllSupportFilesFor(taskFile)
 
             for (const existingFile of existingSupportFiles) {
                 let matchedBy: string | undefined = undefined
@@ -562,7 +562,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
                     } else {
                     }
                 }
-                if (isUndefined(matchedBy)) {
+                if (isUndefined(matchedBy) && fs.statSync(path.join(baseFolder, existingFile)).size > 0) {
                     unlistedSupportFiles.push(existingFile)
                 }
             }
@@ -627,7 +627,7 @@ function fileSuggestionsForMissing(missingFile: string, taskFile: string): { rep
     return suggs.map(a => ({ replacement: a.filePath, displayAs: a.filename }))
 }
 
-export async function findAllSupportFilesFor(taskFile: string): Promise<string[]> {
+export async function findAllSupportFilesFor(taskFile: string): Promise<[string, string[]]> {
     const taskFolder = path.dirname(taskFile)
     const names: string[] = []
 
@@ -661,7 +661,7 @@ export async function findAllSupportFilesFor(taskFile: string): Promise<string[]
         }
     }
 
-    return names
+    return [taskFolder, names]
 }
 
 
