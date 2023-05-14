@@ -386,8 +386,8 @@ export function plugin(getBasePath: () => string) {
               specificClass = ` bebras-sectionbody-${slugify(headingName.toLowerCase())}`
             }
             newToken.attrPush(["class", `bebras-sectionbody-${level}${specificClass}`])
-            tokensOut.push(newToken)
           }
+          tokensOut.push(newToken)
           sectionOpen = true
 
         } else if (type === "heading_open") {
@@ -406,8 +406,8 @@ export function plugin(getBasePath: () => string) {
               specificClass = ` bebras-sectioncontainer-${slugify(headingName.toLowerCase())}`
             }
             newToken.attrPush(["class", `bebras-sectioncontainer-${level}${specificClass}`])
-            tokensOut.push(newToken)
           }
+          tokensOut.push(newToken)
 
           tokensOut.push(tokensIn[i])
 
