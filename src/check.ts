@@ -1,14 +1,14 @@
-import * as path from "path"
+import * as fs from 'fs'
 import * as yaml from "js-yaml"
 import * as _ from 'lodash'
-import * as fs from 'fs'
+import * as path from "path"
 
-import * as codes from './codes'
-import * as patterns from './patterns'
-import { isNullOrUndefined, s, isString, isUndefined, isArray, TaskMetadata, Check, ErrorMessage, Value, isErrorMessage, TaskMetadataField, mkStringCommaAnd } from "./util"
-import { util } from "./main"
 import * as minimatch from "minimatch"
+import * as codes from './codes'
+import { util } from "./main"
+import * as patterns from './patterns'
 import { TaskYear } from "./patterns"
+import { Check, ErrorMessage, TaskMetadata, TaskMetadataField, Value, isArray, isErrorMessage, isNullOrUndefined, isString, isUndefined, mkStringCommaAnd, s } from "./util"
 
 
 export type Severity = "error" | "warn"
@@ -136,9 +136,17 @@ export function loadRawMetadata(text: string, warn?: ErrorWarningCallback, error
 }
 
 export function adjustLoadedMetadataFor(year: TaskYear, metadata: Partial<TaskMetadata>) {
+    if (year === "latest") {
+        // nothing to do
+        return
+    }
     if (year <= 2021) {
-        metadata.computer_science_areas = (metadata as any).categories
-        metadata.computational_thinking_skills = []
+        if (typeof metadata.computer_science_areas === "undefined") {
+            metadata.computer_science_areas = (metadata as any).categories
+        }
+        if (typeof metadata.computational_thinking_skills === "undefined") {
+            metadata.computational_thinking_skills = []
+        }
     }
 }
 

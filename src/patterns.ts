@@ -98,7 +98,7 @@ export function requiredMetadataFieldsCurrentFor(year: TaskYear) {
         return _requiredMetadataFieldsCurrent
     }
     if (year <= 2021) {
-        return _requiredMetadataFieldsCurrent
+        return _requiredMetadataFields2021
     }
     return _requiredMetadataFieldsCurrent
 

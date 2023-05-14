@@ -9,14 +9,13 @@ const slugify: (s: string) => string = require('slugify')
 import * as yaml from 'js-yaml'
 import * as path from 'path'
 
-import * as patterns from './patterns'
-import { TaskMetadata, defaultTaskMetadata, Dict } from "./util"
-import { CssStylesheet, defaultPluginOptions, PluginOptions } from "./convert_html"
-import { normalizeRawMetadataToStandardYaml, postYamlLoadObjectCorrections } from "./check"
 import { isUndefined } from "lodash"
-import _ = require("lodash")
+import { adjustLoadedMetadataFor, normalizeRawMetadataToStandardYaml, postYamlLoadObjectCorrections } from "./check"
+import { CssStylesheet, PluginOptions, defaultPluginOptions } from "./convert_html"
 import { getImageSize } from "./img_cache"
-import { pathToFileURL } from "url"
+import * as patterns from './patterns'
+import { Dict, TaskMetadata, defaultTaskMetadata, isString } from "./util"
+import _ = require("lodash")
 
 
 export function plugin(getBasePath: () => string) {
@@ -267,6 +266,15 @@ export function plugin(getBasePath: () => string) {
           } catch { }
           if (parsedMetadata) {
             postYamlLoadObjectCorrections(parsedMetadata)
+            const id = (parsedMetadata as any).id
+            let year: patterns.TaskYear = "latest"
+            if (isString(id)) {
+              const idMatch = patterns.id.exec(id)
+              if (idMatch !== null) {
+                year = parseInt(idMatch.groups.year)
+              }
+            }
+            adjustLoadedMetadataFor(year, parsedMetadata)
           }
           state.src = state.src.slice(fmEnd + fmEndMarker.length)
         }
