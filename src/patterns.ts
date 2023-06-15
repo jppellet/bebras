@@ -1,8 +1,8 @@
 // The following allows us to type to some extend
 // the groups property of the RegExpExecArray object
 
-import { isString } from "markdown-it/lib/common/utils"
-import { TaskMetadata } from "./util"
+import { isString } from "markdown-it/lib/common/utils";
+import { TaskMetadata } from "./util";
 
 // @ts-ignore
 interface RichRegExpExecArray<T> extends globalThis.RegExpExecArray {
@@ -72,7 +72,7 @@ export type TaskYear = number | "latest"
 export const taskFileExtension =
     ".task.md"
 
-const _requiredMetadataFields2021 = [
+const _requiredMetadataFields_Current = [
     "id",
     "title",
     "ages",
@@ -82,7 +82,7 @@ const _requiredMetadataFields2021 = [
     "support_files",
 ] as const
 
-const _requiredMetadataFieldsCurrent = [
+const _requiredMetadataFields_2022 = [
     "id",
     "title",
     "ages",
@@ -95,12 +95,12 @@ const _requiredMetadataFieldsCurrent = [
 
 export function requiredMetadataFieldsCurrentFor(year: TaskYear) {
     if (year === "latest") {
-        return _requiredMetadataFieldsCurrent
+        return _requiredMetadataFields_Current
     }
-    if (year <= 2021) {
-        return _requiredMetadataFields2021
+    if (year === 2022) {
+        return _requiredMetadataFields_2022
     }
-    return _requiredMetadataFieldsCurrent
+    return _requiredMetadataFields_Current
 
 }
 
@@ -129,7 +129,7 @@ export const ctSkills = [
     "pattern recognition",
 ]
 
-const _answerTypes2021 = [
+const _answerTypes_2021 = [
     "multiple choice",
     "multiple choice with images",
     "multiple select",
@@ -141,7 +141,7 @@ const _answerTypes2021 = [
     "interactive (other)",
 ] as const
 
-const _answerTypesCurrent = [
+const _answerTypes_2022 = [
     "multiple choice",
     "multiple choice with images",
     "multiple select",
@@ -154,17 +154,33 @@ const _answerTypesCurrent = [
     "interactive (other)",
 ] as const
 
+const _answerTypes_Current = [
+    "multiple choice",
+    "multiple choice with images",
+    "multiple select",
+    "multiple select with images",
+    "dropdown select",
+    "open integer",
+    "open text",
+    "interactive (click-on-object)",
+    "interactive (drag-and-drop)",
+    "interactive (other)",
+] as const
+
 export function answerTypesFor(year: TaskYear) {
     if (year === "latest") {
-        return _answerTypesCurrent
+        return _answerTypes_Current
+    }
+    if (year === 2022) {
+        return _answerTypes_2022
     }
     if (year <= 2021) {
-        return _answerTypes2021
+        return _answerTypes_2021
     }
-    return _answerTypesCurrent
+    return _answerTypes_Current
 }
 
-const _markdownSectionNames2021 = [
+const _markdownSectionNames_2021 = [
     "Body",
     "Question/Challenge",
     "Answer Options/Interactivity Description",
@@ -175,7 +191,7 @@ const _markdownSectionNames2021 = [
     "Comments",
 ] as const
 
-const _markdownSectionNamesCurrent = [
+const _markdownSectionNames_2022 = [
     "Body",
     "Question/Challenge",
     "Interactivity Instructions",
@@ -187,14 +203,30 @@ const _markdownSectionNamesCurrent = [
     "Comments",
 ] as const
 
+const _markdownSectionNames_Current = [
+    "Body",
+    "Question/Challenge",
+    "Answer Options/Interactivity Description",
+    "Answer Explanation",
+    "This is Informatics",
+    "This is Computational Thinking",
+    "Informatics Keywords and Websites",
+    "Computational Thinking Keywords and Websites",
+    "Wording and Phrases",
+    "Comments",
+] as const
+
 export function markdownSectionNamesFor(year: TaskYear) {
     if (year === "latest") {
-        return _markdownSectionNamesCurrent
+        return _markdownSectionNames_Current
+    }
+    if (year === 2022) {
+        return _markdownSectionNames_2022
     }
     if (year <= 2021) {
-        return _markdownSectionNames2021
+        return _markdownSectionNames_2021
     }
-    return _markdownSectionNamesCurrent
+    return _markdownSectionNames_Current
 }
 
 

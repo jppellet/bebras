@@ -225,7 +225,7 @@ export class TaskMetadata {
         public id: string,
         public title: string,
         public ages: { [key in AgeCategory]: Difficulty },
-        public computer_science_areas: string[],
+        public categories: string[],
         public computational_thinking_skills: string[],
         public answer_type: string,
         public keywords: string[],

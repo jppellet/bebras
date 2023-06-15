@@ -141,12 +141,21 @@ export function adjustLoadedMetadataFor(year: TaskYear, metadata: Partial<TaskMe
         return
     }
     if (year <= 2021) {
-        if (typeof metadata.computer_science_areas === "undefined") {
-            metadata.computer_science_areas = (metadata as any).categories
+        // migrate to 2022
+        if (typeof (metadata as any).computer_science_areas === "undefined") {
+            (metadata as any).computer_science_areas = metadata.categories
         }
         if (typeof metadata.computational_thinking_skills === "undefined") {
             metadata.computational_thinking_skills = []
         }
+        year = 2022
+    }
+    if (year === 2022) {
+        // migrate to latest
+        if (typeof metadata.categories === "undefined") {
+            metadata.categories = (metadata as any).computer_science_areas
+        }
+        year = "latest"
     }
 }
 
@@ -366,28 +375,30 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
         }
 
         const validCSAreas = patterns.csAreas as readonly string[]
-        const computer_science_areas = metadata.computer_science_areas
-        if (!isArray(computer_science_areas) || !_.every(computer_science_areas, isString)) {
-            error(fmRangeForDef("computer_science_areas"), "The computer science areas must be a list of plain strings")
+        const categories = metadata.categories
+        if (!isArray(categories) || !_.every(categories, isString)) {
+            error(fmRangeForDef("categories"), "The categories must be a list of plain strings")
         } else {
-            _.filter(computer_science_areas, c => !validCSAreas.includes(c)).forEach(c => {
-                error(fmRangeForValueInDef("computer_science_areas", c), `Invalid computer science area '${c}', should be one of:\n  - ${validCSAreas.join("\n  - ")}`, QuickFixReplacements(validCSAreas))
+            _.filter(categories, c => !validCSAreas.includes(c)).forEach(c => {
+                error(fmRangeForValueInDef("categories", c), `Invalid categories '${c}', should be one of:\n  - ${validCSAreas.join("\n  - ")}`, QuickFixReplacements(validCSAreas))
             })
-            if (_.uniq(computer_science_areas).length !== computer_science_areas.length) {
-                warn(fmRangeForDef("computer_science_areas"), `The computer science areas should be unique`)
+            if (_.uniq(categories).length !== categories.length) {
+                warn(fmRangeForDef("categories"), `The categories should be unique`)
             }
         }
 
-        const validCTSkills = patterns.ctSkills as readonly string[]
-        const computational_thinking_skills = metadata.computational_thinking_skills
-        if (!isArray(computational_thinking_skills) || !_.every(computational_thinking_skills, isString)) {
-            error(fmRangeForDef("computational_thinking_skills"), "The computational thinking skills must be a list of plain strings")
-        } else {
-            _.filter(computational_thinking_skills, c => !validCTSkills.includes(c)).forEach(c => {
-                error(fmRangeForValueInDef("computational_thinking_skills", c), `Invalid computational thinking skill '${c}', should be one of:\n  - ${validCTSkills.join("\n  - ")}`, QuickFixReplacements(validCTSkills))
-            })
-            if (_.uniq(computational_thinking_skills).length !== computational_thinking_skills.length) {
-                warn(fmRangeForDef("computational_thinking_skills"), `The computational thinking skills should be unique`)
+        if (year === 2022) {
+            const validCTSkills = patterns.ctSkills as readonly string[]
+            const computational_thinking_skills = metadata.computational_thinking_skills
+            if (!isArray(computational_thinking_skills) || !_.every(computational_thinking_skills, isString)) {
+                error(fmRangeForDef("computational_thinking_skills"), "The computational thinking skills must be a list of plain strings")
+            } else {
+                _.filter(computational_thinking_skills, c => !validCTSkills.includes(c)).forEach(c => {
+                    error(fmRangeForValueInDef("computational_thinking_skills", c), `Invalid computational thinking skill '${c}', should be one of:\n  - ${validCTSkills.join("\n  - ")}`, QuickFixReplacements(validCTSkills))
+                })
+                if (_.uniq(computational_thinking_skills).length !== computational_thinking_skills.length) {
+                    warn(fmRangeForDef("computational_thinking_skills"), `The computational thinking skills should be unique`)
+                }
             }
         }
 

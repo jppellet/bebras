@@ -184,7 +184,7 @@ export function plugin(getBasePath: () => string) {
           return [catCell1, catCell2]
         }
 
-        const [csAreaCell1, csAreaCell2] = makeCategoryCells("Computer Science Areas", patterns.csAreas, metadata.computer_science_areas)
+        const [csAreaCell1, csAreaCell2] = makeCategoryCells("Computer Science Areas", patterns.csAreas, metadata.categories)
         const [skillsCell1, skillsCell2] = makeCategoryCells("Computational Thinking Skills", patterns.ctSkills, metadata.computational_thinking_skills)
 
 
@@ -225,7 +225,7 @@ export function plugin(getBasePath: () => string) {
               <div class="bebras-ages">${ageRowCells}</div>
               <div class="bebras-answertype bebras-header-cell">${answerType}</div>
               <div class="bebras-categories bebras-header-cell">${csAreaCell1}${csAreaCell2}</div>
-              <div class="bebras-categories bebras-header-cell">${skillsCell1}${skillsCell2}</div>
+              <!-- div class="bebras-categories bebras-header-cell">${skillsCell1}${skillsCell2}</div -->
              </div>`
       },
     }

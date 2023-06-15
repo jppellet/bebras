@@ -4,7 +4,7 @@ import md2html = require('./convert_html')
 import _ = require('lodash')
 import Token = require('markdown-it/lib/token')
 import patterns = require("./patterns")
-import { texMathify, HtmlToTexPixelRatio, Dict, texEscapeChars, parseLanguageCodeFromTaskPath, readFileStrippingBom, texMath, TaskMetadata, siblingWithExtension, mkdirsOf } from './util'
+import { Dict, HtmlToTexPixelRatio, TaskMetadata, mkdirsOf, parseLanguageCodeFromTaskPath, readFileStrippingBom, siblingWithExtension, texEscapeChars, texMath, texMathify } from './util'
 import codes = require("./codes")
 // import { numberToString } from 'pdf-lib'
 import { isString, isUndefined } from 'lodash'
@@ -177,7 +177,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             const uncheckedBox = `$\\square$`
 
             function catToRow(catName: string) {
-                const isRelated = metadata.computer_science_areas.includes(catName)
+                const isRelated = metadata.categories.includes(catName)
                 const catChecked = isRelated ? checkedBox : uncheckedBox
                 return `${catChecked} ${texEscapeChars(catName)}`
             }
