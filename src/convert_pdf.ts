@@ -1,5 +1,5 @@
-import { PDFDocument } from 'pdf-lib'
 import * as fs from 'fs'
+import { PDFDocument } from 'pdf-lib'
 import path = require('path')
 import puppeteer = require('puppeteer')
 import md2html = require('./convert_html')
@@ -10,18 +10,16 @@ import patterns = require('./patterns')
 // // @ts-ignore
 // import pdfjs = require("pdfjs-dist/es5/build/pdf.js")
 
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf'
-// @ts-ignore
-import PDFJSWorker from 'pdfjs-dist/legacy/build/pdf.worker.entry'
-import { TextContent, TextItem } from 'pdfjs-dist/types/display/api'
+// import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf'
+// import PDFJSWorker from 'pdfjs-dist/legacy/build/pdf.worker.entry'
 
-import templates from './templates'
-import { PdfBookmarkMetadata } from './json_schemas'
-import { isBinaryAvailable, mkdirsOf, readFileStrippingBom, TaskMetadata, toFileUrl } from './util'
 import { exec } from 'child_process'
+import { PdfBookmarkMetadata } from './json_schemas'
+import templates from './templates'
+import { mkdirsOf, readFileStrippingBom, toFileUrl } from './util'
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJSWorker
-
+// const PDFJSWorker = '../../../node_modules/pdfjs-dist/build/pdf.worker.js'
+// pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJSWorker
 
 export async function convertTask_pdf(taskFile: string, outputFile: string): Promise<string> {
 
@@ -32,16 +30,17 @@ export async function convertTask_pdf(taskFile: string, outputFile: string): Pro
     await mkdirsOf(outputFile)
     await fs.promises.writeFile(outputFile, pdfData)
 
-    const bookmarkMetadata = await generatePdfBookmarkMetadata(outputFile, sectionTitles, metadata)
+    // TODO: restore this; it's not working with the new pdf-lib
+    // const bookmarkMetadata = await generatePdfBookmarkMetadata(outputFile, sectionTitles, metadata)
 
     const outPdfmetaJsonFilePath = outputFile + "meta.json"
-    await fs.promises.writeFile(outPdfmetaJsonFilePath, JSON.stringify(bookmarkMetadata, null, 2))
+    // await fs.promises.writeFile(outPdfmetaJsonFilePath, JSON.stringify(bookmarkMetadata, null, 2))
 
     let withBookmarks = false
 
-    if (await isBinaryAvailable("pdflatex")) {
-        withBookmarks = await addPdfBookmarks(outputFile, bookmarkMetadata)
-    }
+    // if (await isBinaryAvailable("pdflatex")) {
+    //     withBookmarks = await addPdfBookmarks(outputFile, bookmarkMetadata)
+    // }
 
     console.log(`${withBookmarks ? "Bookmarked " : ""}PDF written on ${outputFile}`)
     console.log(`PDF bookmark metadata written on ${outPdfmetaJsonFilePath}`)
@@ -88,43 +87,43 @@ async function addPdfBookmarks(pdfFilePath: string, bookmarkMetadata: PdfBookmar
     })
 }
 
-async function generatePdfBookmarkMetadata(pdfFilePath: string, sectionTitlesArray: string[], taskMetadata: TaskMetadata): Promise<PdfBookmarkMetadata> {
+// async function generatePdfBookmarkMetadata(pdfFilePath: string, sectionTitlesArray: string[], taskMetadata: TaskMetadata): Promise<PdfBookmarkMetadata> {
 
-    const sectionPageNumbers: { [name: string]: number } = {}
+//     const sectionPageNumbers: { [name: string]: number } = {}
 
-    const sectionTitles = new Set<string>()
-    sectionTitlesArray.forEach(c => sectionTitles.add(c))
+//     const sectionTitles = new Set<string>()
+//     sectionTitlesArray.forEach(c => sectionTitles.add(c))
 
-    const doc = await pdfjsLib.getDocument(pdfFilePath).promise
+//     const doc = await pdfjsLib.getDocument(pdfFilePath).promise
 
-    const numPages = doc.numPages
+//     const numPages = doc.numPages
 
-    async function loadPage(pageNum: number): Promise<void> {
-        const page = await doc.getPage(pageNum)
-        const content = await page.getTextContent();
-        (content.items as TextItem[]).forEach(function (item) {
-            if (sectionTitles.has(item.str)) {
-                sectionPageNumbers[item.str] = pageNum
-            }
-        })
-    };
+//     async function loadPage(pageNum: number): Promise<void> {
+//         const page = await doc.getPage(pageNum)
+//         const content = await page.getTextContent();
+//         (content.items as TextItem[]).forEach(function (item) {
+//             if (sectionTitles.has(item.str)) {
+//                 sectionPageNumbers[item.str] = pageNum
+//             }
+//         })
+//     };
 
-    for (let i = 1; i <= numPages; i++) {
-        await loadPage(i)
-    }
+//     for (let i = 1; i <= numPages; i++) {
+//         await loadPage(i)
+//     }
 
-    const titleBookmark = {
-        level: 0, page: 1,
-        caption: `${taskMetadata.id} ${taskMetadata.title}`,
-    }
-    const sectionBookmarks = Object.entries(sectionPageNumbers).map(([caption, page]) => ({
-        level: 1, page, caption,
-    }))
+//     const titleBookmark = {
+//         level: 0, page: 1,
+//         caption: `${taskMetadata.id} ${taskMetadata.title}`,
+//     }
+//     const sectionBookmarks = Object.entries(sectionPageNumbers).map(([caption, page]) => ({
+//         level: 1, page, caption,
+//     }))
 
-    const bookmarks = [titleBookmark, ...sectionBookmarks]
+//     const bookmarks = [titleBookmark, ...sectionBookmarks]
 
-    return { numPages, bookmarks }
-}
+//     return { numPages, bookmarks }
+// }
 
 
 async function renderPdf(mdFilePath: string): Promise<[Uint8Array, util.TaskMetadata, string[]]> {
