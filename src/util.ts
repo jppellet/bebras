@@ -231,6 +231,7 @@ export class TaskMetadata {
         public keywords: string[],
         public support_files: string[],
         public contributors: string[],
+        public equivalent_tasks: string[],
         public settings: undefined | TaskSettings,
     ) { }
 
@@ -260,6 +261,7 @@ export function defaultTaskMetadata() {
         [],
         [],
         ["((unspecified))"],
+        [],
         undefined,
     )
 }

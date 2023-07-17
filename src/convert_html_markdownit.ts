@@ -157,6 +157,15 @@ export function plugin(getBasePath: () => string) {
 
         const answerType = `<span class="bebras-header-caption">Answer Type</span><span class="bebras-header-value">${metadata.answer_type}</span>`
 
+        let relatedTaskIDs = metadata.equivalent_tasks
+        if (isUndefined(relatedTaskIDs)) {
+          relatedTaskIDs = []
+        }
+        if (isString(relatedTaskIDs)) {
+          relatedTaskIDs = relatedTaskIDs.split(",").map(s => s.trim())
+        }
+        const relatedTasks = `<span class="bebras-header-caption">Equivalent Tasks</span><span class="bebras-header-value">${relatedTaskIDs.length === 0 ? "—" : relatedTaskIDs.join(", ")}</span>`
+
         const checkedBox = `☒`
         const uncheckedBox = `☐`
 
@@ -226,7 +235,8 @@ export function plugin(getBasePath: () => string) {
               <div class="bebras-answertype bebras-header-cell">${answerType}</div>
               <div class="bebras-categories bebras-header-cell">${csAreaCell1}${csAreaCell2}</div>
               <!-- div class="bebras-categories bebras-header-cell">${skillsCell1}${skillsCell2}</div -->
-             </div>`
+              <div class="bebras-relatedtasks bebras-header-cell">${relatedTasks}</div>
+            </div>`
       },
     }
 

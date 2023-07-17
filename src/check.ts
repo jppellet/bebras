@@ -596,6 +596,23 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
 
         }
 
+        const equivalentTasks = metadata.equivalent_tasks
+        console.log("equivalent_tasks", equivalentTasks)
+        if (!isUndefined(equivalentTasks) && !isString(equivalentTasks) && (!isArray(equivalentTasks) || !_.every(equivalentTasks, isString))) {
+            error(fmRangeForDef("equivalent_tasks"), "The equivalent tasks must be a list of IDs or the string '--'")
+        } else {
+            const equivalentTasksArr = isString(equivalentTasks) ? equivalentTasks.split(",").map(s => s.trim()) : isUndefined(equivalentTasks) ? [] : equivalentTasks
+            for (const equivalentTask of equivalentTasksArr) {
+                if (equivalentTask === "--") {
+                    continue
+                }
+
+                if (!(match = patterns.id.exec(equivalentTask))) {
+                    error(fmRangeForValueInDef("equivalent_tasks", equivalentTask), `The task ID should have the format YYYY-CC-00[x]\n\nPattern:\n${patterns.id.source}`)
+                }
+            }
+        }
+
         let searchFrom = fmEnd
         const missingSections = [] as string[]
         const secPrefix = "## "
