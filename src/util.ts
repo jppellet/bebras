@@ -113,12 +113,33 @@ export function fatalError(msg: string): never {
     process.exit(1)
 }
 
-
-export async function ensureIsTaskFile(path: string, ensureExistenceToo: boolean): Promise<string> {
+export function isTaskFile(path: string, ensureExistenceToo: boolean): boolean {
     if (!path.endsWith(patterns.taskFileExtension) || (ensureExistenceToo && !(fs.existsSync(path)))) {
+        return false
+    }
+    return true
+}
+
+export function ensureIsTaskFile(path: string, ensureExistenceToo: boolean): string | never {
+    if (!isTaskFile(path, ensureExistenceToo)) {
         fatalError(`not a${ensureExistenceToo ? "n existing" : ""} task file: ${path}`)
     }
     return path
+}
+
+export async function findTaskFilesRecursively(folger: string, pattern: string | undefined): Promise<string[]> {
+    const res: string[] = []
+    for (const f of fs.readdirSync(folger)) {
+        const fullPath = path.join(folger, f)
+        if (fs.lstatSync(fullPath).isDirectory()) {
+            res.push(...await findTaskFilesRecursively(fullPath, pattern))
+        } else {
+            if (isTaskFile(fullPath, true) && (!pattern || fullPath.includes(pattern))) {
+                res.push(fullPath)
+            }
+        }
+    }
+    return res
 }
 
 interface CheckBase<A> {
@@ -209,8 +230,13 @@ export type OutputFormat = typeof OutputFormats.type
 export function defaultOutputFile(taskFile: string, format: OutputFormat): string {
     const outputOpts = OutputFormats.propsOf(format)
     const parentFolder = path.dirname(taskFile)
+    return path.join(parentFolder, ...outputOpts.pathSegments, defaultOutputFilename(taskFile, format))
+}
+
+export function defaultOutputFilename(taskFile: string, format: OutputFormat): string {
+    const outputOpts = OutputFormats.propsOf(format)
     const basename = path.basename(taskFile, patterns.taskFileExtension)
-    return path.join(parentFolder, ...outputOpts.pathSegments, basename + outputOpts.extension)
+    return basename + outputOpts.extension
 }
 
 

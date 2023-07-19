@@ -138,7 +138,7 @@ async function renderPdf(mdFilePath: string): Promise<[Uint8Array, util.TaskMeta
     const fileUrl = toFileUrl(mdFilePath)
     await page.goto(fileUrl, { waitUntil: 'domcontentloaded' })
 
-    await page.setContent(textHtml, { waitUntil: 'networkidle2' })
+    await page.setContent(textHtml, { waitUntil: 'networkidle0' })
 
     const sectionTitles = await page.evaluate(_ => {
         // @ts-ignore
