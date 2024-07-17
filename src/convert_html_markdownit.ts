@@ -11,24 +11,31 @@ import * as path from 'path'
 
 import { isUndefined } from "lodash"
 import { adjustLoadedMetadataFor, normalizeRawMetadataToStandardYaml, postYamlLoadObjectCorrections } from "./check"
+import { defaultLanguageCode } from "./codes"
 import { CssStylesheet, PluginOptions, defaultPluginOptions } from "./convert_html"
 import { getImageSize } from "./img_cache"
 import * as patterns from './patterns'
-import { Dict, TaskMetadata, defaultTaskMetadata, isString } from "./util"
+import { TaskMetadata, defaultTaskMetadata, isString, parseLanguageCodeFromTaskPath } from "./util"
 import _ = require("lodash")
 
+export type PluginContext = {
+  taskFile: string
+  basePath: string
+  setOptionsFromMetadata: boolean
+}
 
-export function plugin(getBasePath: () => string) {
+export function plugin(getCurrentPluginContext: () => PluginContext) {
   return (md: MarkdownIt, _parseOptions: any) => {
 
+    // console.log("custom options", _parseOptions)
     const pluginOptions: PluginOptions = { ...defaultPluginOptions(), ..._parseOptions }
+    // console.log("all options", pluginOptions)
 
     // init plugins we need
-    md
+    md = md
       .use(require("markdown-it-sub"))
       .use(require("markdown-it-sup"))
       .use(require('markdown-it-inline-comments'))
-      .use(require("markdown-it-anchor"))
 
       // see https://www.npmjs.com/package/markdown-it-multimd-table
       .use(require("markdown-it-multimd-table-ext"), {
@@ -47,11 +54,15 @@ export function plugin(getBasePath: () => string) {
         },
       })
 
-      .use(require("markdown-it-toc-done-right"), {
-        level: 2,
-        listType: "ul",
-        placeholder: '{{table_of_contents}}',
-      })
+    if (pluginOptions.fullHtml) {
+      md = md
+        .use(require("markdown-it-anchor"))
+        .use(require("markdown-it-toc-done-right"), {
+          level: 2,
+          listType: "ul",
+          placeholder: '{{table_of_contents}}',
+        })
+    }
 
     const customContainerPlugin = require('markdown-it-container')
     md = md
@@ -64,12 +75,15 @@ export function plugin(getBasePath: () => string) {
 
 
 
-    const quotes: Dict<[string, string, string, string]> = {
+    const quotesByLang: Record<string, [string, string, string, string]> = {
       eng: ['“', '”', '‘', '’'],
       fra: ['«\u202F', '\u202F»', '“', '”'],
       deu: ['«', '»', '“', '”'],
       ita: ['«', '»', '“', '”'],
     }
+
+    const quotes = pluginOptions.customQuotes ?? quotesByLang[pluginOptions.langCode] ?? quotesByLang.eng
+    // console.log("Using quotes: " + quotes + " for lang " + pluginOptions.langCode)
 
     // ensure options
     md.set({
@@ -82,19 +96,16 @@ export function plugin(getBasePath: () => string) {
       // Enable some language-neutral replacement + quotes beautification
       typographer: true,
 
-      // Double + single quotes replacement pairs, when typographer enabled,
-      quotes: pluginOptions.customQuotes ?? quotes[pluginOptions.langCode] ?? quotes.eng, // TODO set according to lang
+      // Double + single quotes replacement pairs, when typographer enabled
+      quotes,
     })
 
-    const defaultOptions = {
-      addToc: false,
-    }
 
     type MdGeneratorFunction = (metadata: TaskMetadata) => string
     type HtmlGeneratorFunction = (metadata: TaskMetadata) => string
 
 
-    const MdGeneratorTemplates = {
+    const MdGeneratorTemplates: Record<string, MdGeneratorFunction> = {
 
       "title": (metadata: TaskMetadata) => {
         return `# ${metadata.id} ${metadata.title}`
@@ -107,16 +118,28 @@ export function plugin(getBasePath: () => string) {
       // },
 
       "contributors": (metadata: TaskMetadata) => {
+        if (!pluginOptions.fullHtml) {
+          return ""
+        }
+
         const sectionBody = metadata.contributors.map(c => ` * ${c.replace(patterns.email, "<$&>")}`).join("\n")
         return `## Contributors\n\n${sectionBody}`
       },
 
       "support_files": (metadata: TaskMetadata) => {
+        if (!pluginOptions.fullHtml) {
+          return ""
+        }
+
         const sectionBody = metadata.support_files.map(f => ` * ${f}`).join("\n")
         return `## Support Files\n\n${sectionBody}`
       },
 
       "license": (metadata: TaskMetadata) => {
+        if (!pluginOptions.fullHtml) {
+          return ""
+        }
+
         const sectionBody = "{{license_body}}"
         return `## License\n\n${sectionBody}`
       },
@@ -124,7 +147,7 @@ export function plugin(getBasePath: () => string) {
     }
 
 
-    const HtmlGeneratorTemplates = {
+    const HtmlGeneratorTemplates: Record<string, HtmlGeneratorFunction> = {
 
       "license_body": (metadata: TaskMetadata) => {
         const license = patterns.genLicense(metadata)
@@ -290,7 +313,16 @@ export function plugin(getBasePath: () => string) {
         }
       }
 
-      basePath = getBasePath()
+      const ctx = getCurrentPluginContext()
+      // console.log(ctx)
+      basePath = ctx.basePath
+
+      if (ctx.setOptionsFromMetadata) {
+        const lang = parseLanguageCodeFromTaskPath(ctx.taskFile)
+        md.set({ typographer: true, quotes: quotesByLang[lang ?? defaultLanguageCode()] ?? quotesByLang.eng })
+        // console.log("set quotes to " + lang)
+        // console.log(md.options)
+      }
       taskMetadata = Object.assign({}, defaultTaskMetadata(), parsedMetadata)
       state.env.taskMetadata = taskMetadata
       state.env.basePath = basePath
@@ -299,6 +331,10 @@ export function plugin(getBasePath: () => string) {
     })
 
     md.core.ruler.before('block', 'bebras_md_insert_metadata', (state: StateCore) => {
+      if (!pluginOptions.fullHtml) {
+        return false
+      }
+
       const sep = "\n\n"
       function mkSections(names: TemplateName[]) {
         return sep + names.map(n => `{{${n}}}`).join(sep) + sep
@@ -365,6 +401,10 @@ export function plugin(getBasePath: () => string) {
 
 
     md.core.ruler.after('block', 'bebras_html_expand', (state: StateCore) => {
+      if (!pluginOptions.fullHtml) {
+        return false
+      }
+
       const templateRegExp = new RegExp('^' + templatePattern + '$', 'i')
 
 
@@ -444,6 +484,116 @@ export function plugin(getBasePath: () => string) {
       state.tokens = tokensOut
       return true
     })
+
+
+
+    const RARE_RE = /\+-|\.\.|\?\?\?\?|!!!!|,,|--|\-[0-9]/
+
+    // disable the replacements of (c) by ©, etc. while keeping others
+    function replace_rare(inlineTokens: Token[]) {
+      let inside_autolink = 0
+      for (let i = inlineTokens.length - 1; i >= 0; i--) {
+        const token = inlineTokens[i]
+
+        if (token.type === 'text' && !inside_autolink) {
+          if (RARE_RE.test(token.content)) {
+            // const before = token.content
+            token.content = token.content
+              // .., ..., ....... -> …
+              .replace(/\.{2,}/g, '…')
+              // em-dash
+              // eslint-disable-next-line prefer-named-capture-group
+              .replace(/(^|[^-])---(?=[^-]|$)/mg, '$1\u2014')
+              // en-dash
+              // eslint-disable-next-line prefer-named-capture-group
+              .replace(/(^|\s)--(?=\s|$)/mg, '$1\u2013')
+              // en-dash as minus
+              // eslint-disable-next-line prefer-named-capture-group
+              .replace(/(\s)\-([0-9]+)(?=\s|$)/mg, '$1\u2013$2')
+              // eslint-disable-next-line prefer-named-capture-group
+              .replace(/(^|[^-\s])--(?=[^-\s]|$)/mg, '$1\u2013')
+            // const after = token.content
+            // if (before !== after) {
+            //   console.log("BEFORE: " + before)
+            //   console.log("AFTER: " + after)
+            //   console.log("----")
+            // }
+          }
+        }
+
+        if (token.type === 'link_open' && token.info === 'auto') {
+          inside_autolink--
+        }
+
+        if (token.type === 'link_close' && token.info === 'auto') {
+          inside_autolink++
+        }
+      }
+    }
+
+    md.core.ruler.at('replacements', (state: StateCore) => {
+      for (let blockIndex = state.tokens.length - 1; blockIndex >= 0; blockIndex--) {
+        if (state.tokens[blockIndex].type !== 'inline') { continue }
+
+        if (RARE_RE.test(state.tokens[blockIndex].content)) {
+          replace_rare(state.tokens[blockIndex].children!)
+        }
+      }
+      return true
+    })
+
+    function headingName(tokens: Token[], idx: number) {
+      if (idx < tokens.length - 1 && tokens[idx + 1].type === "inline") {
+        return tokens[idx + 1].content
+      }
+      return ""
+    }
+
+    if (!pluginOptions.fullHtml) {
+      md.core.ruler.after('bebras_html_expand', "section_filter", (state: StateCore) => {
+        // walk through all tokens and remove the content not in the kept sections
+        function shouldKeepSection(title: string) {
+          const shouldKeep =
+            title === "Body" ||
+            title.startsWith("Question") ||
+            title.startsWith("Answer Options") ||
+            title.startsWith("Answer Explanation") ||
+            title.startsWith("This is")
+          // console.log("should keep " + title + " ? " + shouldKeep)
+          return shouldKeep
+        }
+
+        const newTokens: Token[] = []
+        let isSkipping = false
+        let skippingLevel = -1
+        for (let i = 0; i < state.tokens.length; i++) {
+          const token = state.tokens[i]
+          const isHeading = token.type === "heading_open"
+
+          if (isSkipping && isHeading && parseInt(token.tag.slice(1)) <= skippingLevel!) {
+            // stop skipping
+            // console.log("stopped skipping at level " + skippingLevel + " becasue of new sectio " + headingName(state.tokens, i))
+            isSkipping = false
+          }
+
+          if (!isSkipping && isHeading && !shouldKeepSection(headingName(state.tokens, i))) {
+            // start skipping
+            isSkipping = true
+            skippingLevel = parseInt(token.tag.slice(1))
+            // console.log("skipping at level " + skippingLevel + " for " + headingName(state.tokens, i))
+          }
+
+          if (!isSkipping) {
+            newTokens.push(token)
+          }
+
+        }
+
+        state.tokens = newTokens
+
+        return true
+      })
+    }
 
     md.block.ruler.after('fence', 'raw', function fence(state, startLine, endLine, silent) {
       const OpenMarker = 0x3C/* < */
@@ -667,6 +817,24 @@ export function plugin(getBasePath: () => string) {
       //      </tfoot>
       //    </table>`;
     }
+
+    if (!pluginOptions.fullHtml) {
+      // replace heading_open and heading_close with paragraph_open and paragraph_close
+      md.renderer.rules.heading_open = (tokens, idx) => {
+        let title = ""
+        if (idx < tokens.length - 1 && tokens[idx + 1].type === "inline") {
+          title = tokens[idx + 1].content
+        }
+        // console.log(tokens.slice(idx, idx + 10))
+        // console.log("heading_open: " + title)
+
+        return `\n\n<p style="clear:both;"><strong>`
+      }
+      md.renderer.rules.heading_close = (tokens, idx) => {
+        return `</strong></p>\n\n`
+      }
+    }
+
 
   }
 

@@ -33,7 +33,7 @@ async function convert(format: string, source: string, options: any): Promise<vo
         fatalError("No task file found in " + source)
     }
 
-    const convModule = require('../convert_' + format)
+    const convModule: any = require('../convert_' + format)
 
     for (const taskFile of taskFiles) {
         const outputFile = getOutputFile(options.output, taskFile, isRecursive, format)
@@ -46,7 +46,9 @@ async function convert(format: string, source: string, options: any): Promise<vo
 
         // console.log(`Converting '${taskFile}' to '${outputFile}'...`)
 
-        /*const res =*/ await convModule["convertTask_" + format](taskFile, outputFile)
+        const methodName = "convertTask_" + format
+        /*const res =*/ await convModule[methodName](taskFile, outputFile)
+
     }
 
 }

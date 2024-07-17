@@ -1,24 +1,37 @@
-import * as path from 'path'
 import * as fs from 'fs'
+import * as path from 'path'
 import MarkdownIt = require('markdown-it')
 import Token = require('markdown-it/lib/token')
 
-import { defaultTaskMetadata, mkdirsOf, readFileStrippingBom, TaskMetadata } from './util'
-import { defaultLanguageCode } from './codes'
 import { isUndefined } from 'lodash'
+import { defaultLanguageCode, languageNameAndShortCodeByLongCode } from './codes'
+import { PluginContext } from './convert_html_markdownit'
+import { defaultTaskMetadata, mkdirsOf, parseLanguageCodeFromTaskPath, readFileStrippingBom, TaskMetadata } from './util'
 
 export async function convertTask_html(taskFile: string, outputFile: string): Promise<string> {
+   return convertTask_html_impl(taskFile, outputFile, true)
+}
+
+export async function convertTask_html_impl(taskFile: string, outputFile: string, fullHtml: boolean): Promise<string> {
    const mdText = await readFileStrippingBom(taskFile)
-   const [htmlText, metadata] = renderMarkdown(mdText, path.dirname(taskFile), true)
+   const langCode = parseLanguageCodeFromTaskPath(taskFile)
+   const [htmlText, metadata] = renderMarkdown(mdText, taskFile, path.dirname(taskFile), fullHtml, langCode)
    await mkdirsOf(outputFile)
    const r = await fs.promises.writeFile(outputFile, htmlText)
    console.log(`Output written on ${outputFile}`)
    return outputFile
 }
 
-export function renderMarkdown(text: string, basePath: string, fullHtml: boolean): [string, TaskMetadata] {
-   const md = MarkdownIt().use(require("./convert_html_markdownit").plugin(() => basePath))
+function makeMdParser(taskFile: string, basePath: string, options: PluginOptions) {
+   const context: PluginContext = { taskFile, basePath, setOptionsFromMetadata: false }
+   const md = MarkdownIt().use(require("./convert_html_markdownit").plugin(() => context), options)
+   return md
+}
 
+export function renderMarkdown(text: string, taskFile: string, basePath: string, fullHtml: boolean, langCodeOpt: string | undefined): [string, TaskMetadata] {
+   const langCode = langCodeOpt ?? defaultLanguageCode()
+   const parseOptions = { ...defaultPluginOptions(), fullHtml, langCode  }
+   const md = makeMdParser(taskFile, basePath, parseOptions)
    const env: any = {}
    const result = md.render(text, env)
    const metadata: TaskMetadata = env.taskMetadata ?? defaultTaskMetadata()
@@ -28,10 +41,11 @@ export function renderMarkdown(text: string, basePath: string, fullHtml: boolean
          ? `<link href="https://gitcdn.link/repo/jppellet/bebras/main/static/bebrasmdstyle.css" rel="stylesheet" />`
          : "" // set later inline
 
+   const langCodeShort = languageNameAndShortCodeByLongCode[langCode]?.[1] ?? "en"
 
    const htmlStart = '' +
       `<!DOCTYPE html>
-     <html lang="en">
+     <html lang="${langCodeShort}">
        <head>
          <meta charset="utf-8">
          <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -55,14 +69,15 @@ export function defaultPluginOptions() {
       langCode: defaultLanguageCode(),
       customQuotes: undefined as undefined | [string, string, string, string],
       addToc: false,
+      fullHtml: true,
    }
 }
 
 export type PluginOptions = ReturnType<typeof defaultPluginOptions>
 
-export function parseMarkdown(text: string, basePath: string, parseOptions?: Partial<PluginOptions>): [Token[], TaskMetadata] {
-   const options = { ...defaultPluginOptions(), ...parseOptions }
-   const md = MarkdownIt().use(require("./convert_html_markdownit").plugin(() => basePath), options)
+export function parseMarkdown(text: string, taskFile: string, basePath: string, parseOptions: Partial<PluginOptions>): [Token[], TaskMetadata] {
+   const options = { ...defaultPluginOptions(), parseOptions }
+   const md = makeMdParser(taskFile, basePath, options)
    const env: any = {}
    const tokens = md.parse(text, env)
    const metadata: TaskMetadata = env.taskMetadata ?? defaultTaskMetadata()
@@ -70,7 +85,8 @@ export function parseMarkdown(text: string, basePath: string, parseOptions?: Par
 }
 
 // TODO load from file!
-export const CssStylesheet: string | undefined = `/* 
+export const CssStylesheet: string | undefined = `
+/* 
 * Minimal CSS Reset and Base Style
 */
 

@@ -16,7 +16,7 @@ export async function convertTask_tex(taskFile: string, fileOut: string): Promis
 
     const langCode = parseLanguageCodeFromTaskPath(taskFile) ?? codes.defaultLanguageCode()
     const textMd = await readFileStrippingBom(taskFile)
-    const [tokens, metadata] = md2html.parseMarkdown(textMd, path.dirname(taskFile), {
+    const [tokens, metadata] = md2html.parseMarkdown(textMd, taskFile, path.dirname(taskFile), {
         langCode,
         // we use ⍀ to avoid escaping \ to \\, and we later convert it back to \
         customQuotes: ["⍀enquote⦃", "⦄", "⍀enquote⦃", "⦄"],
@@ -1039,7 +1039,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         ).join("")
     }
 
-
+    const isInteractiveTask = metadata.answer_type.toLowerCase().includes("interact")
 
     if (!standalone) {
         return `% Definition of the meta information: task difficulties, task ID, task title, task country; definition of the variables as well as their scope is in commands.tex
@@ -1070,7 +1070,7 @@ ${sectionTexFor("Question/Challenge", "Question/Challenge - for the brochures")}
 }
 
 % answer alternatives (as \\begin{enumerate}[A)]) or interactivity
-${sectionTexFor("Answer Options/Interactivity Description")}
+${isInteractiveTask ? '' : sectionTexFor("Answer Options/Interactivity Description")}
 
 % from here on this is only included if solutions are processed
 \\ifthenelse{\\boolean{solutions}}{
@@ -1082,12 +1082,12 @@ ${sectionTexFor("Answer Explanation")}
 
 % it's informatics
 \\section*{\\BrochureItsInformatics}
-${sectionTexFor("It's Informatics")}
+${sectionTexFor("It's Informatics", "This is Informatics")}
 
 % keywords and websites (as \\begin{itemize})
 \\section*{\\BrochureWebsitesAndKeywords}
 {\\raggedright
-${sectionTexFor("Keywords and Websites")}
+${sectionTexFor("Keywords and Websites", "Informatics Keywords and Websites")}
 }
 
 % end of ifthen for excluding the solutions

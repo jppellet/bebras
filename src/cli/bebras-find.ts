@@ -1,14 +1,14 @@
 import { Command } from "commander"
-import { fatalError, isString } from "../util"
 import * as fs from 'fs'
-import * as path from 'path'
 import * as jmespath from 'jmespath'
+import * as path from 'path'
+import { fatalError, isString } from "../util"
 
-import * as codes from '../codes'
-import * as util from '../util'
-import * as patterns from '../patterns'
-import { astOf, TaskAST } from "../ast"
 import { isUndefined } from "lodash"
+import { astOf, TaskAST } from "../ast"
+import * as codes from '../codes'
+import * as patterns from '../patterns'
+import * as util from '../util'
 import _ = require("lodash")
 
 const DefinedDifficulties = [...util.Difficulties]
@@ -76,7 +76,7 @@ async function find(folder: string, options: any) {
 
     const lang = options.lang
     if (isString(lang)) {
-        if (!(lang in codes.languageNameByLanguageCode)) {
+        if (!(lang in codes.languageNameAndShortCodeByLongCode)) {
             fatalError(`Unknown language: '${lang}'`)
         }
         filter = `[?lang_code == \`${lang}\`] | ` + filter

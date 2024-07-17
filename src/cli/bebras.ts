@@ -1,8 +1,8 @@
-#!/usr/bin/env node
+#!/usr/bin/env node --no-deprecation
 
 import { Command } from 'commander'
-import { makeCommand_convert } from './bebras-convert'
 import { makeCommand_check } from './bebras-check'
+import { makeCommand_convert } from './bebras-convert'
 import { makeCommand_find } from './bebras-find'
 
 (() => {

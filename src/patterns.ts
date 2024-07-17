@@ -1,8 +1,8 @@
 // The following allows us to type to some extend
 // the groups property of the RegExpExecArray object
 
-import { isString } from "markdown-it/lib/common/utils";
-import { TaskMetadata } from "./util";
+import { isString } from "markdown-it/lib/common/utils"
+import { TaskMetadata } from "./util"
 
 // @ts-ignore
 interface RichRegExpExecArray<T> extends globalThis.RegExpExecArray {
@@ -343,7 +343,7 @@ export const supportFile = capturing<{
     source: maybe,
     license_from: maybe,
 }>(
-    "^(?<file_pattern>.*?) (?:(?<author_ext>(?<by>by) .*)( \\((?<license_by>.*)\\))?|(?<from>from) (?<source>.*) \\((?<license_from>.*)\\))$"
+    /^(?<file_pattern>.*?) (?:(?<author_ext>(?<by>by) .*)(?: \((?<license_by>.*)\))?|(?<from>from) (?<source>.*) \((?<license_from>.*)\))$/
 )
 
 export const supportFileStarCorrection = capturing<{

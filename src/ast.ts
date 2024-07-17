@@ -1,12 +1,12 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import Token = require('markdown-it/lib/token')
 import { parseMarkdown } from './convert_html'
+import Token = require('markdown-it/lib/token')
 
-import { defaultOutputFile, Difficulty, mkdirsOf, modificationDateIsLater, readFileStrippingBom, TaskMetadata } from "./util"
-import * as patterns from './patterns'
 import * as codes from './codes'
 import { util } from './main'
+import * as patterns from './patterns'
+import { defaultOutputFile, Difficulty, mkdirsOf, modificationDateIsLater, parseLanguageCodeFromTaskPath, readFileStrippingBom, TaskMetadata } from "./util"
 
 export type TaskAST_Saved = Omit<TaskMetadata, "contributors" | "support_files"> & {
     lang?: string
@@ -82,7 +82,8 @@ async function loadASTFrom(jsonFile: string, taskFile: string): Promise<TaskAST>
 
 export async function buildASTOf(taskFile: string): Promise<TaskAST_Saved> {
     const mdText = await readFileStrippingBom(taskFile)
-    const [tokens, metadata] = parseMarkdown(mdText, path.dirname(taskFile))
+    const langCode = parseLanguageCodeFromTaskPath(taskFile)
+    const [tokens, metadata] = parseMarkdown(mdText, taskFile, path.dirname(taskFile), { langCode })
     return toJsonRepr(tokens, taskFile, metadata)
 }
 
@@ -107,7 +108,7 @@ function toJsonRepr(tokens: Token[], taskFile: string, metadata: TaskMetadata): 
         let lang_code
         if (lang_code = match.groups.lang_code) {
             parsedMetadata.lang_code = lang_code
-            parsedMetadata.lang = codes.languageNameByLanguageCode[lang_code]
+            parsedMetadata.lang = codes.languageNameAndShortCodeByLongCode[lang_code]?.[0]
         }
     }
 

@@ -220,6 +220,7 @@ export const OutputFormats = RichStringEnum.withProps<{
     extension: string
 }>()({
     html: { pathSegments: [], extension: ".html" },
+    cuttle: { pathSegments: [], extension: ".cuttle.html" },
     pdf: { pathSegments: ["derived"], extension: ".pdf" },
     tex: { pathSegments: ["derived"], extension: ".tex" },
     json: { pathSegments: ["derived"], extension: ".task.json" },
@@ -310,8 +311,9 @@ const texExpansionDefs: Dict<string | { pat: string, repl: string }> = {
     "~": "\\textasciitilde{}",
 
     // spaces
-    "\u00A0": "~",
-    "\u202F": "\\thinspace{}",
+    "\u00A0": "~",             // non-breaking space
+    "\u202F": "\\thinspace{}", // narrow no-break space
+    "\u2006": "\\thinspace{}", // six-per-em space
 
     // special 'go-through' backslash and curlies
     "⍀": "\\",
@@ -327,6 +329,10 @@ const texExpansionDefs: Dict<string | { pat: string, repl: string }> = {
     "∙": "\\ensuremath{\\cdot}",
     "≤": "\\ensuremath{\\leq}",
     "≥": "\\ensuremath{\\geq}",
+
+    // prevent some ligatures
+    "<<": "<\\textcompwordmark{}<",
+    ">>": ">\\textcompwordmark{}>",
 }
 
 
@@ -372,7 +378,7 @@ export function parseLanguageCodeFromTaskPath(filepath: string): string | undefi
     if (match = patterns.taskFileName.exec(filename)) {
         let langCode
         if (langCode = match.groups.lang_code) {
-            if (!isUndefined(codes.languageNameByLanguageCode[langCode])) {
+            if (!isUndefined(codes.languageNameAndShortCodeByLongCode[langCode])) {
                 return langCode
             }
         }

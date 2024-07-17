@@ -264,7 +264,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
                         error([0, 3], `The filename must have the format ID[-lan]${patterns.taskFileExtension} where 'lan' is the 3-letter ISO 639-3 code for the language`)
                     } else {
                         const languageCode = trimmedFilename.slice(1)
-                        if (isUndefined(codes.languageNameByLanguageCode[languageCode])) {
+                        if (isUndefined(codes.languageNameAndShortCodeByLongCode[languageCode])) {
                             error([0, 3], `Unknown language code '${languageCode}' in filename`)
                         }
                     }
@@ -448,7 +448,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
                             let submatch
                             if (submatch = patterns.translation.exec(role)) {
                                 function checkLang(lang: string) {
-                                    if (isUndefined(codes.languageCodeByLanguageName[lang])) {
+                                    if (isUndefined(codes.languageLongCodeByLanguageName[lang])) {
                                         let suggStr = ""
                                         const sugg = codes.languageSuggestionsFor(lang)
                                         if (sugg.length !== 0) {
@@ -597,7 +597,6 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
         }
 
         const equivalentTasks = metadata.equivalent_tasks
-        console.log("equivalent_tasks", equivalentTasks)
         if (!isUndefined(equivalentTasks) && !isString(equivalentTasks) && (!isArray(equivalentTasks) || !_.every(equivalentTasks, isString))) {
             error(fmRangeForDef("equivalent_tasks"), "The equivalent tasks must be a list of IDs or the string '--'")
         } else {

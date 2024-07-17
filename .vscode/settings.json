@@ -12,5 +12,29 @@
     "typescript.tsdk": "node_modules/typescript/lib",
     "files.watcherExclude": {
         "**/target": true
-    }
+    },
+    "restoreTerminals.terminals": [
+        {
+            "splitTerminals": [
+                {
+                    "name": "compile",
+                    "commands": [
+                        "npm run compile-watch"
+                    ]
+                },
+                {
+                    "name": "lint",
+                    "commands": [
+                        "npm run lint-watch"
+                    ]
+                },
+                {
+                    "name": "bash",
+                    "commands": [
+                        "ls"
+                    ]
+                },
+            ]
+        }
+    ]
 }

@@ -130,7 +130,7 @@ async function renderPdf(mdFilePath: string): Promise<[Uint8Array, util.TaskMeta
 
     const textMd = await readFileStrippingBom(mdFilePath)
 
-    const [textHtml, metadata] = md2html.renderMarkdown(textMd, path.dirname(mdFilePath), true)
+    const [textHtml, metadata] = md2html.renderMarkdown(textMd, mdFilePath, path.dirname(mdFilePath), true, undefined)
 
     const browser = await puppeteer.launch({ headless: true })
     const page = await browser.newPage()
