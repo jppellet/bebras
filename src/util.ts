@@ -403,6 +403,20 @@ export async function mkdirsOf(child: string): Promise<void> {
     }
 }
 
+export async function writeData(data: string | Buffer | Uint8Array, output: string | true, desc: string): Promise<string | true> {
+    if (isString(output)) {
+        // file
+        await mkdirsOf(output)
+        await fs.promises.writeFile(output, data)
+        console.log(`${desc} written on ${output}`)
+        return output
+    } else {
+        // stdout
+        console.log(data)
+        return true
+    }
+}
+
 export function isBinaryAvailable(binName: string): Promise<boolean> {
     return new Promise((resolve, reject) => {
         hasbin(binName, resolve)

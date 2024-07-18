@@ -16,35 +16,36 @@ import patterns = require('./patterns')
 import { exec } from 'child_process'
 import { PdfBookmarkMetadata } from './json_schemas'
 import templates from './templates'
-import { mkdirsOf, readFileStrippingBom, toFileUrl } from './util'
+import { readFileStrippingBom, toFileUrl, writeData } from './util'
 
 // const PDFJSWorker = '../../../node_modules/pdfjs-dist/build/pdf.worker.js'
 // pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJSWorker
 
-export async function convertTask_pdf(taskFile: string, outputFile: string): Promise<string> {
+export async function convertTask_pdf(taskFile: string, output: string | true): Promise<string | true> {
 
     const [pdfData, metadata, sectionTitles] = await renderPdf(taskFile)
 
-    // console.log("pdfData", pdfData)
+    let isBookmarkedPdf = false
 
-    await mkdirsOf(outputFile)
-    await fs.promises.writeFile(outputFile, pdfData)
+    if (output !== true) {
+        // try to add bookmarks
+        // if (await isBinaryAvailable("pdflatex")) {
+        //     isBookmarkedPdf = await addPdfBookmarks(outputFile, bookmarkMetadata)
+        // }
+    }
 
-    // TODO: restore this; it's not working with the new pdf-lib
-    // const bookmarkMetadata = await generatePdfBookmarkMetadata(outputFile, sectionTitles, metadata)
+    const result = await writeData(pdfData, output, "PDF")
 
-    const outPdfmetaJsonFilePath = outputFile + "meta.json"
-    // await fs.promises.writeFile(outPdfmetaJsonFilePath, JSON.stringify(bookmarkMetadata, null, 2))
+    if (isBookmarkedPdf) {
+        // TODO: restore this; generatePdfBookmarkMetadata is not working with the new pdf-lib
+        // const bookmarkMetadata = await generatePdfBookmarkMetadata(outputFile, sectionTitles, metadata)
 
-    let withBookmarks = false
+        // const outPdfmetaJsonFilePath = outputFile + "meta.json"
+        // await fs.promises.writeFile(outPdfmetaJsonFilePath, JSON.stringify(bookmarkMetadata, null, 2))
+        // console.log(`PDF bookmark metadata written on ${outPdfmetaJsonFilePath}`)
+    }
 
-    // if (await isBinaryAvailable("pdflatex")) {
-    //     withBookmarks = await addPdfBookmarks(outputFile, bookmarkMetadata)
-    // }
-
-    console.log(`${withBookmarks ? "Bookmarked " : ""}PDF written on ${outputFile}`)
-    console.log(`PDF bookmark metadata written on ${outPdfmetaJsonFilePath}`)
-    return outputFile
+    return result
 }
 
 async function addPdfBookmarks(pdfFilePath: string, bookmarkMetadata: PdfBookmarkMetadata): Promise<boolean> {

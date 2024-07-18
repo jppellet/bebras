@@ -1,4 +1,3 @@
-import * as fs from 'fs'
 import * as path from 'path'
 import MarkdownIt = require('markdown-it')
 import Token = require('markdown-it/lib/token')
@@ -6,20 +5,17 @@ import Token = require('markdown-it/lib/token')
 import { isUndefined } from 'lodash'
 import { defaultLanguageCode, languageNameAndShortCodeByLongCode } from './codes'
 import { PluginContext } from './convert_html_markdownit'
-import { defaultTaskMetadata, mkdirsOf, parseLanguageCodeFromTaskPath, readFileStrippingBom, TaskMetadata } from './util'
+import { defaultTaskMetadata, parseLanguageCodeFromTaskPath, readFileStrippingBom, TaskMetadata, writeData } from './util'
 
-export async function convertTask_html(taskFile: string, outputFile: string): Promise<string> {
+export async function convertTask_html(taskFile: string, outputFile: string): Promise<string | true> {
    return convertTask_html_impl(taskFile, outputFile, true)
 }
 
-export async function convertTask_html_impl(taskFile: string, outputFile: string, fullHtml: boolean): Promise<string> {
+export async function convertTask_html_impl(taskFile: string, output: string | true, fullHtml: boolean): Promise<string | true> {
    const mdText = await readFileStrippingBom(taskFile)
    const langCode = parseLanguageCodeFromTaskPath(taskFile)
    const [htmlText, metadata] = renderMarkdown(mdText, taskFile, path.dirname(taskFile), fullHtml, langCode)
-   await mkdirsOf(outputFile)
-   const r = await fs.promises.writeFile(outputFile, htmlText)
-   console.log(`Output written on ${outputFile}`)
-   return outputFile
+   return writeData(htmlText, output, `${!fullHtml ? "Simple " : ""}HTML`)
 }
 
 function makeMdParser(taskFile: string, basePath: string, options: PluginOptions) {
@@ -30,7 +26,7 @@ function makeMdParser(taskFile: string, basePath: string, options: PluginOptions
 
 export function renderMarkdown(text: string, taskFile: string, basePath: string, fullHtml: boolean, langCodeOpt: string | undefined): [string, TaskMetadata] {
    const langCode = langCodeOpt ?? defaultLanguageCode()
-   const parseOptions = { ...defaultPluginOptions(), fullHtml, langCode  }
+   const parseOptions = { ...defaultPluginOptions(), fullHtml, langCode }
    const md = makeMdParser(taskFile, basePath, parseOptions)
    const env: any = {}
    const result = md.render(text, env)
@@ -61,7 +57,7 @@ export function renderMarkdown(text: string, taskFile: string, basePath: string,
 
    const htmlText = !fullHtml ? result : htmlStart + result + htmlEnd
 
-   return [htmlText, metadata]
+   return [htmlText.trimStart(), metadata]
 }
 
 export function defaultPluginOptions() {

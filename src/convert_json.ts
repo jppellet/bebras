@@ -1,12 +1,9 @@
-import * as fs from 'fs'
 import { buildASTOf } from './ast'
-import { mkdirsOf } from './util'
+import { writeData } from './util'
 
 
-export async function convertTask_json(taskFile: string, outputFile: string): Promise<string> {
+export async function convertTask_json(taskFile: string, output: string | true): Promise<string | true> {
   const ast = await buildASTOf(taskFile)
-  await mkdirsOf(outputFile)
-  await fs.promises.writeFile(outputFile, JSON.stringify(ast, undefined, 2))
-  console.log(`Output written on ${outputFile}`)
-  return outputFile
+  const text = JSON.stringify(ast, undefined, 2)
+  return writeData(text, output, "JSON")
 }

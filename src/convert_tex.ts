@@ -4,7 +4,7 @@ import md2html = require('./convert_html')
 import _ = require('lodash')
 import Token = require('markdown-it/lib/token')
 import patterns = require("./patterns")
-import { Dict, HtmlToTexPixelRatio, TaskMetadata, mkdirsOf, parseLanguageCodeFromTaskPath, readFileStrippingBom, siblingWithExtension, texEscapeChars, texMath, texMathify } from './util'
+import { Dict, HtmlToTexPixelRatio, TaskMetadata, parseLanguageCodeFromTaskPath, readFileStrippingBom, siblingWithExtension, texEscapeChars, texMath, texMathify, writeData } from './util'
 import codes = require("./codes")
 // import { numberToString } from 'pdf-lib'
 import { isString, isUndefined } from 'lodash'
@@ -12,7 +12,7 @@ import { getImageSize } from './img_cache'
 
 const DUMP_TOKENS = false
 
-export async function convertTask_tex(taskFile: string, fileOut: string): Promise<string> {
+export async function convertTask_tex(taskFile: string, output: string | true): Promise<string | true> {
 
     const langCode = parseLanguageCodeFromTaskPath(taskFile) ?? codes.defaultLanguageCode()
     const textMd = await readFileStrippingBom(taskFile)
@@ -36,19 +36,17 @@ export async function convertTask_tex(taskFile: string, fileOut: string): Promis
         console.log(metadata)
     }
 
-    await mkdirsOf(fileOut)
-
     const texDataStandalone = renderTex(linealizedTokens, langCode, metadata, taskFile, true)
-    await fs.promises.writeFile(fileOut, texDataStandalone)
-    console.log(`Output written on ${fileOut}`)
+    const result = await writeData(texDataStandalone, output, "Standalone TeX")
 
+    if (output !== true) {
+        // write the brochure version
+        const texDataBrochure = renderTex(linealizedTokens, langCode, metadata, taskFile, false)
+        const fileOutBrochure = siblingWithExtension(output, "_brochure.tex")
+        await writeData(texDataBrochure, fileOutBrochure, "Brochure TeX")
+    }
 
-    const texDataBrochure = renderTex(linealizedTokens, langCode, metadata, taskFile, false)
-    const fileOutBrochure = siblingWithExtension(fileOut, "_brochure.tex")
-    await fs.promises.writeFile(fileOutBrochure, texDataBrochure)
-    console.log(`Output written on ${fileOutBrochure}`)
-
-    return fileOut
+    return result
 }
 
 export function renderTex(linealizedTokens: Token[], langCode: string, metadata: TaskMetadata, taskFile: string, standalone: boolean,): string {

@@ -103,13 +103,11 @@ export function loadRawMetadata(text: string, warn?: ErrorWarningCallback, error
 
     function fmRangeFromException(e: yaml.YAMLException): [[number, number], string] {
         const msg = e.toString(true).replace("YAMLException: ", "")
-        // @ts-ignore
-        let errPos = e.mark?.position
-        // @ts-ignore
+        const errPos = e.mark?.position
         if (errPos === undefined) {
             return [[fmStart, fmEnd], msg]
         } else {
-            const start = fmStart + parseInt(errPos)
+            const start = fmStart + errPos
             return [[start, start + 1], msg]
         }
     }

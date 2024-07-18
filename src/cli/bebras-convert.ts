@@ -3,14 +3,14 @@ import * as path from 'path'
 
 import { Command } from 'commander'
 
-import { defaultOutputFile, defaultOutputFilename, ensureIsTaskFile, fatalError, findTaskFilesRecursively, mkStringCommaAnd, modificationDateIsLater, OutputFormat, OutputFormats } from '../util'
+import { defaultOutputFile, defaultOutputFilename, ensureIsTaskFile, fatalError, findTaskFilesRecursively, isString, mkStringCommaAnd, modificationDateIsLater, OutputFormat, OutputFormats } from '../util'
 
 export function makeCommand_convert() {
     return new Command()
         .name("convert")
         .alias("c")
         .description('Converts a task file into various formats')
-        .option('-o, --output <file>', 'manually indicate where to store the output file')
+        .option('-o, --output <file>', 'manually indicate where to store the output file\n(or - to indicate stdout if the output is a single file)')
         .option('-f, --force', 'force regeneration of output file', false)
         .option('-r, --recursive', 'batch converts all tasks file in the source folder', false)
         .option('-F, --filter <pattern>', 'when in recursive mode, only consider files matching this pattern', false)
@@ -33,28 +33,39 @@ async function convert(format: string, source: string, options: any): Promise<vo
         fatalError("No task file found in " + source)
     }
 
+    const toStdOut = options.output === '-'
+    if (toStdOut && taskFiles.length > 1) {
+        fatalError("Cannot output multiple files to stdout")
+    }
+
     const convModule: any = require('../convert_' + format)
 
     for (const taskFile of taskFiles) {
-        const outputFile = getOutputFile(options.output, taskFile, isRecursive, format)
-        const outputFileDir = path.dirname(outputFile)
+        const output = getOutputDestination(options.output, taskFile, isRecursive, format)
 
-        if (!force && (fs.existsSync(outputFile)) && !(await modificationDateIsLater(taskFile, outputFile))) {
-            console.log(`Output file '${outputFile}' seems up to date.`)
-            continue
+        if (isString(output)) {
+            const outputFileDir = path.dirname(output)
+
+            if (!force && (fs.existsSync(output)) && !(await modificationDateIsLater(taskFile, output))) {
+                console.log(`Output file '${output}' seems up to date.`)
+                continue
+            }
         }
 
         // console.log(`Converting '${taskFile}' to '${outputFile}'...`)
 
         const methodName = "convertTask_" + format
-        /*const res =*/ await convModule[methodName](taskFile, outputFile)
+        const pathOrTrue: string | true = await convModule[methodName](taskFile, output)
 
     }
 
 }
 
-function getOutputFile(outputFileOption: string | undefined, taskFile: string, isRecursive: boolean, format: OutputFormat): string {
+function getOutputDestination(outputFileOption: string | undefined, taskFile: string, isRecursive: boolean, format: OutputFormat): string | true {
     if (outputFileOption) {
+        if (outputFileOption === '-') {
+            return true
+        }
         if (isRecursive) {
             // must be a directory
             return path.join(outputFileOption, defaultOutputFilename(taskFile, format))
