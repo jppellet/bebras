@@ -141,7 +141,7 @@ async function renderPdf(mdFilePath: string): Promise<[Uint8Array, util.TaskMeta
 
     await page.setContent(textHtml, { waitUntil: 'networkidle0' })
 
-    const sectionTitles = await page.evaluate(_ => {
+    const sectionTitles = await page.evaluate(() => {
         // @ts-ignore
         const h2s = document.getElementsByTagName("H2")
         const sectionTitles = [] as string[]

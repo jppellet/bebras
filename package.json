@@ -1,6 +1,6 @@
 {
   "name": "bebras",
-  "version": "0.4.8",
+  "version": "0.5.0",
   "description": "Tools to support the editing of Bebras tasks in Markdown",
   "main": "./out/main.js",
   "types": "./out/main.d.ts",
@@ -8,7 +8,19 @@
     "bebras": "./out/cli/bebras.js"
   },
   "scripts": {
-    "lint": "eslint src --ext ts"
+    "compile": "tsc -p tsconfig.json",
+    "compile-watch": "tsc -p tsconfig.json --watch",
+    "lint": "eslint src --ext .ts",
+    "lint-watch": "npm-watch lint"
+  },
+  "watch": {
+    "lint": {
+      "patterns": [
+        "src",
+        ".eslintrc.json"
+      ],
+      "extensions": "ts,json"
+    }
   },
   "keywords": [
     "bebras",
@@ -26,15 +38,17 @@
     "@types/hasbin": "^1.2.0",
     "@types/jmespath": "^0.15.0",
     "@types/js-yaml": "^4.0.2",
-    "@types/katex": "^0.11.1",
+    "@types/katex": "^0.16.7",
     "@types/lodash": "^4.14.172",
     "@types/markdown-it": "^12.0.3",
     "@types/minimatch": "^3.0.5",
     "@types/node": "=12.12",
-    "@types/puppeteer": "^5.4.4",
-    "@typescript-eslint/eslint-plugin": "^4.29.0",
-    "@typescript-eslint/parser": "^4.29.0",
-    "eslint": "^7.32.0"
+    "@types/puppeteer": "^7.0.4",
+    "@typescript-eslint/eslint-plugin": "^4.33.0",
+    "@typescript-eslint/parser": "^4.30.0",
+    "eslint": "^7.32.0",
+    "npm-watch": "^0.13.0",
+    "typescript": "^5.5.3"
   },
   "dependencies": {
     "commander": "^8.1.0",
@@ -43,21 +57,21 @@
     "jmespath": "^0.15.0",
     "js-yaml": "^4.1.0",
     "jsrender": "^1.0.11",
-    "katex": "^0.13.13",
+    "katex": "^0.16.11",
     "lodash": "^4.17.21",
-    "markdown-it": "^12.2.0",
+    "markdown-it": "^12.3.2",
     "markdown-it-anchor": "^8.1.2",
     "markdown-it-container": "^3.0.0",
     "markdown-it-inline-comments": "^1.0.1",
-    "markdown-it-multimd-table-ext": "^4.1.1",
+    "markdown-it-multimd-table-ext": "^4.2.3",
     "markdown-it-sub": "^1.0.0",
     "markdown-it-sup": "^1.0.0",
     "markdown-it-texmath": "^0.9.1",
     "markdown-it-toc-done-right": "^4.2.0",
     "minimatch": "^3.0.4",
     "pdf-lib": "^1.16.0",
-    "pdfjs-dist": "^2.9.359",
-    "puppeteer": "^10.2.0",
+    "pdfjs-dist": "^4.4.168",
+    "puppeteer": "^22.13.1",
     "slugify": "^1.6.0"
   }
 }

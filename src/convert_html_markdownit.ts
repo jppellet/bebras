@@ -704,7 +704,7 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
 
       const imgScale = taskMetadata?.settings?.default_image_scale
 
-      if (tokens.length === 1) {
+      if (tokens.length === 1 && pluginOptions.fullHtml) {
         // this is the only image in a block
         token.attrJoin("class", "only-img-in-p")
       }
