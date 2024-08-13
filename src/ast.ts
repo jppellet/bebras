@@ -8,6 +8,7 @@ import { util } from './main'
 import * as patterns from './patterns'
 import { defaultOutputFile, Difficulty, mkdirsOf, modificationDateIsLater, parseLanguageCodeFromTaskPath, readFileStrippingBom, TaskMetadata } from "./util"
 
+
 export type TaskAST_Saved = Omit<TaskMetadata, "contributors" | "support_files"> & {
     lang?: string
     lang_code?: string
@@ -36,6 +37,7 @@ export type ParsedID = {
     country_code: string
     num: number
     variant?: string
+    usage_year?: number
 }
 
 export interface ParsedContributor {
@@ -112,7 +114,7 @@ function toJsonRepr(tokens: Token[], taskFile: string, metadata: TaskMetadata): 
         }
     }
 
-    if (match = patterns.id.exec(metadata.id)) {
+    if (match = patterns.idWithOtherYear.exec(metadata.id)) {
         const country_code = match.groups.country_code
 
         const parsedId: ParsedID = {
@@ -123,6 +125,9 @@ function toJsonRepr(tokens: Token[], taskFile: string, metadata: TaskMetadata): 
         }
         if (match.groups.variant) {
             parsedId.variant = match.groups.variant
+        }
+        if (match.groups.usage_year) {
+            parsedId.usage_year = +match.groups.usage_year
         }
         parsedMetadata.parsed_id = parsedId
     }

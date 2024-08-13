@@ -10,7 +10,7 @@ import * as yaml from 'js-yaml'
 import * as path from 'path'
 
 import { isUndefined } from "lodash"
-import { adjustLoadedMetadataFor, normalizeRawMetadataToStandardYaml, postYamlLoadObjectCorrections } from "./check"
+import { adjustLoadedMetadataFromYear, normalizeRawMetadataToStandardYaml, postYamlLoadObjectCorrections } from "./check"
 import { defaultLanguageCode } from "./codes"
 import { CssStylesheet, PluginOptions, defaultPluginOptions } from "./convert_html"
 import { getImageSize } from "./img_cache"
@@ -299,15 +299,7 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
           } catch { }
           if (parsedMetadata) {
             postYamlLoadObjectCorrections(parsedMetadata)
-            const id = (parsedMetadata as any).id
-            let year: patterns.TaskYear = "latest"
-            if (isString(id)) {
-              const idMatch = patterns.id.exec(id)
-              if (idMatch !== null) {
-                year = parseInt(idMatch.groups.year)
-              }
-            }
-            adjustLoadedMetadataFor(year, parsedMetadata)
+            adjustLoadedMetadataFromYear(parsedMetadata)
           }
           state.src = state.src.slice(fmEnd + fmEndMarker.length)
         }

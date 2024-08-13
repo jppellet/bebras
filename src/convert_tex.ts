@@ -973,7 +973,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
     let countryCode = "??"
     let match
-    if (match = patterns.id.exec(metadata.id)) {
+    if (match = patterns.idWithOtherYear.exec(metadata.id)) {
         countryCode = match.groups.country_code
     }
 

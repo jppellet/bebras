@@ -1,8 +1,8 @@
 // The following allows us to type to some extend
 // the groups property of the RegExpExecArray object
 
-import { isString } from "markdown-it/lib/common/utils"
-import { TaskMetadata } from "./util"
+import { isString } from "markdown-it/lib/common/utils";
+import { TaskMetadata } from "./util";
 
 // @ts-ignore
 interface RichRegExpExecArray<T> extends globalThis.RegExpExecArray {
@@ -271,13 +271,24 @@ export const prologue = capturing<{
 
 const idPatternWithoutStartEndMarkers = "(?<year>[0-9]{4})-(?<country_code>[A-Z]{2})-(?<num>[0-9]{2})(?<variant>[a-z])?"
 
-export const id = capturing<{
+export const idPlain = capturing<{
     year: always,
     country_code: always,
     num: always,
     variant: maybe,
 }>(
     `^${idPatternWithoutStartEndMarkers}$`
+)
+
+export const idWithOtherYear = capturing<{
+    id_plain: always,
+    year: always,
+    country_code: always,
+    num: always,
+    variant: maybe,
+    usage_year: maybe,
+}>(
+    `^(?<id_plain>${idPatternWithoutStartEndMarkers})(?: +\\(for (?<usage_year>[0-9]{4})\\))?$`
 )
 
 export const taskFileName = capturing<{

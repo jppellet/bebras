@@ -133,28 +133,48 @@ export function loadRawMetadata(text: string, warn?: ErrorWarningCallback, error
     return [fmStart, fmEnd, fmStrRaw, fmStr, metadata, mdStart, mdStr]
 }
 
-export function adjustLoadedMetadataFor(year: TaskYear, metadata: Partial<TaskMetadata>) {
-    if (year === "latest") {
-        // nothing to do
-        return
-    }
-    if (year <= 2021) {
-        // migrate to 2022
-        if (typeof (metadata as any).computer_science_areas === "undefined") {
-            (metadata as any).computer_science_areas = metadata.categories
+/**
+ * @returns the original year of this format, or "latest" if the year was not explicitly set
+ */
+export function adjustLoadedMetadataFromYear(metadata: Partial<TaskMetadata>): Check<TaskYear> {
+    let year: patterns.TaskYear = "latest"
+
+    const id = metadata.id
+    if (isString(id)) {
+        const idMatch = patterns.idWithOtherYear.exec(id)
+        if (idMatch !== null) {
+            if (idMatch.groups.usage_year) {
+                year = parseInt(idMatch.groups.usage_year)
+            } else {
+                year = parseInt(idMatch.groups.year)
+            }
         }
-        if (typeof metadata.computational_thinking_skills === "undefined") {
-            metadata.computational_thinking_skills = []
-        }
-        year = 2022
     }
-    if (year === 2022) {
-        // migrate to latest
-        if (typeof metadata.categories === "undefined") {
-            metadata.categories = (metadata as any).computer_science_areas
+
+    const originalYear = year
+
+    if (year !== "latest") {
+        if (year <= 2021) {
+            // migrate to 2022
+            if (typeof (metadata as any).computer_science_areas === "undefined") {
+                (metadata as any).computer_science_areas = metadata.categories
+            }
+            if (typeof metadata.computational_thinking_skills === "undefined") {
+                metadata.computational_thinking_skills = []
+            }
+            year = 2022
         }
-        year = "latest"
+        if (year === 2022) {
+            // migrate to latest
+            if (typeof metadata.categories === "undefined") {
+                metadata.categories = (metadata as any).computer_science_areas
+            }
+            year = "latest"
+        }
     }
+
+
+    return Value(originalYear)
 }
 
 
@@ -243,20 +263,21 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
             return [start + fmStart, end + fmStart]
         }
 
-        const id = metadata.id
-        let mainCountry: string | undefined
-        let year: number | "latest" = "latest"
-        let match
-        if (isUndefined(id)) {
-            error([fmStart, fmEnd], "The id field is missing")
-        } else if (!isString(id)) {
-            error(fmRangeForDef("id"), "The task ID should be a plain string")
-        } else if (match = patterns.id.exec(id)) {
 
-            if (!filename.startsWith(id)) {
-                error(fmRangeForValueInDef("id", id), `The filename '${filename}' does not match this ID`)
+        const idFull = metadata.id
+        let mainCountry: string | undefined
+        let match
+        if (isUndefined(idFull)) {
+            error([fmStart, fmEnd], "The id field is missing")
+        } else if (!isString(idFull)) {
+            error(fmRangeForDef("id"), "The task ID should be a plain string")
+        } else if (match = patterns.idWithOtherYear.exec(idFull)) {
+
+            const idPlain = match.groups.id_plain
+            if (!filename.startsWith(idPlain)) {
+                error(fmRangeForValueInDef("id", idPlain), `The filename '${filename}' does not match this ID`)
             } else {
-                const trimmedFilename = filename.slice(id.length)
+                const trimmedFilename = filename.slice(idPlain.length)
                 if (trimmedFilename.length !== 0) {
                     if (!trimmedFilename.startsWith("-")) {
                         error([0, 3], `The filename must have the format ID[-lan]${patterns.taskFileExtension} where 'lan' is the 3-letter ISO 639-3 code for the language`)
@@ -271,17 +292,23 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
 
             const countryCode = match.groups.country_code ?? "ZZ"
             mainCountry = codes.countryNameByCountryCodes[countryCode]
-            year = parseInt(match.groups.year)
             if (isUndefined(mainCountry)) {
-                let [start, _] = fmRangeForValueInDef("id", id)
+                let [start, _] = fmRangeForValueInDef("id", idPlain)
                 start += 5
                 warn([start, start + 2], "This country code looks invalid")
             }
         } else {
-            error(fmRangeForValueInDef("id", id), `The task ID should have the format YYYY-CC-00[x]\n\nPattern:\n${patterns.id.source}`)
+            error(fmRangeForValueInDef("id", idFull), `The task ID should have the format YYYY-CC-00[x], possibly with a '(for YYYY)' specifier\n\nPattern:\n${patterns.idWithOtherYear.source}`)
         }
 
-        adjustLoadedMetadataFor(year, metadata)
+        const yearCheck = adjustLoadedMetadataFromYear(metadata)
+
+        let year: TaskYear = "latest"
+        if (isErrorMessage(yearCheck)) {
+            error(fmRangeForDef("id"), yearCheck.error)
+        } else {
+            year = yearCheck.value
+        }
 
         const requiredFields = patterns.requiredMetadataFieldsCurrentFor(year)
 
@@ -604,8 +631,8 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
                     continue
                 }
 
-                if (!(match = patterns.id.exec(equivalentTask))) {
-                    error(fmRangeForValueInDef("equivalent_tasks", equivalentTask), `The task ID should have the format YYYY-CC-00[x]\n\nPattern:\n${patterns.id.source}`)
+                if (!(match = patterns.idPlain.exec(equivalentTask))) {
+                    error(fmRangeForValueInDef("equivalent_tasks", equivalentTask), `The task ID should have the format YYYY-CC-00[x]\n\nPattern:\n${patterns.idPlain.source}`)
                 }
             }
         }
