@@ -2,16 +2,16 @@ import { Command } from "commander"
 import * as fs from 'fs'
 import * as jmespath from 'jmespath'
 import * as path from 'path'
-import { fatalError, isString } from "../util"
+import { AgeCategories, Difficulties, fatalError, isArray, isNullOrUndefined, isString } from "../util"
 
 import { isUndefined } from "lodash"
 import { astOf, TaskAST } from "../ast"
 import * as codes from '../codes'
+import { ensureIsTaskFile } from "../fsutil"
 import * as patterns from '../patterns'
-import * as util from '../util'
 import _ = require("lodash")
 
-const DefinedDifficulties = [...util.Difficulties]
+const DefinedDifficulties = [...Difficulties]
 DefinedDifficulties.shift() // remove '--'
 
 export function makeCommand_find() {
@@ -35,7 +35,7 @@ export function makeCommand_find() {
 
     for (let i = 0; i <= 5; i++) {
         cmd = cmd
-            .option(`-${i}, --cat${i} [${DefinedDifficulties.join('|')}]`, `only the ${util.AgeCategories[i]} age category (and with the given difficulty)`)
+            .option(`-${i}, --cat${i} [${DefinedDifficulties.join('|')}]`, `only the ${AgeCategories[i]} age category (and with the given difficulty)`)
     }
 
     return cmd
@@ -64,11 +64,11 @@ async function find(folder: string, options: any) {
             if (setCategory !== -1) {
                 fatalError(`Cannot specify both categories ${setCategory} and ${i}`)
             } if (value === true) {
-                filter = `[?!contains(ages."${util.AgeCategories[i]}", \`--\`)] | ` + filter
+                filter = `[?!contains(ages."${AgeCategories[i]}", \`--\`)] | ` + filter
             } else if (DefinedDifficulties.includes(value)) {
-                filter = `[?ages."${util.AgeCategories[i]}" == \`${value}\`] | ` + filter
+                filter = `[?ages."${AgeCategories[i]}" == \`${value}\`] | ` + filter
             } else {
-                fatalError(`Unknown difficulty: '${value}'. Shoule be ${util.Difficulties.join('|')}`)
+                fatalError(`Unknown difficulty: '${value}'. Shoule be ${Difficulties.join('|')}`)
             }
             setCategory = i
         }
@@ -105,7 +105,7 @@ async function find(folder: string, options: any) {
     const isFolder = (await fs.promises.stat(folder)).isDirectory()
 
     const taskFiles = !isFolder
-        ? [(await util.ensureIsTaskFile(folder, false))]
+        ? [(await ensureIsTaskFile(folder, false))]
         : findTaskFilesIn(folder)
 
     if (taskFiles.length === 0) {
@@ -116,7 +116,7 @@ async function find(folder: string, options: any) {
         (setCategory === -1) ? undefined : ast => {
             const diffIndex = ast.difficulties[setCategory]
             ast.difficulty = diffIndex
-            ast.difficulty_str = util.Difficulties[diffIndex]
+            ast.difficulty_str = Difficulties[diffIndex]
         }
 
 
@@ -156,7 +156,7 @@ export async function runQueryOn(taskFiles: string[], query: string, showAsArray
         asts.forEach(enrich)
     }
     let res = jmespath.search(asts, query)
-    if (!util.isNullOrUndefined(res)) {
+    if (!isNullOrUndefined(res)) {
 
         function toStringOrJSON(val: any): string {
             return isString(val) ? val : JSON.stringify(val, null, indent)
@@ -164,7 +164,7 @@ export async function runQueryOn(taskFiles: string[], query: string, showAsArray
 
         let output: string
 
-        if (!util.isArray(res)) {
+        if (!isArray(res)) {
             output = toStringOrJSON(res)
         } else {
             if (showAsArray) {

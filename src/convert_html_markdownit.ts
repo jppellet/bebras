@@ -10,13 +10,16 @@ import * as yaml from 'js-yaml'
 import * as path from 'path'
 
 import { isUndefined } from "lodash"
-import { adjustLoadedMetadataFromYear, normalizeRawMetadataToStandardYaml, postYamlLoadObjectCorrections } from "./check"
+import { normalizeRawMetadataToStandardYaml, postYamlLoadObjectCorrections } from "./check"
 import { defaultLanguageCode } from "./codes"
-import { CssStylesheet, PluginOptions, defaultPluginOptions } from "./convert_html"
+import { CssStylesheet, defaultPluginOptions, PluginOptions } from "./convert_html"
 import { getImageSize } from "./img_cache"
 import * as patterns from './patterns'
-import { TaskMetadata, defaultTaskMetadata, isString, parseLanguageCodeFromTaskPath } from "./util"
+import { isRecord, isString, parseLanguageCodeFromTaskPath, TaskMetadata } from "./util"
 import _ = require("lodash")
+
+import * as markdownItAnchor from "markdown-it-anchor"
+import * as markdownItTocDoneRight from "markdown-it-toc-done-right"
 
 export type PluginContext = {
   taskFile: string
@@ -26,6 +29,7 @@ export type PluginContext = {
 
 export function plugin(getCurrentPluginContext: () => PluginContext) {
   return (md: MarkdownIt, _parseOptions: any) => {
+
 
     // console.log("custom options", _parseOptions)
     const pluginOptions: PluginOptions = { ...defaultPluginOptions(), ..._parseOptions }
@@ -55,13 +59,14 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
       })
 
     if (pluginOptions.fullHtml) {
-      md = md
-        .use(require("markdown-it-anchor"))
-        .use(require("markdown-it-toc-done-right"), {
-          level: 2,
-          listType: "ul",
-          placeholder: '{{table_of_contents}}',
-        })
+      function usePlugin(plugin: any, opts?: any) {
+        if ("default" in plugin) {
+          plugin = plugin.default
+        }
+        md = md.use(plugin, opts)
+      }
+      usePlugin(markdownItAnchor)
+      usePlugin(markdownItTocDoneRight)
     }
 
     const customContainerPlugin = require('markdown-it-container')
@@ -72,7 +77,6 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
       .use(customContainerPlugin, "nobreak")
       .use(customContainerPlugin, "comment")
       .use(customContainerPlugin, "fullwidth")
-
 
 
     const quotesByLang: Record<string, [string, string, string, string]> = {
@@ -180,12 +184,14 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
 
         const answerType = `<span class="bebras-header-caption">Answer Type</span><span class="bebras-header-value">${metadata.answer_type}</span>`
 
-        let relatedTaskIDs = metadata.equivalent_tasks
-        if (isUndefined(relatedTaskIDs)) {
-          relatedTaskIDs = []
-        }
-        if (isString(relatedTaskIDs)) {
-          relatedTaskIDs = relatedTaskIDs.split(",").map(s => s.trim())
+        let relatedTaskRaw = metadata.equivalent_tasks
+        let relatedTaskIDs: string[] = []
+        if (!isUndefined(relatedTaskRaw)) {
+          if (isString(relatedTaskRaw)) {
+            relatedTaskIDs = relatedTaskRaw.split(",").map(s => s.trim())
+          } else if (_.isArray(relatedTaskRaw)) {
+            relatedTaskIDs = relatedTaskRaw
+          }
         }
         const relatedTasks = `<span class="bebras-header-caption">Equivalent Tasks</span><span class="bebras-header-value">${relatedTaskIDs.length === 0 ? "—" : relatedTaskIDs.join(", ")}</span>`
 
@@ -216,7 +222,7 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
           return [catCell1, catCell2]
         }
 
-        const [csAreaCell1, csAreaCell2] = makeCategoryCells("Computer Science Areas", patterns.csAreas, metadata.categories)
+        const [csAreaCell1, csAreaCell2] = makeCategoryCells("Computer Science Areas", patterns.categories.map(c => c.name), metadata.categories.map(c => c.name))
         const [skillsCell1, skillsCell2] = makeCategoryCells("Computational Thinking Skills", patterns.ctSkills, metadata.computational_thinking_skills)
 
 
@@ -270,11 +276,11 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
 
 
     let basePath: string
-    let taskMetadata: TaskMetadata | undefined
+    let ctx: PluginContext
+    let taskMetadata: TaskMetadata
 
     md.core.ruler.before('block', 'bebras_metadata', (state: StateCore) => {
       // check front matter
-      let parsedMetadata: object | undefined
       const fmStartMarkerLF = "---\n"
       const fmStartMarkerCRLF = "---\r\n"
       let fmStartMarker: string | undefined = undefined
@@ -288,26 +294,30 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
         newline = "\r\n"
       }
 
+      ctx = getCurrentPluginContext()
+      // console.log(ctx)
+      basePath = ctx.basePath
+
       if (fmStartMarker) {
         const fmEndMarker = `${newline}---${newline}`
         const fmEnd = state.src.indexOf(fmEndMarker, fmStartMarker.length)
         if (fmEnd >= 0) {
           // parse front matter as YAML
           const fmStr = normalizeRawMetadataToStandardYaml(state.src.slice(0, fmEnd))
+          let parsedMetadataFields: unknown
           try {
-            parsedMetadata = yaml.load(fmStr) as object | undefined
+            parsedMetadataFields = yaml.load(fmStr)
           } catch { }
-          if (parsedMetadata) {
-            postYamlLoadObjectCorrections(parsedMetadata)
-            adjustLoadedMetadataFromYear(parsedMetadata)
+          if (parsedMetadataFields && isRecord(parsedMetadataFields)) {
+            postYamlLoadObjectCorrections(parsedMetadataFields)
+            taskMetadata = TaskMetadata.validate(parsedMetadataFields, ctx.taskFile).fold(a => a, err => {
+              console.log("Error parsing metadata: " + err)
+              return TaskMetadata.defaultValue(ctx.taskFile)
+            })
           }
           state.src = state.src.slice(fmEnd + fmEndMarker.length)
         }
       }
-
-      const ctx = getCurrentPluginContext()
-      // console.log(ctx)
-      basePath = ctx.basePath
 
       if (ctx.setOptionsFromMetadata) {
         const lang = parseLanguageCodeFromTaskPath(ctx.taskFile)
@@ -315,7 +325,6 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
         // console.log("set quotes to " + lang)
         // console.log(md.options)
       }
-      taskMetadata = Object.assign({}, defaultTaskMetadata(), parsedMetadata)
       state.env.taskMetadata = taskMetadata
       state.env.basePath = basePath
 
@@ -368,8 +377,6 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
           newSrcParts.push(newPart)
         }
       }
-
-      taskMetadata = taskMetadata || defaultTaskMetadata()
 
       while ((match = templateRegExp.exec(state.src)) !== null) {
         const templateName = match[1] as MdTemplateName
@@ -775,13 +782,13 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
 
     md.renderer.rules.bebras_html_expand = (tokens, idx) => {
       const templateName = tokens[idx].meta as HtmlTemplateName
-      return HtmlGeneratorTemplates[templateName](taskMetadata || defaultTaskMetadata())
+      return HtmlGeneratorTemplates[templateName](taskMetadata)
     }
 
 
     md.renderer.rules.main_open = (tokens, idx) => {
 
-      const metadata = taskMetadata ?? defaultTaskMetadata()
+      const metadata = taskMetadata
       const pageHeader = ``
       const pageFooter = '' +
         `<span class="bebras-page-footer-taskid">${metadata.id}</span>

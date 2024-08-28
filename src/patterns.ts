@@ -1,8 +1,8 @@
 // The following allows us to type to some extend
 // the groups property of the RegExpExecArray object
 
-import { isString } from "markdown-it/lib/common/utils";
-import { TaskMetadata } from "./util";
+import { isString } from "markdown-it/lib/common/utils"
+import { TaskMetadata } from "./util"
 
 // @ts-ignore
 interface RichRegExpExecArray<T> extends globalThis.RegExpExecArray {
@@ -11,7 +11,7 @@ interface RichRegExpExecArray<T> extends globalThis.RegExpExecArray {
 
 // @ts-ignore
 interface RichRegExp<T> extends globalThis.RegExp {
-    exec(string: string): RichRegExpExecArray<T> | null;
+    exec(string: string): RichRegExpExecArray<T> | null
 }
 
 // OFFeslint-disable-next-line @typescript-eslint/class-name-casing
@@ -20,7 +20,7 @@ interface always { _tag: 'always' };
 interface maybe { _tag: 'maybe' };
 
 type Captures<T> = {
-    [G in keyof T]: T[G] extends always ? string : T[G] extends maybe ? (string | undefined) : never;
+    [G in keyof T]: T[G] extends always ? string : T[G] extends maybe ? (string | undefined) : never
 }
 
 export type GroupNameOf<T> = T extends RichRegExp<infer H> ? keyof H : never
@@ -93,15 +93,21 @@ const _requiredMetadataFields_2022 = [
     "support_files",
 ] as const
 
-export function requiredMetadataFieldsCurrentFor(year: TaskYear) {
+export function requiredMetadataFieldsCurrentFor(year: TaskYear, strictChecks: boolean) {
+    let referenceFieldsRO: readonly string[]
     if (year === "latest") {
-        return _requiredMetadataFields_Current
+        referenceFieldsRO = _requiredMetadataFields_Current
+    } else if (year === 2022) {
+        referenceFieldsRO = _requiredMetadataFields_2022
+    } else {
+        referenceFieldsRO = _requiredMetadataFields_Current
     }
-    if (year === 2022) {
-        return _requiredMetadataFields_2022
-    }
-    return _requiredMetadataFields_Current
 
+    const referenceFields = [...referenceFieldsRO]
+    if (strictChecks) {
+        referenceFields.push("keywords", "preview", "summary")
+    }
+    return referenceFields
 }
 
 export const ageCategories = {
@@ -113,13 +119,44 @@ export const ageCategories = {
     "16yo–19yo": "16-19",
 } as const
 
-export const csAreas = [
-    "algorithms and programming",
-    "data structures and representations",
-    "computer processes and hardware",
-    "communication and networking",
-    "interactions, systems and society",
-] as const
+export type Category = {
+    name: string
+    subs: Category[]
+}
+
+export const categories = [{
+    name: "algorithms and programming",
+    subs: [
+        { name: "graph theory", subs: [] },
+        { name: "recursion", subs: [] },
+        { name: "brute force", subs: [] },
+        { name: "sorting and searching", subs: [] },
+        { name: "optimization", subs: [] },
+        { name: "binary and logic", subs: [] },
+        { name: "sequential execution", subs: [] },
+        { name: "variables", subs: [] },
+        { name: "control structures", subs: [] },
+        { name: "other", subs: [] },
+    ],
+}, {
+    name: "data structures and representations",
+    subs: [
+        { name: "data encoding", subs: [] },
+        { name: "security", subs: [] },
+        { name: "storage and collection", subs: [] },
+        { name: "visualization", subs: [] },
+        { name: "other", subs: [] },
+    ],
+}, { name: "computer processes and hardware", subs: [] },
+{ name: "communication and networking", subs: [] },
+{ name: "interactions, systems and society", subs: [] },
+] as const satisfies Category[]
+
+type CategoryNamesRecursively<Cats extends Category[], Acc> =
+    Cats extends [] ? Acc :
+    CategoryNamesRecursively<Cats[number]["subs"], Acc | Cats[number]["name"]>
+
+export type CategoryName = CategoryNamesRecursively<typeof categories, never>
 
 export const ctSkills = [
     "abstraction",
@@ -229,6 +266,8 @@ export function markdownSectionNamesFor(year: TaskYear) {
     return _markdownSectionNames_Current
 }
 
+export const previewTextPrefix = "text("
+export const previewTextSuffix = ")"
 
 export type SectionName = ReturnType<typeof markdownSectionNamesFor>[number]
 export type SectionAssociatedData<T> = { [S in SectionName]: T }

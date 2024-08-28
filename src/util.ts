@@ -1,10 +1,8 @@
 import path = require('path')
 import patterns = require('./patterns')
-import * as fs from "fs"
 import codes = require("./codes")
 import hasbin = require('hasbin')
 
-export type Dict<T> = Record<string, T | undefined>
 
 export function keysOf<K extends keyof any>(d: Record<K, any>): K[]
 export function keysOf<K extends {}>(o: K): (keyof K)[]
@@ -80,6 +78,14 @@ export function isArray(a: any): a is Array<any> {
     return Array.isArray(a)
 }
 
+export function isRecord(a: any): a is Record<string, any> {
+    return typeof a === 'object' && a !== null && !isArray(a)
+}
+
+export function isStringArray(a: any): a is string[] {
+    return isArray(a) && a.every(isString)
+}
+
 export function isUndefined(a: any): a is undefined {
     return a === undefined
 }
@@ -111,35 +117,6 @@ export function mkStringCommaAnd(items: ReadonlyArray<any>, conn: string = "and"
 export function fatalError(msg: string): never {
     console.log("error: " + msg)
     process.exit(1)
-}
-
-export function isTaskFile(path: string, ensureExistenceToo: boolean): boolean {
-    if (!path.endsWith(patterns.taskFileExtension) || (ensureExistenceToo && !(fs.existsSync(path)))) {
-        return false
-    }
-    return true
-}
-
-export function ensureIsTaskFile(path: string, ensureExistenceToo: boolean): string | never {
-    if (!isTaskFile(path, ensureExistenceToo)) {
-        fatalError(`not a${ensureExistenceToo ? "n existing" : ""} task file: ${path}`)
-    }
-    return path
-}
-
-export async function findTaskFilesRecursively(folger: string, pattern: string | undefined): Promise<string[]> {
-    const res: string[] = []
-    for (const f of fs.readdirSync(folger)) {
-        const fullPath = path.join(folger, f)
-        if (fs.lstatSync(fullPath).isDirectory()) {
-            res.push(...await findTaskFilesRecursively(fullPath, pattern))
-        } else {
-            if (isTaskFile(fullPath, true) && (!pattern || fullPath.includes(pattern))) {
-                res.push(fullPath)
-            }
-        }
-    }
-    return res
 }
 
 interface CheckBase<A> {
@@ -189,31 +166,6 @@ export function s(n: number) {
     return plural("", "s", n)
 }
 
-export function siblingWithExtension(filepath: string, ext: string) {
-    let filename = path.basename(filepath, patterns.taskFileExtension)
-    filename = path.basename(filename, path.extname(filename))
-    const siblingName = filename + ext
-    return path.join(path.dirname(filepath), siblingName)
-}
-
-
-export async function modificationDateIsLater(source: string, derived: string): Promise<boolean> {
-    const sourceStat = await fs.promises.stat(source)
-    const derivedStat = await fs.promises.stat(derived)
-    return sourceStat.mtimeMs > derivedStat.mtimeMs
-}
-
-
-export function toFileUrl(filepath: string): string {
-    let pathName = path.resolve(filepath).replace(/\\/g, '/')
-
-    // Windows drive letter must be prefixed with a slash
-    if (pathName[0] !== '/') {
-        pathName = '/' + pathName
-    }
-
-    return encodeURI('file://' + pathName)
-};
 
 export const OutputFormats = RichStringEnum.withProps<{
     pathSegments: string[]
@@ -243,58 +195,194 @@ export function defaultOutputFilename(taskFile: string, format: OutputFormat): s
 
 export const Difficulties = ["--", "easy", "medium", "hard", "bonus"] as const
 export type Difficulty = typeof Difficulties[number]
+export type NonEmptyDifficulty = Exclude<Difficulty, "--">
 
 export const AgeCategories = ["6-8", "8-10", "10-12", "12-14", "14-16", "16-19"] as const
 export type AgeCategory = typeof AgeCategories[number]
 
-export class TaskMetadata {
-    constructor(
-        public id: string,
-        public title: string,
-        public ages: { [key in AgeCategory]: Difficulty },
-        public categories: string[],
-        public computational_thinking_skills: string[],
-        public answer_type: string,
-        public keywords: string[],
-        public support_files: string[],
-        public contributors: string[],
-        public equivalent_tasks: string[],
-        public settings: undefined | TaskSettings,
-    ) { }
+
+
+export type ParsedID = {
+    id_plain: string
+    year: number
+    country: string
+    country_code: string
+    num: number
+    variant?: string
+    usage_year?: number
+}
+
+export type Difficulties = { [key in AgeCategory]: Difficulty }
+
+export type TaskMetadata = {
+    readonly id: string
+    filePath: string
+    title: string
+    name?: string | undefined
+    ages: Difficulties
+    categories: patterns.Category[]
+    computational_thinking_skills: string[]
+    answer_type: string
+    keywords: string[]
+    support_files: string[]
+    contributors: string[]
+    equivalent_tasks: string[]
+    settings?: TaskSettings | undefined
+    summary?: string | undefined
+    preview?: string | undefined
+}
+
+
+export namespace TaskMetadata {
+
+    export function parseId(id: string): ParsedID | undefined {
+        const match = patterns.idWithOtherYear.exec(id)
+        if (!match) {
+            return undefined
+        }
+        return {
+            id_plain: match.groups.id_plain,
+            year: parseInt(match.groups.year),
+            country_code: match.groups.country_code,
+            country: codes.countryNameByCountryCodes[match.groups.country_code] ?? "((unknown))",
+            num: parseInt(match.groups.num),
+            variant: match.groups.variant,
+            usage_year: match.groups.usage_year ? parseInt(match.groups.usage_year) : undefined,
+        }
+    }
+
+    export function validate(metadata: Record<string, unknown>, filePath: string): Check<TaskMetadata> {
+
+        function check<const F extends keyof TaskMetadata, T>(field: F, validator: (value: unknown) => value is T, fallbackIfUndefined?: T): void {
+            if (fallbackIfUndefined !== undefined && metadata[field] === undefined) {
+                metadata[field] = fallbackIfUndefined
+            }
+            if (!validator(metadata[field])) {
+                throw ErrorMessage(`Cannot create task metadata, invalid value for field '${field}': ${metadata[field]}`)
+            }
+        }
+
+        function checkEquivalentTasks() {
+            metadata.equivalent_tasks = (function (): string[] {
+                const value = metadata.equivalent_tasks
+                if (isUndefined(value)) {
+                    return []
+                }
+                if (isStringArray(value)) {
+                    return value
+                }
+                if (isString(value)) {
+                    if (value === "--") {
+                        return []
+                    }
+                    return [value]
+                }
+                throw ErrorMessage(`Cannot create task metadata, invalid value for field 'equivalent_tasks': ${value}`)
+            })()
+        }
+
+        try {
+            metadata.filePath = filePath
+            check("id", isString)
+            check("title", isString)
+            check("name", v => isUndefined(v) || isString(v))
+            check("ages", isRecord)
+            check("categories", isArray)
+            check("computational_thinking_skills", v => isUndefined(v) || isStringArray(v), []),
+                check("answer_type", isString)
+            check("keywords", v => isStringArray(v), [])
+            check("support_files", isStringArray)
+            check("contributors", isStringArray)
+            checkEquivalentTasks()
+            check("settings", v => isUndefined(v) || isRecord(v))
+            check("summary", v => isUndefined(v) || isString(v))
+            check("preview", v => isUndefined(v) || isString(v))
+
+            const metadataOK = metadata as TaskMetadata
+            for (const [age, diff] of Object.entries(metadataOK.ages)) {
+                if (diff as string === "----") {
+                    (metadataOK.ages as any)[age] = "--"
+                }
+            }
+
+            return Value(metadataOK)
+        } catch (e) {
+            if ((e as any)._type === "ErrorMessage") {
+                return e as Check<TaskMetadata>
+            }
+            console.dir(e)
+            return ErrorMessage(`Cannot create task metadata: ${e}`)
+        }
+
+    }
+
+    export function defaultValue(filePath: string): TaskMetadata {
+        return {
+            filePath,
+            id: "0000-AA-01",
+            title: "((Untitled Task))",
+            name: "((Untitled Task))",
+            ages: {
+                "6-8": "--",
+                "8-10": "--",
+                "10-12": "--",
+                "12-14": "--",
+                "14-16": "--",
+                "16-19": "--",
+            } as const,
+            categories: [],
+            computational_thinking_skills: [],
+            answer_type: "((unspecified))",
+            keywords: [],
+            support_files: [],
+            contributors: ["((unspecified))"],
+            equivalent_tasks: [],
+            settings: undefined,
+            summary: undefined,
+        }
+    }
+
+
+    export function difficultyForAge(age: string, metadata: TaskMetadata): NonEmptyDifficulty | undefined {
+        if (!(age in metadata.ages)) {
+            return undefined
+        }
+        const diff = metadata.ages[age as AgeCategory]
+        if (diff.startsWith("--")) {
+            return undefined
+        }
+        return diff as NonEmptyDifficulty
+    }
+
+
+    /**
+     * The year of the task to be used as reference for the format of the task
+     */
+    export function formatYear(metadata: TaskMetadata): patterns.TaskYear {
+        const parsedId = parseId(metadata.id)
+        return parsedId?.usage_year ?? parsedId?.year ?? "latest"
+    }
+
 
 }
 
+
+
+export const DifficultyLevels = {
+    easy: 1,
+    medium: 2,
+    hard: 3,
+    bonus: 4,
+} as const
+
 export interface TaskSettings {
-    default_image_scale: undefined | number
+    default_image_scale?: number
 }
 
 export type TaskMetadataField = keyof TaskMetadata
 
-export function defaultTaskMetadata() {
-    return new TaskMetadata(
-        "0000-AA-01",
-        "((Untitled Task))",
-        {
-            "6-8": "--",
-            "8-10": "--",
-            "10-12": "--",
-            "12-14": "--",
-            "14-16": "--",
-            "16-19": "--",
-        } as const,
-        [],
-        [],
-        "((unspecified))",
-        [],
-        [],
-        ["((unspecified))"],
-        [],
-        undefined,
-    )
-}
 
-
-const texExpansionDefs: Dict<string | { pat: string, repl: string }> = {
+const texExpansionDefs: Record<string, string | { pat: string, repl: string }> = {
     // basic chars expanded with backslash: & $ { } % _ #
     // (https://tex.stackexchange.com/a/34586/5035)
     "&": { pat: "\\&", repl: "\\&" },
@@ -384,43 +472,6 @@ export function parseLanguageCodeFromTaskPath(filepath: string): string | undefi
         }
     }
     return undefined
-}
-
-export async function readFileStrippingBom(filepath: string): Promise<string> {
-    let content = await fs.promises.readFile(filepath, "utf8")
-    if (content.length > 0 && content.charCodeAt(0) === 0xFEFF) {
-        content = content.slice(1)
-        console.log("Warning: file was saved with a UTF-8 BOM, remove it for fewer unexpected results: " + filepath)
-    }
-    return content
-}
-
-export async function mkdirsOf(child: string): Promise<void> {
-    const parent = path.dirname(child)
-
-    if (!fs.existsSync(parent)) {
-        await fs.promises.mkdir(parent, { recursive: true })
-    }
-}
-
-export async function writeData(data: string | Buffer | Uint8Array, output: string | true, desc: string): Promise<string | true> {
-    if (isString(output)) {
-        // file
-        await mkdirsOf(output)
-        await fs.promises.writeFile(output, data)
-        console.log(`${desc} written on ${output}`)
-        return output
-    } else {
-        // stdout
-        console.log(data)
-        return true
-    }
-}
-
-export function isBinaryAvailable(binName: string): Promise<boolean> {
-    return new Promise((resolve, reject) => {
-        hasbin(binName, resolve)
-    })
 }
 
 export function levenshteinDistance(a: string, b: string): number {

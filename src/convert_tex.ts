@@ -1,26 +1,25 @@
 import fs = require('fs')
 import path = require('path')
-import md2html = require('./convert_html')
 import _ = require('lodash')
 import Token = require('markdown-it/lib/token')
 import patterns = require("./patterns")
-import { Dict, HtmlToTexPixelRatio, TaskMetadata, parseLanguageCodeFromTaskPath, readFileStrippingBom, siblingWithExtension, texEscapeChars, texMath, texMathify, writeData } from './util'
+import { HtmlToTexPixelRatio, TaskMetadata, texEscapeChars, texMath, texMathify } from './util'
 import codes = require("./codes")
 // import { numberToString } from 'pdf-lib'
 import { isString, isUndefined } from 'lodash'
+import { parseTask } from './convert_html'
+import { siblingWithExtension, writeData } from './fsutil'
 import { getImageSize } from './img_cache'
 
 const DUMP_TOKENS = false
 
 export async function convertTask_tex(taskFile: string, output: string | true): Promise<string | true> {
 
-    const langCode = parseLanguageCodeFromTaskPath(taskFile) ?? codes.defaultLanguageCode()
-    const textMd = await readFileStrippingBom(taskFile)
-    const [tokens, metadata] = md2html.parseMarkdown(textMd, taskFile, path.dirname(taskFile), {
-        langCode,
+    const [tokens, metadata, langCode] = await parseTask(taskFile, {
         // we use ⍀ to avoid escaping \ to \\, and we later convert it back to \
         customQuotes: ["⍀enquote⦃", "⦄", "⍀enquote⦃", "⦄"],
     })
+
     const linealizedTokens = _.flatMap(tokens, t => {
         if (t.type === "inline") {
             return t.children ?? []
@@ -124,7 +123,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
     const FormatBrochure = true
 
-    const sectionRenderingData: Dict<{ skip: boolean, pre: string, post: string, disableMathify: boolean }> = {
+    const sectionRenderingData: Record<string, { skip: boolean, pre: string, post: string, disableMathify: boolean }> = {
         "Body": { skip: false, pre: "", post: "", disableMathify: false },
         "Question/Challenge": { skip: false, pre: "{\\em\n", post: "}", disableMathify: true },
         "Question/Challenge - for the brochures": { skip: false, pre: "{\\em\n\n", post: "}\n\n", disableMathify: true },
@@ -158,7 +157,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             }
 
             const ageCategories = patterns.ageCategories
-            const csAreas = patterns.csAreas
+            const firstLevelCategories = patterns.categories.map(c => c.name)
 
             const ageCatTitles = (Object.keys(ageCategories) as Array<keyof typeof ageCategories>)
             const ageCatTitleCells = ageCatTitles.map(c => `\\textit{${c}:}`).join(" & ")
@@ -169,29 +168,29 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                 return catValue
             }).join(" & ")
 
-            const numCat1 = Math.floor(csAreas.length / 2)
+            const numCat1 = Math.floor(firstLevelCategories.length / 2)
 
             const checkedBox = `$\\boxtimes$`
             const uncheckedBox = `$\\square$`
 
             function catToRow(catName: string) {
-                const isRelated = metadata.categories.includes(catName)
+                const isRelated = !!metadata.categories.find(c => c.name === catName)
                 const catChecked = isRelated ? checkedBox : uncheckedBox
                 return `${catChecked} ${texEscapeChars(catName)}`
             }
 
             let catCell1 = `\\textit{Categories:}`
             for (let i = 0; i < numCat1; i++) {
-                catCell1 += `\\newline ${catToRow(csAreas[i])}`
+                catCell1 += `\\newline ${catToRow(firstLevelCategories[i])}`
             }
 
             let catCell2 = ``
-            for (let i = numCat1; i < csAreas.length; i++) {
+            for (let i = numCat1; i < firstLevelCategories.length; i++) {
                 if (i !== numCat1) {
                     catCell2 += "\\newline "
 
                 }
-                catCell2 += catToRow(csAreas[i])
+                catCell2 += catToRow(firstLevelCategories[i])
             }
 
             // TODO CTSKILLS
@@ -898,7 +897,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
     }
 
-    const sectionStrs: Dict<Array<string>> = {}
+    const sectionStrs: Record<string, Array<string>> = {}
 
 
     function traverse(tokens: Token[], env: RendererEnv): string {
@@ -939,7 +938,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
     const env = new RendererEnv()
     const taskTex = traverse(linealizedTokens, env)
 
-    const babels: Dict<string> = {
+    const babels: Record<string, string> = {
         eng: `\\usepackage[english]{babel}`,
         deu: `\\usepackage[german]{babel}`,
         ita: `\\usepackage[italian]{babel}`,

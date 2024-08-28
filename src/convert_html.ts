@@ -4,8 +4,9 @@ import Token = require('markdown-it/lib/token')
 
 import { isUndefined } from 'lodash'
 import { defaultLanguageCode, languageNameAndShortCodeByLongCode } from './codes'
-import { PluginContext } from './convert_html_markdownit'
-import { defaultTaskMetadata, parseLanguageCodeFromTaskPath, readFileStrippingBom, TaskMetadata, writeData } from './util'
+import { plugin, PluginContext } from './convert_html_markdownit'
+import { readFileStrippingBom, writeData } from './fsutil'
+import { parseLanguageCodeFromTaskPath, TaskMetadata } from './util'
 
 export async function convertTask_html(taskFile: string, outputFile: string): Promise<string | true> {
    return convertTask_html_impl(taskFile, outputFile, true)
@@ -20,7 +21,7 @@ export async function convertTask_html_impl(taskFile: string, output: string | t
 
 function makeMdParser(taskFile: string, basePath: string, options: PluginOptions) {
    const context: PluginContext = { taskFile, basePath, setOptionsFromMetadata: false }
-   const md = MarkdownIt().use(require("./convert_html_markdownit").plugin(() => context), options)
+   const md = MarkdownIt().use(plugin(() => context), options)
    return md
 }
 
@@ -29,8 +30,14 @@ export function renderMarkdown(text: string, taskFile: string, basePath: string,
    const parseOptions = { ...defaultPluginOptions(), fullHtml, langCode }
    const md = makeMdParser(taskFile, basePath, parseOptions)
    const env: any = {}
-   const result = md.render(text, env)
-   const metadata: TaskMetadata = env.taskMetadata ?? defaultTaskMetadata()
+   let result: string
+   try {
+      result = md.render(text, env)
+   } catch (e) {
+      console.error(`Error rendering Markdown in ${taskFile}: ${e}`)
+      throw e
+   }
+   const metadata: TaskMetadata = env.taskMetadata ?? TaskMetadata.defaultValue(taskFile)
 
    const style =
       isUndefined(CssStylesheet)
@@ -71,12 +78,28 @@ export function defaultPluginOptions() {
 
 export type PluginOptions = ReturnType<typeof defaultPluginOptions>
 
+export async function parseTask(taskFile: string, parseOptions: Partial<PluginOptions> = {}): Promise<[Token[], TaskMetadata, string]> {
+   const mdText = await readFileStrippingBom(taskFile)
+   return parseTaskMd(mdText, taskFile, parseOptions)
+}
+
+export async function parseTaskMd(mdText: string, taskFile: string, parseOptions: Partial<PluginOptions> = {}): Promise<[Token[], TaskMetadata, string]> {
+   const langCode = parseLanguageCodeFromTaskPath(taskFile) ?? defaultLanguageCode()
+   return [...parseMarkdown(mdText, taskFile, path.dirname(taskFile), { langCode, ...parseOptions }), langCode]
+}
+
 export function parseMarkdown(text: string, taskFile: string, basePath: string, parseOptions: Partial<PluginOptions>): [Token[], TaskMetadata] {
    const options = { ...defaultPluginOptions(), parseOptions }
    const md = makeMdParser(taskFile, basePath, options)
    const env: any = {}
-   const tokens = md.parse(text, env)
-   const metadata: TaskMetadata = env.taskMetadata ?? defaultTaskMetadata()
+   let tokens: Token[]
+   try {
+      tokens = md.parse(text, env)
+   } catch (e) {
+      console.error(`Error parsing Markdown in ${taskFile}: ${e}`)
+      throw e
+   }
+   const metadata: TaskMetadata = env.taskMetadata ?? TaskMetadata.defaultValue(taskFile)
    return [tokens, metadata]
 }
 

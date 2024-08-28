@@ -4,12 +4,12 @@ import { parseMarkdown } from './convert_html'
 import Token = require('markdown-it/lib/token')
 
 import * as codes from './codes'
-import { util } from './main'
+import { mkdirsOf, modificationDateIsLater, readFileStrippingBom } from './fsutil'
 import * as patterns from './patterns'
-import { defaultOutputFile, Difficulty, mkdirsOf, modificationDateIsLater, parseLanguageCodeFromTaskPath, readFileStrippingBom, TaskMetadata } from "./util"
+import { AgeCategories, defaultOutputFile, Difficulties, Difficulty, ParsedID, parseLanguageCodeFromTaskPath, TaskMetadata } from "./util"
 
 
-export type TaskAST_Saved = Omit<TaskMetadata, "contributors" | "support_files"> & {
+export type TaskAST_Saved = Omit<TaskMetadata, "id" | "contributors" | "support_files"> & {
     lang?: string
     lang_code?: string
 
@@ -31,14 +31,7 @@ export type TaskAST = TaskAST_Saved & {
     difficulty_str?: Difficulty // same
 }
 
-export type ParsedID = {
-    year: number
-    country: string
-    country_code: string
-    num: number
-    variant?: string
-    usage_year?: number
-}
+// TODO move to util
 
 export interface ParsedContributor {
     src: string
@@ -58,6 +51,24 @@ export interface ParsedSupportFile {
     license?: string
 }
 
+
+type ASTText = {
+    type: 'text'
+    tag: string
+    text: string
+}
+
+type ASTContainer = {
+    type: 'cont'
+    tag: string
+    children: ASTNode[]
+}
+
+type ASTNode =
+    | ASTContainer
+    | ASTText
+
+
 export async function astOf(taskFile: string, forceRegen: boolean = false): Promise<TaskAST> {
     const jsonFile = defaultOutputFile(taskFile, "json")
     if (forceRegen || !fs.existsSync(jsonFile) || await modificationDateIsLater(taskFile, jsonFile)) {
@@ -76,6 +87,50 @@ export async function astOf(taskFile: string, forceRegen: boolean = false): Prom
     }
 }
 
+
+function tokensToAST(tokens: Token[]): ASTContainer {
+    const stack: ASTContainer[] = []
+    const root: ASTContainer = { type: 'cont', tag: 'root', children: [] }
+    let current: ASTContainer = root
+
+    tokens.forEach(token => {
+        if (token.type.endsWith('_open')) {
+            const node: ASTContainer = {
+                type: "cont",
+                tag: token.tag ?? token.type.substring(0, token.type.length - 5),
+                children: [],
+                // content: token.content || '',
+                // attrs: token.attrs || [],
+            }
+            current.children.push(node)
+            stack.push(current)
+            current = node
+        } else if (token.type.endsWith('_close')) {
+            current = stack.pop()!
+        } else if (token.type === 'inline') {
+            (token.children ?? []).forEach(child => {
+                const inlineNode: ASTText = {
+                    type: 'text',
+                    tag: child.tag ?? 'text',
+                    text: child.content ?? '',
+                    // attrs: child.attrs || [],
+                }
+                current.children.push(inlineNode)
+            })
+        } else {
+            console.log("Unhandled token type: " + token.type)
+            // const standaloneNode = {
+            //     type: token.tag || token.type,
+            //     content: token.content || '',
+            //     attrs: token.attrs || [],
+            // };
+            // current.children.push(standaloneNode);
+        }
+    })
+
+    return root
+}
+
 async function loadASTFrom(jsonFile: string, taskFile: string): Promise<TaskAST> {
     const contents = await readFileStrippingBom(jsonFile)
     const savedAST = JSON.parse(contents) as TaskAST_Saved // TODO validate JSON
@@ -86,6 +141,8 @@ export async function buildASTOf(taskFile: string): Promise<TaskAST_Saved> {
     const mdText = await readFileStrippingBom(taskFile)
     const langCode = parseLanguageCodeFromTaskPath(taskFile)
     const [tokens, metadata] = parseMarkdown(mdText, taskFile, path.dirname(taskFile), { langCode })
+    const ast = tokensToAST(tokens)
+    console.log(JSON.stringify(ast, null, 2))
     return toJsonRepr(tokens, taskFile, metadata)
 }
 
@@ -97,9 +154,9 @@ function toJsonRepr(tokens: Token[], taskFile: string, metadata: TaskMetadata): 
         support_files: [],
     }
 
-    for (let i = 0; i < util.AgeCategories.length; i++) {
-        const diffStr = metadata.ages[util.AgeCategories[i]]
-        const diffIndex = util.Difficulties.indexOf(diffStr)
+    for (let i = 0; i < AgeCategories.length; i++) {
+        const diffStr = metadata.ages[AgeCategories[i]]
+        const diffIndex = Difficulties.indexOf(diffStr)
         parsedMetadata.difficulties!.push(diffIndex)
         parsedMetadata.ages![i] = diffStr
     }
@@ -114,21 +171,8 @@ function toJsonRepr(tokens: Token[], taskFile: string, metadata: TaskMetadata): 
         }
     }
 
-    if (match = patterns.idWithOtherYear.exec(metadata.id)) {
-        const country_code = match.groups.country_code
-
-        const parsedId: ParsedID = {
-            year: +match.groups.year,
-            country_code: country_code,
-            country: codes.countryNameByCountryCodes[country_code]!,
-            num: +match.groups.num,
-        }
-        if (match.groups.variant) {
-            parsedId.variant = match.groups.variant
-        }
-        if (match.groups.usage_year) {
-            parsedId.usage_year = +match.groups.usage_year
-        }
+    const parsedId = TaskMetadata.parseId(metadata.id)
+    if (parsedId) {
         parsedMetadata.parsed_id = parsedId
     }
 

@@ -1,5 +1,5 @@
 import { buildASTOf } from './ast'
-import { writeData } from './util'
+import { writeData } from './fsutil'
 
 
 export async function convertTask_json(taskFile: string, output: string | true): Promise<string | true> {

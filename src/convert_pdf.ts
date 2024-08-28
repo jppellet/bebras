@@ -3,7 +3,6 @@ import { PDFDocument } from 'pdf-lib'
 import path = require('path')
 import puppeteer = require('puppeteer')
 import md2html = require('./convert_html')
-import util = require("./util")
 import patterns = require('./patterns')
 
 // import { PDFLoadingTask, PDFDocumentProxy, TextContentItem } from 'pdfjs-dist'
@@ -14,9 +13,10 @@ import patterns = require('./patterns')
 // import PDFJSWorker from 'pdfjs-dist/legacy/build/pdf.worker.entry'
 
 import { exec } from 'child_process'
+import { readFileStrippingBom, siblingWithExtension, toFileUrl, writeData } from './fsutil'
 import { PdfBookmarkMetadata } from './json_schemas'
 import templates from './templates'
-import { readFileStrippingBom, toFileUrl, writeData } from './util'
+import { TaskMetadata } from './util'
 
 // const PDFJSWorker = '../../../node_modules/pdfjs-dist/build/pdf.worker.js'
 // pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJSWorker
@@ -60,10 +60,10 @@ async function addPdfBookmarks(pdfFilePath: string, bookmarkMetadata: PdfBookmar
         }],
     })
 
-    const texFile = util.siblingWithExtension(pdfFilePath, "_bookmarked.tex")
+    const texFile = siblingWithExtension(pdfFilePath, "_bookmarked.tex")
     await fs.promises.writeFile(texFile, texSource)
 
-    const tempOutDir = util.siblingWithExtension(texFile, "")
+    const tempOutDir = siblingWithExtension(texFile, "")
     if (!fs.existsSync(tempOutDir)) {
         await fs.promises.mkdir(tempOutDir)
     }
@@ -74,7 +74,7 @@ async function addPdfBookmarks(pdfFilePath: string, bookmarkMetadata: PdfBookmar
             cwd: path.dirname(pdfFilePath),
         }, async function callback(error, stdout, stderr) {
             let didIt = false
-            const texPdfFile = path.join(tempOutDir, path.basename(util.siblingWithExtension(texFile, ".pdf")))
+            const texPdfFile = path.join(tempOutDir, path.basename(siblingWithExtension(texFile, ".pdf")))
             if (fs.existsSync(texPdfFile)) {
                 await fs.promises.unlink(pdfFilePath)
                 await fs.promises.rename(texPdfFile, pdfFilePath)
@@ -127,7 +127,7 @@ async function addPdfBookmarks(pdfFilePath: string, bookmarkMetadata: PdfBookmar
 // }
 
 
-async function renderPdf(mdFilePath: string): Promise<[Uint8Array, util.TaskMetadata, string[]]> {
+async function renderPdf(mdFilePath: string): Promise<[Uint8Array, TaskMetadata, string[]]> {
 
     const textMd = await readFileStrippingBom(mdFilePath)
 

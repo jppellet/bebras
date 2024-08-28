@@ -1,8 +1,9 @@
 import fs = require('fs')
 import path = require('path')
 import jsrender = require('jsrender')
-import { readFileStrippingBom, TaskMetadata, texEscapeChars } from './util'
+import { readFileStrippingBom } from './fsutil'
 import { PdfBookmarkMetadata } from './json_schemas'
+import { texEscapeChars } from './util'
 
 // JsRender setup
 jsrender.views.converters("texstr", texEscapeChars)

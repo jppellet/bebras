@@ -1,10 +1,9 @@
-import { util } from "./main"
-import { Dict } from "./util"
+import { levenshteinDistance } from "./util"
 
 
 // ISO 3166-1 for country codes; country names slightly normalized;
 // also using UK instead of GB as is done in the community
-export const countryNameByCountryCodes: Dict<string> = {
+export const countryNameByCountryCodes: Record<string, string> = {
 	"AF": "Afghanistan",
 	"AX": "Åland Islands",
 	"AL": "Albania",
@@ -257,7 +256,7 @@ export const countryNameByCountryCodes: Dict<string> = {
 	"ZW": "Zimbabwe",
 }
 
-export const countryCodeByCountryName: Dict<string> = {}
+export const countryCodeByCountryName: Record<string, string> = {}
 
 for (const countryCode of Object.keys(countryNameByCountryCodes)) {
 	const countryName = countryNameByCountryCodes[countryCode]!
@@ -265,7 +264,7 @@ for (const countryCode of Object.keys(countryNameByCountryCodes)) {
 }
 
 // ISO 639 Set 2/T to [ISO Language Name, ISO 639 Set 1]
-export const languageNameAndShortCodeByLongCode: Dict<[string, string]> = {
+export const languageNameAndShortCodeByLongCode: Record<string, [string, string]> = {
 	"abk": ["Abkhazian", "ab"],
 	"aar": ["Afar", "aa"],
 	"afr": ["Afrikaans", "af"],
@@ -455,7 +454,7 @@ export function defaultLanguageCode(): string {
 	return "eng"
 }
 
-export const languageLongCodeByLanguageName: Dict<string> = {}
+export const languageLongCodeByLanguageName: Record<string, string> = {}
 
 for (const langCode of Object.keys(languageNameAndShortCodeByLongCode)) {
 	const langName = languageNameAndShortCodeByLongCode[langCode]![0]
@@ -470,11 +469,11 @@ export function languageSuggestionsFor(lang: string): string[] {
 	return replacementSuggestionsFor(lang, languageNameAndShortCodeByLongCode, t => t[0], 2)
 }
 
-function replacementSuggestionsFor<T>(item: string, validValueSource: Dict<T>, get: (value: T) => string, maxDist: number) {
+function replacementSuggestionsFor<T>(item: string, validValueSource: Record<string, T>, get: (value: T) => string, maxDist: number) {
 	const sugg = [] as string[]
 	for (const _e of Object.values(validValueSource)) {
 		const e = get(_e!)
-		const dist = util.levenshteinDistance(item, e)
+		const dist = levenshteinDistance(item, e)
 		if (dist <= maxDist) {
 			sugg.push(e)
 		}

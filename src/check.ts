@@ -5,10 +5,9 @@ import * as path from "path"
 
 import * as minimatch from "minimatch"
 import * as codes from './codes'
-import { util } from "./main"
 import * as patterns from './patterns'
-import { TaskYear } from "./patterns"
-import { Check, ErrorMessage, TaskMetadata, TaskMetadataField, Value, isArray, isErrorMessage, isNullOrUndefined, isString, isUndefined, mkStringCommaAnd, s } from "./util"
+import { Category, TaskYear } from "./patterns"
+import { AgeCategories, AgeCategory, Check, DifficultyLevels, ErrorMessage, TaskMetadata, TaskMetadataField, Value, isArray, isErrorMessage, isNullOrUndefined, isRecord, isString, isStringArray, isUndefined, levenshteinDistance, mkStringCommaAnd, s } from "./util"
 
 
 export type Severity = "error" | "warn"
@@ -75,22 +74,71 @@ export function normalizeRawMetadataToStandardYaml(rawFromFile: string): string 
     return rawFromFile.replace(patterns.supportFileStarCorrection, "$1\\*$2")
 }
 
-export function postYamlLoadObjectCorrections<T extends object>(obj: T) {
-    for (const [key, value] of Object.entries(obj)) {
-        if (isArray(value) && _.every(value, isString)) {
-            for (let i = 0; i < value.length; i++) {
-                const str: string = value[i]
+/**
+ * Returns the source year, so the year of the format according to which this task should be structured
+ */
+export function postYamlLoadObjectCorrections(loadedMetadata: Record<string, unknown>): TaskYear {
+
+    // remove the backslash from '\*' strings
+    function removeBackslashFromStarStrings(values: unknown) {
+        if (isStringArray(values)) {
+            for (let i = 0; i < values.length; i++) {
+                const str: string = values[i]
                 if (str.startsWith("\\*")) {
-                    value[i] = str.substring(1)
+                    values[i] = str.substring(1)
                 }
             }
         }
     }
+    removeBackslashFromStarStrings(loadedMetadata.support_files)
+
+    // get id to perform migrations if needed
+    let id, parsedId
+    let sourceYear: TaskYear = "latest"
+    if (isString(id = loadedMetadata.id) && (parsedId = TaskMetadata.parseId(id))) {
+        let currentYearOfData: TaskYear = parsedId.usage_year ?? parsedId.year
+        sourceYear = currentYearOfData
+        // console.log(`Loading metadata from year ${currentYearOfData}`)
+        if (currentYearOfData <= 2021) {
+            // migrate to 2022
+            if (typeof loadedMetadata.computer_science_areas === "undefined") {
+                loadedMetadata.computer_science_areas = loadedMetadata.categories
+                delete loadedMetadata.categories
+            }
+            if (typeof loadedMetadata.computational_thinking_skills === "undefined") {
+                loadedMetadata.computational_thinking_skills = []
+            }
+            currentYearOfData = 2022
+        }
+        if (currentYearOfData === 2022) {
+            // migrate to latest
+            if (typeof loadedMetadata.categories === "undefined") {
+                loadedMetadata.categories = loadedMetadata.computer_science_areas
+                delete loadedMetadata.computer_science_areas
+            }
+            currentYearOfData = "latest"
+        }
+    }
+
+    // parse subcategories
+    const categories = loadedMetadata.categories
+    if (isStringArray(categories)) {
+        const newCats: patterns.Category[] = []
+        // just one level here
+        for (const cat of categories) {
+            const [mainCatName, ...subCatNames] = cat.split(" - ")
+            const newCat: patterns.Category = { name: mainCatName, subs: subCatNames.map(s => ({ name: s, subs: [] })) }
+            newCats.push(newCat)
+        }
+        loadedMetadata.categories = newCats
+    }
+
+    return sourceYear
 }
 
 type ErrorWarningCallback = (range: readonly [number, number], msg: string) => void
 
-export function loadRawMetadata(text: string, warn?: ErrorWarningCallback, error?: ErrorWarningCallback): [number, number, string, string, Partial<TaskMetadata>, number, string] | undefined {
+export function loadRawMetadata(text: string, warn?: ErrorWarningCallback, error?: ErrorWarningCallback): [number, number, string, string, Record<string, unknown>, TaskYear, number, string] | undefined {
 
     const metadataStringCheck = metadataStringFromContents(text)
 
@@ -112,14 +160,14 @@ export function loadRawMetadata(text: string, warn?: ErrorWarningCallback, error
         }
     }
 
-    let metadata: Partial<TaskMetadata> = {}
+    let metadata: Record<string, unknown> = {}
     try {
         metadata = yaml.load(fmStr, {
             onWarning: (e: yaml.YAMLException) => {
                 const [range, msg] = fmRangeFromException(e)
                 warn?.(range, `Malformed metadata markup: ${msg}`)
             },
-        }) as Partial<TaskMetadata>
+        }) as Record<string, unknown>
     } catch (e) {
         if (e instanceof yaml.YAMLException) {
             const [range, msg] = fmRangeFromException(e)
@@ -128,57 +176,12 @@ export function loadRawMetadata(text: string, warn?: ErrorWarningCallback, error
         }
     }
 
-    postYamlLoadObjectCorrections(metadata)
+    const sourceYear = postYamlLoadObjectCorrections(metadata)
 
-    return [fmStart, fmEnd, fmStrRaw, fmStr, metadata, mdStart, mdStr]
+    return [fmStart, fmEnd, fmStrRaw, fmStr, metadata, sourceYear, mdStart, mdStr]
 }
 
-/**
- * @returns the original year of this format, or "latest" if the year was not explicitly set
- */
-export function adjustLoadedMetadataFromYear(metadata: Partial<TaskMetadata>): Check<TaskYear> {
-    let year: patterns.TaskYear = "latest"
-
-    const id = metadata.id
-    if (isString(id)) {
-        const idMatch = patterns.idWithOtherYear.exec(id)
-        if (idMatch !== null) {
-            if (idMatch.groups.usage_year) {
-                year = parseInt(idMatch.groups.usage_year)
-            } else {
-                year = parseInt(idMatch.groups.year)
-            }
-        }
-    }
-
-    const originalYear = year
-
-    if (year !== "latest") {
-        if (year <= 2021) {
-            // migrate to 2022
-            if (typeof (metadata as any).computer_science_areas === "undefined") {
-                (metadata as any).computer_science_areas = metadata.categories
-            }
-            if (typeof metadata.computational_thinking_skills === "undefined") {
-                metadata.computational_thinking_skills = []
-            }
-            year = 2022
-        }
-        if (year === 2022) {
-            // migrate to latest
-            if (typeof metadata.categories === "undefined") {
-                metadata.categories = (metadata as any).computer_science_areas
-            }
-            year = "latest"
-        }
-    }
-
-
-    return Value(originalYear)
-}
-
-
-export async function check(text: string, taskFile: string, _formatVersion?: string): Promise<LintOutput[]> {
+export async function check(text: string, taskFile: string, strictChecks: boolean, validateAsYear?: TaskYear, _formatVersion?: string): Promise<LintOutput[]> {
 
     const parentFolder = path.dirname(taskFile)
     let filename: string = path.basename(taskFile)
@@ -207,13 +210,32 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
             return
         }
 
-        const [fmStart, fmEnd, fmStrRaw, fmStr, metadata, mdStart, mdStr] = loadResult
+        const [fmStart, fmEnd, fmStrRaw, fmStr, metadata, sourceYear, mdStart, mdStr] = loadResult
 
         function mdRangeForValueInMatch(substring: string, match: { index: number, [i: number]: string }): [number, number] {
             const offset = match[0].indexOf(substring)
             const start = mdStart + match.index + offset
             const end = start + substring.length
             return [start, end]
+        }
+
+        const imageDefs: Record<string, string> = {}
+
+        function checkImageDef(ref: string, range: () => [number, number]) {
+            const refPath = path.join(parentFolder, ref)
+            if (!fs.existsSync(refPath)) {
+                let suggStr = ""
+                const sugg = fileSuggestionsForMissing(refPath, taskFile)
+                if (sugg.length !== 0) {
+                    if (sugg.length === 1) {
+                        suggStr = ` Did you mean ${sugg[0].displayAs}?`
+                    } else {
+                        suggStr = ` Did you mean of the following? \n${sugg.map(s => s.displayAs).join("\n")}`
+                    }
+                }
+
+                error(range(), "Referenced file not found." + suggStr, QuickFixReplacements(sugg.map(s => s.replacement)))
+            }
         }
 
         for (const pattern of [patterns.mdInlineImage, patterns.mdLinkRef]) {
@@ -223,20 +245,12 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
                 if (ref.startsWith("http://") || ref.startsWith("https://")) {
                     continue
                 }
-                const refPath = path.join(parentFolder, ref)
-                if (!fs.existsSync(refPath)) {
-                    let suggStr = ""
-                    const sugg = fileSuggestionsForMissing(refPath, taskFile)
-                    if (sugg.length !== 0) {
-                        if (sugg.length === 1) {
-                            suggStr = ` Did you mean ${sugg[0].displayAs}?`
-                        } else {
-                            suggStr = ` Did you mean of the following? \n${sugg.map(s => s.displayAs).join("\n")}`
-                        }
-                    }
-
-                    error(mdRangeForValueInMatch(ref, match), "Referenced file not found." + suggStr, QuickFixReplacements(sugg.map(s => s.replacement)))
+                const label = match.groups.label
+                if (label !== "") {
+                    imageDefs[label] = ref
                 }
+                const _match = match // make compiler happy
+                checkImageDef(ref, () => mdRangeForValueInMatch(ref, _match))
             }
         }
 
@@ -253,7 +267,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
             return [start, end]
         }
 
-        function fmRangeForAgeValue(cat: MetadataAgeCategory): [number, number] {
+        function fmRangeForAgeValue(cat: AgeCategory): [number, number] {
             let start = fmStrRaw.indexOf(cat) + cat.length
             let c
             while ((c = fmStrRaw.charCodeAt(start)) === 0x20 /* ' ' */ || c === 0x3A /* : */) {
@@ -301,16 +315,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
             error(fmRangeForValueInDef("id", idFull), `The task ID should have the format YYYY-CC-00[x], possibly with a '(for YYYY)' specifier\n\nPattern:\n${patterns.idWithOtherYear.source}`)
         }
 
-        const yearCheck = adjustLoadedMetadataFromYear(metadata)
-
-        let year: TaskYear = "latest"
-        if (isErrorMessage(yearCheck)) {
-            error(fmRangeForDef("id"), yearCheck.error)
-        } else {
-            year = yearCheck.value
-        }
-
-        const requiredFields = patterns.requiredMetadataFieldsCurrentFor(year)
+        const requiredFields = patterns.requiredMetadataFieldsCurrentFor(validateAsYear ?? sourceYear, strictChecks)
 
         const missingFields = [] as string[]
         for (let f of requiredFields) {
@@ -320,8 +325,9 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
         }
 
         if (missingFields.length !== 0) {
-            error([fmStart, fmEnd], `Missing definition${s(missingFields.length)}: ${missingFields.join(", ")}`)
-            return
+            error([0, 3], `Missing definition${s(missingFields.length)}: ${missingFields.join(", ")}`)
+            // Don't return: it may be useful to check the other fields as well
+            // return
         }
 
         const title = metadata.title
@@ -331,67 +337,63 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
             warn(fmRangeForValueInDef("title", "TODO"), "The title contains a TODO")
         }
 
-        type MetadataAgeCategory = keyof NonNullable<typeof metadata.ages>
-        const requiredAgeCats: Array<MetadataAgeCategory> = ["6-8", "8-10", "10-12", "12-14", "14-16", "16-19"]
-
-        const missingAgeCats = [] as string[]
-        for (let a of requiredAgeCats) {
-            const ageDiff = metadata.ages?.[a]
-            if (isNullOrUndefined(ageDiff)) {
-                missingAgeCats.push(a)
-            }
-        }
-
-        if (missingAgeCats.length !== 0) {
-            error(fmRangeForDef("ages"), `Missing age group${s(missingAgeCats.length)}: ${missingAgeCats.join(", ")}`)
+        if (!isRecord(metadata.ages)) {
+            error(fmRangeForDef("ages"), "The title should be a nonempty string")
         } else {
-
-            let lastLevel = NaN
-            let numDefined = 0 + requiredAgeCats.length
-            let closed = false
-            const LevelNotApplicable = "--"
-            const LevelNotApplicableKnownGap = "----"
-            for (let a of requiredAgeCats) {
-                const classif = `${metadata.ages?.[a] ?? LevelNotApplicable}`
-                let level: number
-                if (classif === LevelNotApplicable || classif === LevelNotApplicableKnownGap) {
-                    level = NaN
-                    numDefined--
-                    if (!isNaN(lastLevel) && classif !== LevelNotApplicableKnownGap) {
-                        closed = true
-                    }
-                } else if (classif === "easy") {
-                    level = 1
-                } else if (classif === "medium") {
-                    level = 2
-                } else if (classif === "hard") {
-                    level = 3
-                } else if (classif === "bonus") {
-                    level = 4
-                } else {
-                    error(fmRangeForAgeValue(a), `Invalid value '${classif}', should be one of easy, medium, hard, or ${LevelNotApplicable} if not applicable`, QuickFixReplacements(["easy", "medium", "hard", "bonus", LevelNotApplicable]))
-                    return
+            const missingAgeCats = [] as string[]
+            for (let ageCat of AgeCategories) {
+                const ageDiff = metadata.ages?.[ageCat]
+                if (isNullOrUndefined(ageDiff)) {
+                    missingAgeCats.push(ageCat)
                 }
-
-                if (level > lastLevel) {
-                    error(fmRangeForAgeValue(a), `Inconsistent value, this should not be more difficult than the previous age group`)
-                }
-
-                if (!isNaN(level) && closed) {
-                    const range = fmRangeForAgeValue(requiredAgeCats[requiredAgeCats.indexOf(a) - 1])
-                    error(range, `There is a gap in the age definitions. Use ${LevelNotApplicableKnownGap} to signal it's meant to be so.`, QuickFixReplacements([LevelNotApplicableKnownGap]))
-                    closed = false
-                }
-
-                lastLevel = level
             }
 
-            if (numDefined === 0) {
-                warn(fmRangeForDef("ages"), `No age groups haven been assigned`)
+            if (missingAgeCats.length !== 0) {
+                error(fmRangeForDef("ages"), `Missing age group${s(missingAgeCats.length)}: ${missingAgeCats.join(", ")}`)
+            } else {
+
+                let lastLevel = NaN
+                let numDefined = 0 + AgeCategories.length
+                let closed = false
+                const LevelNotApplicable = "--"
+                const LevelNotApplicableKnownGap = "----"
+                for (let ageCat of AgeCategories) {
+                    const classif = `${metadata.ages?.[ageCat] ?? LevelNotApplicable}`
+                    let level: number
+                    if (classif === LevelNotApplicable || classif === LevelNotApplicableKnownGap) {
+                        level = NaN
+                        numDefined--
+                        if (!isNaN(lastLevel) && classif !== LevelNotApplicableKnownGap) {
+                            closed = true
+                        }
+                    } else if (classif in DifficultyLevels) {
+                        level = (DifficultyLevels as any)[classif]
+                    } else {
+                        error(fmRangeForAgeValue(ageCat), `Invalid value '${classif}', should be one of easy, medium, hard, or ${LevelNotApplicable} if not applicable`, QuickFixReplacements(["easy", "medium", "hard", "bonus", LevelNotApplicable]))
+                        return
+                    }
+
+                    if (level > lastLevel) {
+                        error(fmRangeForAgeValue(ageCat), `Inconsistent value, this should not be more difficult than the previous age group`)
+                    }
+
+                    if (!isNaN(level) && closed) {
+                        const range = fmRangeForAgeValue(AgeCategories[AgeCategories.indexOf(ageCat) - 1])
+                        warn(range, `There is a gap in the age definitions. Use ${LevelNotApplicableKnownGap} to signal it's meant to be so.`, QuickFixReplacements([LevelNotApplicableKnownGap]))
+                        closed = false
+                    }
+
+                    lastLevel = level
+                }
+
+                if (numDefined === 0) {
+                    warn(fmRangeForDef("ages"), `No age groups haven been assigned`)
+                }
             }
         }
 
-        const answerTypes = patterns.answerTypesFor(year)
+
+        const answerTypes = patterns.answerTypesFor(sourceYear)
         const answerType = metadata.answer_type
         if (!isString(answerType)) {
             error(fmRangeForDef("answer_type"), "The answer type must be a plain string")
@@ -399,23 +401,29 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
             warn(fmRangeForValueInDef("answer_type", answerType), `Answer type '${answerType}' is not recognized. Expected one of:\n  - ${answerTypes.join("\n  - ")}`, QuickFixReplacements(answerTypes))
         }
 
-        const validCSAreas = patterns.csAreas as readonly string[]
         const categories = metadata.categories
-        if (!isArray(categories) || !_.every(categories, isString)) {
-            error(fmRangeForDef("categories"), "The categories must be a list of plain strings")
+        if (!isArray(categories)) {
+            error(fmRangeForDef("categories"), "The categories must be a (hierarchical) list of plain strings")
         } else {
-            _.filter(categories, c => !validCSAreas.includes(c)).forEach(c => {
-                error(fmRangeForValueInDef("categories", c), `Invalid categories '${c}', should be one of:\n  - ${validCSAreas.join("\n  - ")}`, QuickFixReplacements(validCSAreas))
-            })
-            if (_.uniq(categories).length !== categories.length) {
-                warn(fmRangeForDef("categories"), `The categories should be unique`)
+            function validateCategoriesRecursively(foundCats: Category[], validCats: Category[], parentCat: string | undefined) {
+                for (const foundCat of foundCats) {
+                    const validCat = validCats.find(c => c.name === foundCat.name)
+                    if (isUndefined(validCat)) {
+                        const category = parentCat ? `subcategory '${foundCat.name}' for parent '${parentCat}'` : `category '${foundCat.name}'`
+                        error(fmRangeForValueInDef("categories", "- " + foundCat.name), `Invalid ${category}, should be one of:\n  - ${validCats.map(c => c.name).join("\n  - ")}`, QuickFixReplacements(validCats.map(c => "- " + c.name)))
+                    } else {
+                        validateCategoriesRecursively(foundCat.subs, validCat.subs, foundCat.name)
+                    }
+                }
             }
+
+            validateCategoriesRecursively(categories, patterns.categories, undefined)
         }
 
-        if (year === 2022) {
+        if (sourceYear === 2022) {
             const validCTSkills = patterns.ctSkills as readonly string[]
             const computational_thinking_skills = metadata.computational_thinking_skills
-            if (!isArray(computational_thinking_skills) || !_.every(computational_thinking_skills, isString)) {
+            if (!isStringArray(computational_thinking_skills)) {
                 error(fmRangeForDef("computational_thinking_skills"), "The computational thinking skills must be a list of plain strings")
             } else {
                 _.filter(computational_thinking_skills, c => !validCTSkills.includes(c)).forEach(c => {
@@ -430,7 +438,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
         const contributors = metadata.contributors
         const supportFileContributors = new Set<string>()
 
-        if (!isArray(contributors) || !_.every(contributors, isString)) {
+        if (!isStringArray(contributors)) {
             error(fmRangeForDef("contributors"), "The contributors must be a list of strings")
         } else {
             const countries = [] as string[]
@@ -508,7 +516,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
         const keywords: string[] = ["TODO get from below"] //metadata.keywords // TODO: load this from main text, not YAML preamble, as it is localized 
         const seenKeywords = new Set<string>()
         const seenUrls = new Set<string>()
-        if (!isArray(keywords) || !_.every(keywords, isString)) {
+        if (!isStringArray(keywords)) {
             error(fmRangeForDef("keywords"), "The keywords must be a list of strings")
         } else {
             const sep = " - "
@@ -542,7 +550,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
         }
 
         const supportFiles = metadata.support_files
-        if (!isArray(supportFiles) || !_.every(supportFiles, isString)) {
+        if (!isStringArray(supportFiles)) {
             error(fmRangeForDef("support_files"), "The support files must be a list of strings")
         } else {
             const seenGraphicsContributors = new Set<string>()
@@ -622,7 +630,7 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
         }
 
         const equivalentTasks = metadata.equivalent_tasks
-        if (!isUndefined(equivalentTasks) && !isString(equivalentTasks) && (!isArray(equivalentTasks) || !_.every(equivalentTasks, isString))) {
+        if (!isUndefined(equivalentTasks) && !isString(equivalentTasks) && !isStringArray(equivalentTasks)) {
             error(fmRangeForDef("equivalent_tasks"), "The equivalent tasks must be a list of IDs or the string '--'")
         } else {
             const equivalentTasksArr = isString(equivalentTasks) ? equivalentTasks.split(",").map(s => s.trim()) : isUndefined(equivalentTasks) ? [] : equivalentTasks
@@ -637,10 +645,36 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
             }
         }
 
+        const summary = metadata.summary
+        if (summary !== undefined && !isString(summary)) {
+            error(fmRangeForDef("summary"), "The summary must be a string")
+        }
+
+        const preview = metadata.preview
+        if (preview !== undefined) {
+            if (!isString(preview)) {
+                error(fmRangeForDef("preview"), "The main image must be a string")
+            } else {
+                // TODO we could allow refs but we'd have to resolve them at
+                // some point for external applications, e.g. when parsing the
+                // task metadata, and this is probably too costly
+                // if (!(preview in imageDefs)) {
+                if (preview.startsWith(patterns.previewTextPrefix)) {
+                    if (!preview.endsWith(patterns.previewTextSuffix)) {
+                        error(fmRangeForValueInDef("preview", preview), `The preview text should start with '${patterns.previewTextPrefix}' and end with '${patterns.previewTextSuffix}'`)
+                    }
+                } else {
+                    checkImageDef(preview, () => fmRangeForValueInDef("preview", preview))
+                }
+                // }
+            }
+        }
+
+
         let searchFrom = fmEnd
         const missingSections = [] as string[]
         const secPrefix = "## "
-        const markdownSectionNames = patterns.markdownSectionNamesFor(year)
+        const markdownSectionNames = patterns.markdownSectionNamesFor(sourceYear)
         markdownSectionNames.forEach(secName => {
             const secMarker = secPrefix + secName
             const secStart = text.indexOf('\n' + secMarker, searchFrom)
@@ -660,6 +694,45 @@ export async function check(text: string, taskFile: string, _formatVersion?: str
     return diags
 }
 
+export function reportDiagnostics(diags: LintOutput[], text: string, taskFile: string, report: (msg: string) => void) {
+    for (const diag of diags) {
+        const linePrefix = `${diag.type.toUpperCase()}: `
+        const msgPrefix = _.pad("", linePrefix.length - 3, " ") + "| "
+        const [line, offset] = lineOf(diag.start, text)
+        const length = Math.min(line.length - offset, diag.end - diag.start)
+        report(linePrefix + line)
+        const highlight = msgPrefix + _.pad("", linePrefix.length - msgPrefix.length + offset, " ") + _.pad("", length, "^")
+        report(highlight)
+        report(msgPrefix + diag.msg.replace(/\n/g, '\n' + msgPrefix) + `\n`)
+    }
+}
+
+function lineOf(position: number, source: string): [string, number] {
+    let start = position - 1
+    while (source.charCodeAt(start) !== 0x0A && start >= 0) {
+        start--
+    }
+    start++
+
+    const last = source.length - 1
+    let end = start
+    let c: number
+    while ((c = source.charCodeAt(end)) !== 0x0A && c !== 13 && end <= last) {
+        end++
+    }
+
+    let line = source.slice(start, end)
+    let offset = position - start
+
+    const ellipsis = "[...] "
+    const cutoff = 100
+    if (offset > cutoff) {
+        line = ellipsis + line.slice(cutoff)
+        offset -= cutoff - ellipsis.length
+    }
+    return [line, offset]
+}
+
 function fileSuggestionsForMissing(missingFile: string, taskFile: string): { replacement: string, displayAs: string }[] {
     const taskContainerPrefix = path.dirname(taskFile) + path.sep
     const parent = path.dirname(missingFile)
@@ -675,7 +748,7 @@ function fileSuggestionsForMissing(missingFile: string, taskFile: string): { rep
             if (filePath.startsWith(taskContainerPrefix)) {
                 filePath = filePath.substring(taskContainerPrefix.length)
             }
-            const dist = util.levenshteinDistance(missingName, filename)
+            const dist = levenshteinDistance(missingName, filename)
             if (dist <= 2) {
                 suggs.push({ filename, filePath, dist })
             }
@@ -766,7 +839,7 @@ export function formatTable(orig: string, eol: string): string {
     let headerRow = -1
     let headerSeen = false
     rows.forEach((row, rowIndex) => {
-        const isHeader = !headerSeen && _.every(row.cells, cell => headerContent.test(cell))
+        const isHeader = !headerSeen && row.cells.every(cell => headerContent.test(cell))
         if (isHeader) {
             headerRow = rowIndex
             for (let i = 0; i < row.cells.length; i++) {

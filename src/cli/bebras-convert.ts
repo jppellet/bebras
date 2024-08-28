@@ -3,7 +3,8 @@ import * as path from 'path'
 
 import { Command } from 'commander'
 
-import { defaultOutputFile, defaultOutputFilename, ensureIsTaskFile, fatalError, findTaskFilesRecursively, isString, mkStringCommaAnd, modificationDateIsLater, OutputFormat, OutputFormats } from '../util'
+import { ensureIsTaskFile, findTaskFilesRecursively, modificationDateIsLater } from '../fsutil'
+import { defaultOutputFile, defaultOutputFilename, fatalError, isString, mkStringCommaAnd, OutputFormat, OutputFormats } from '../util'
 
 export function makeCommand_convert() {
     return new Command()
