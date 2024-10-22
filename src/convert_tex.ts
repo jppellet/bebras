@@ -7,16 +7,17 @@ import { HtmlToTexPixelRatio, TaskMetadata, texEscapeChars, texMath, texMathify 
 import codes = require("./codes")
 // import { numberToString } from 'pdf-lib'
 import { isString, isUndefined } from 'lodash'
-import { parseTask } from './convert_html'
+import { parseTask, PluginOptions } from './convert_html'
 import { siblingWithExtension, writeData } from './fsutil'
 import { getImageSize } from './img_cache'
 
 const DUMP_TOKENS = false
 
-export async function convertTask_tex(taskFile: string, output: string | true): Promise<string | true> {
+export async function convertTask_tex(taskFile: string, output: string | true, options: Partial<PluginOptions> = {}): Promise<string | true> {
 
     const [tokens, metadata, langCode] = await parseTask(taskFile, {
-        // we use ⍀ to avoid escaping \ to \\, and we later convert it back to \
+        ...options,
+        // we use ⍀ to avoid escaping \ to \\, and we later convert it back to true latex blackslash
         customQuotes: ["⍀enquote⦃", "⦄", "⍀enquote⦃", "⦄"],
     })
 

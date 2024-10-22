@@ -3,6 +3,7 @@ import * as path from 'path'
 
 import { Command } from 'commander'
 
+import { parseQuotes, PluginOptions } from '../convert_html'
 import { ensureIsTaskFile, findTaskFilesRecursively, modificationDateIsLater } from '../fsutil'
 import { defaultOutputFile, defaultOutputFilename, fatalError, isString, mkStringCommaAnd, OutputFormat, OutputFormats } from '../util'
 
@@ -15,15 +16,16 @@ export function makeCommand_convert() {
         .option('-f, --force', 'force regeneration of output file', false)
         .option('-r, --recursive', 'batch converts all tasks file in the source folder', false)
         .option('-F, --filter <pattern>', 'when in recursive mode, only consider files matching this pattern', false)
+        .option('-q, --quotes <quoted>', 'a string of two (or four) characters to use as quotes (optionally delimited by | for multi-char quotes). Example: “”‘’')
         .argument("<format>", 'the output format, ' + OutputFormats.values.join("|"))
         .argument("<source>", 'the source task file (or folder if -r is used)')
         .action(convert)
 }
 
-
 async function convert(format: string, source: string, options: any): Promise<void> {
     const force = !!options.force
     const isRecursive = !!options.recursive
+    const quotes = options.quotes
 
     if (!OutputFormats.isValue(format)) {
         fatalError("unknown format: " + format + ". Valid formats are " + mkStringCommaAnd(OutputFormats.values))
@@ -39,13 +41,23 @@ async function convert(format: string, source: string, options: any): Promise<vo
         fatalError("Cannot output multiple files to stdout")
     }
 
+    const pluginOptions: Partial<PluginOptions> = {}
+
+    if (isString(quotes)) {
+        const quotesArr = parseQuotes(quotes)
+        if (quotesArr === undefined) {
+            fatalError("Invalid number of quotes. Expected 2 or 4")
+        }
+        pluginOptions.customQuotes = quotesArr
+    }
+
     const convModule: any = require('../convert_' + format)
 
     for (const taskFile of taskFiles) {
         const output = getOutputDestination(options.output, taskFile, isRecursive, format)
 
         if (isString(output)) {
-            const outputFileDir = path.dirname(output)
+            // const outputFileDir = path.dirname(output)
 
             if (!force && (fs.existsSync(output)) && !(await modificationDateIsLater(taskFile, output))) {
                 console.log(`Output file '${output}' seems up to date.`)
@@ -56,7 +68,7 @@ async function convert(format: string, source: string, options: any): Promise<vo
         // console.log(`Converting '${taskFile}' to '${outputFile}'...`)
 
         const methodName = "convertTask_" + format
-        const pathOrTrue: string | true = await convModule[methodName](taskFile, output)
+        const pathOrTrue: string | true = await convModule[methodName](taskFile, output, pluginOptions)
 
     }
 

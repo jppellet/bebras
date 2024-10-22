@@ -8,14 +8,14 @@ import { plugin, PluginContext } from './convert_html_markdownit'
 import { readFileStrippingBom, writeData } from './fsutil'
 import { parseLanguageCodeFromTaskPath, TaskMetadata } from './util'
 
-export async function convertTask_html(taskFile: string, outputFile: string): Promise<string | true> {
-   return convertTask_html_impl(taskFile, outputFile, true)
+export async function convertTask_html(taskFile: string, outputFile: string, options: Partial<PluginOptions> = {}): Promise<string | true> {
+   return convertTask_html_impl(taskFile, outputFile, true, options)
 }
 
-export async function convertTask_html_impl(taskFile: string, output: string | true, fullHtml: boolean): Promise<string | true> {
+export async function convertTask_html_impl(taskFile: string, output: string | true, fullHtml: boolean, options: Partial<PluginOptions>): Promise<string | true> {
    const mdText = await readFileStrippingBom(taskFile)
    const langCode = parseLanguageCodeFromTaskPath(taskFile)
-   const [htmlText, metadata] = renderMarkdown(mdText, taskFile, path.dirname(taskFile), fullHtml, langCode)
+   const [htmlText, metadata] = renderMarkdown(mdText, taskFile, path.dirname(taskFile), fullHtml, langCode, options)
    return writeData(htmlText, output, `${!fullHtml ? "Simple " : ""}HTML`)
 }
 
@@ -25,9 +25,9 @@ function makeMdParser(taskFile: string, basePath: string, options: PluginOptions
    return md
 }
 
-export function renderMarkdown(text: string, taskFile: string, basePath: string, fullHtml: boolean, langCodeOpt: string | undefined): [string, TaskMetadata] {
+export function renderMarkdown(text: string, taskFile: string, basePath: string, fullHtml: boolean, langCodeOpt: string | undefined, options: Partial<PluginOptions>): [string, TaskMetadata] {
    const langCode = langCodeOpt ?? defaultLanguageCode()
-   const parseOptions = { ...defaultPluginOptions(), fullHtml, langCode }
+   const parseOptions = { ...defaultPluginOptions(), ...options, fullHtml, langCode }
    const md = makeMdParser(taskFile, basePath, parseOptions)
    const env: any = {}
    let result: string
@@ -70,9 +70,22 @@ export function renderMarkdown(text: string, taskFile: string, basePath: string,
 export function defaultPluginOptions() {
    return {
       langCode: defaultLanguageCode(),
-      customQuotes: undefined as undefined | [string, string, string, string],
+      customQuotes: undefined as undefined | [string, string, string, string] | [string, string],
       addToc: false,
       fullHtml: true,
+   }
+}
+
+export function parseQuotes(quotes: string): [string, string, string, string] | [string, string] | undefined {
+   const quotesArr = quotes.split("|")
+   const size0 = quotesArr[0].length
+   if (quotesArr.length === 1 && (size0 === 4 || size0 === 2)) {
+      return quotesArr[0].split("") as [string, string, string, string] | [string, string]
+   } else if (quotesArr.length === 2 || quotesArr.length === 4) {
+      return quotesArr as [string, string, string, string] | [string, string]
+   } else {
+      // unparseable
+      return undefined
    }
 }
 

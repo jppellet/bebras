@@ -13,6 +13,7 @@ import patterns = require('./patterns')
 // import PDFJSWorker from 'pdfjs-dist/legacy/build/pdf.worker.entry'
 
 import { exec } from 'child_process'
+import { PluginOptions } from './convert_html'
 import { readFileStrippingBom, siblingWithExtension, toFileUrl, writeData } from './fsutil'
 import { PdfBookmarkMetadata } from './json_schemas'
 import templates from './templates'
@@ -21,9 +22,9 @@ import { TaskMetadata } from './util'
 // const PDFJSWorker = '../../../node_modules/pdfjs-dist/build/pdf.worker.js'
 // pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJSWorker
 
-export async function convertTask_pdf(taskFile: string, output: string | true): Promise<string | true> {
+export async function convertTask_pdf(taskFile: string, output: string | true, options: Partial<PluginOptions> = {}): Promise<string | true> {
 
-    const [pdfData, metadata, sectionTitles] = await renderPdf(taskFile)
+    const [pdfData, metadata, sectionTitles] = await renderPdf(taskFile, options)
 
     let isBookmarkedPdf = false
 
@@ -127,11 +128,11 @@ async function addPdfBookmarks(pdfFilePath: string, bookmarkMetadata: PdfBookmar
 // }
 
 
-async function renderPdf(mdFilePath: string): Promise<[Uint8Array, TaskMetadata, string[]]> {
+async function renderPdf(mdFilePath: string, options: Partial<PluginOptions>): Promise<[Uint8Array, TaskMetadata, string[]]> {
 
     const textMd = await readFileStrippingBom(mdFilePath)
 
-    const [textHtml, metadata] = md2html.renderMarkdown(textMd, mdFilePath, path.dirname(mdFilePath), true, undefined)
+    const [textHtml, metadata] = md2html.renderMarkdown(textMd, mdFilePath, path.dirname(mdFilePath), true, undefined, options)
 
     const browser = await puppeteer.launch({ headless: true })
     const page = await browser.newPage()

@@ -1,6 +1,6 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import { parseMarkdown } from './convert_html'
+import { parseMarkdown, PluginOptions } from './convert_html'
 import Token = require('markdown-it/lib/token')
 
 import * as codes from './codes'
@@ -73,7 +73,7 @@ export async function astOf(taskFile: string, forceRegen: boolean = false): Prom
     const jsonFile = defaultOutputFile(taskFile, "json")
     if (forceRegen || !fs.existsSync(jsonFile) || await modificationDateIsLater(taskFile, jsonFile)) {
         // console.log("Generating AST for " + path.basename(taskFile))
-        const ast = await buildASTOf(taskFile)
+        const ast = await buildASTOf(taskFile, {})
         try {
             await mkdirsOf(jsonFile)
             await fs.promises.writeFile(jsonFile, JSON.stringify(ast, undefined, 4))
@@ -137,10 +137,10 @@ async function loadASTFrom(jsonFile: string, taskFile: string): Promise<TaskAST>
     return enrichAST(savedAST, taskFile)
 }
 
-export async function buildASTOf(taskFile: string): Promise<TaskAST_Saved> {
+export async function buildASTOf(taskFile: string, options: Partial<PluginOptions>): Promise<TaskAST_Saved> {
     const mdText = await readFileStrippingBom(taskFile)
     const langCode = parseLanguageCodeFromTaskPath(taskFile)
-    const [tokens, metadata] = parseMarkdown(mdText, taskFile, path.dirname(taskFile), { langCode })
+    const [tokens, metadata] = parseMarkdown(mdText, taskFile, path.dirname(taskFile), { ...options, langCode })
     const ast = tokensToAST(tokens)
     console.log(JSON.stringify(ast, null, 2))
     return toJsonRepr(tokens, taskFile, metadata)
