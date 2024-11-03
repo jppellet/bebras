@@ -398,6 +398,11 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             return `\\BrochureInlineCode{${content}}`
         },
 
+        "code_block": (tokens, idx, env) => {
+            const content = texEscapeChars(tokens[idx].content)
+            return `\\begin{BrochureCode}\n${content}\\end{BrochureCode}\n\n`
+        },
+
         "math_inline_double": (tokens, idx, env) => {
             return `$${tokens[idx].content}$`
         },
@@ -1154,6 +1159,14 @@ ${babel}
 \\newcolumntype{L}{>{\\raggedright\\arraybackslash}X}
 \\newcolumntype{J}{>{\\arraybackslash}X}
 
+\\usepackage{listings}
+\\lstnewenvironment{BrochureCode}{%
+  \\lstset{
+      basicstyle=\\ttfamily,
+      aboveskip=\\parskip,
+      belowskip=\\parskip,
+      columns=flexible
+  }}{}
 \\newcommand{\\BrochureInlineCode}[1]{{\\ttfamily #1}}
 
 \\usepackage{amssymb}
