@@ -917,10 +917,15 @@ export function formatTable(orig: string, eol: string): string {
         for (let c = row.cells.length; c < numCols; c++) {
             row.cells.push(emptyCell)
         }
+
+        // maybe we won't want to pad at all if the total width is too large
+        const totalWidth = maxColWidths.reduce((acc, w) => acc + w, 3 * numCols - 1)
+        const skipPadding = totalWidth > 110
+
         row.cells.forEach((cell, colIndex) => {
             let cellContent
-            if (!addOpeningTrainingBars && colIndex === numCols - 1 && headerRow === 0) {
-                // Don't pad last col
+            if (skipPadding || !addOpeningTrainingBars && colIndex === numCols - 1 && headerRow === 0) {
+                // also don't pad last col if we can
                 cellContent = cell
             } else {
                 const toPad = maxColWidths[colIndex] - cell.length
