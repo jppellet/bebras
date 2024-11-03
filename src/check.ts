@@ -603,8 +603,12 @@ export async function check(text: string, taskFile: string, strictChecks: boolea
             const unmatchedFilePatterns = new Set<string>(allFilePatterns)
             const unlistedSupportFiles: string[] = []
             const [baseFolder, existingSupportFiles] = await findAllSupportFilesFor(taskFile)
+            const ignoredSupportFiles = new Set<string>(["reviews.txt"])
 
             for (const existingFile of existingSupportFiles) {
+                if (ignoredSupportFiles.has(existingFile)) {
+                    continue
+                }
                 let matchedBy: string | undefined = undefined
                 for (const pattern of allFilePatterns) {
                     if (minimatch(existingFile, "**/" + pattern)) {

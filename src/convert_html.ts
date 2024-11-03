@@ -102,7 +102,7 @@ export async function parseTaskMd(mdText: string, taskFile: string, parseOptions
 }
 
 export function parseMarkdown(text: string, taskFile: string, basePath: string, parseOptions: Partial<PluginOptions>): [Token[], TaskMetadata] {
-   const options = { ...defaultPluginOptions(), parseOptions }
+   const options: PluginOptions = { ...defaultPluginOptions(), ...parseOptions }
    const md = makeMdParser(taskFile, basePath, options)
    const env: any = {}
    let tokens: Token[]

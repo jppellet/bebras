@@ -417,6 +417,8 @@ const texExpansionDefs: Record<string, string | { pat: string, repl: string }> =
     "∙": "\\ensuremath{\\cdot}",
     "≤": "\\ensuremath{\\leq}",
     "≥": "\\ensuremath{\\geq}",
+    "✓": "\\checkmark{}",
+    "▴": "\\ensuremath{\\triangle}",
 
     // prevent some ligatures
     "<<": "<\\textcompwordmark{}<",

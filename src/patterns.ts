@@ -393,7 +393,7 @@ export const supportFile = capturing<{
     source: maybe,
     license_from: maybe,
 }>(
-    /^(?<file_pattern>.*?) (?:(?<author_ext>(?<by>by) .*)(?: \((?<license_by>.*)\))?|(?<from>from) (?<source>.*) \((?<license_from>.*)\))$/
+    /^(?<file_pattern>.*?) (?:(?<author_ext>.*?(?<by>by) .*)(?: \((?<license_by>.*)\))?|(?<from>from) (?<source>.*) \((?<license_from>.*)\))$/
 )
 
 export const supportFileStarCorrection = capturing<{

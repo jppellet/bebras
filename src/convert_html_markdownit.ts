@@ -112,7 +112,9 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
     const MdGeneratorTemplates: Record<string, MdGeneratorFunction> = {
 
       "title": (metadata: TaskMetadata) => {
-        return `# ${metadata.id} ${metadata.title}`
+        const parsedId = TaskMetadata.parseId(metadata.id)
+        const [id, suffix] = parsedId ? [parsedId.id_plain, parsedId.usage_year ? ` (for ${parsedId.usage_year})` : ""] : [metadata.id, ""]
+        return `# ${id} ${metadata.title}${suffix}`
       },
 
       // TODO remove this and load keywords from Markdown instead
@@ -307,16 +309,24 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
           let parsedMetadataFields: unknown
           try {
             parsedMetadataFields = yaml.load(fmStr)
-          } catch { }
+          } catch {
+            console.log("Error parsing metadata as YAML")
+          }
           if (parsedMetadataFields && isRecord(parsedMetadataFields)) {
             postYamlLoadObjectCorrections(parsedMetadataFields)
             taskMetadata = TaskMetadata.validate(parsedMetadataFields, ctx.taskFile).fold(a => a, err => {
               console.log("Error parsing metadata: " + err)
               return TaskMetadata.defaultValue(ctx.taskFile)
             })
+          } else {
+            console.log("Error parsing metadata: " + JSON.stringify(parsedMetadataFields))
+            taskMetadata = TaskMetadata.defaultValue(ctx.taskFile)
           }
           state.src = state.src.slice(fmEnd + fmEndMarker.length)
         }
+      } else {
+        console.log("No front matter found for file " + ctx.taskFile)
+        taskMetadata = TaskMetadata.defaultValue(ctx.taskFile)
       }
 
       if (ctx.setOptionsFromMetadata) {
@@ -365,7 +375,6 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
     const templatePattern = "{{([a-zA-Z0-9_]+)}}"
 
     md.core.ruler.before('block', 'bebras_md_expand', (state: StateCore) => {
-
       const templateRegExp = new RegExp(templatePattern, 'g')
       const newSrcParts = [] as string[]
 

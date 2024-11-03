@@ -51,6 +51,7 @@ export async function convertTask_tex(taskFile: string, output: string | true, o
 
 export function renderTex(linealizedTokens: Token[], langCode: string, metadata: TaskMetadata, taskFile: string, standalone: boolean,): string {
 
+    const year = TaskMetadata.formatYear(metadata)
     const license = patterns.genLicense(metadata)
 
     const skip = () => ""
@@ -985,17 +986,30 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             .replace(/[\-]/g, "")
     }
 
-    function normalizeAuthorName(fullName: string): [string, string] {
+    function normalizeAuthorName(fullName: string): string[] {
         const parts = fullName.split(/ +/)
         if (parts.length === 1) {
             console.log(`WARNING: Cannot split full name '${fullName}'`)
             return [asciify(parts[0]), "A"]
-        } else if (parts.length === 2) {
-            return [asciify(parts[1]), asciify(parts[0][0]).toUpperCase()]
         } else {
-            const split: [string, string] = [asciify(parts[parts.length - 1]), asciify(parts[0][0]).toUpperCase()]
-            // console.log(`WARNING: Check split for full name '${fullName}': ${split}`)
-            return split
+            if (year === 'latest' || year <= 2023) {
+                // just one letter for first name
+                if (parts.length === 2) {
+                    return [asciify(parts[1]), asciify(parts[0][0]).toUpperCase()]
+                } else {
+                    const split: [string, string] = [asciify(parts[parts.length - 1]), asciify(parts[0][0]).toUpperCase()]
+                    // console.log(`WARNING: Check split for full name '${fullName}': ${split}`)
+                    return split
+                }
+            } else {
+                // complete first name
+                const normalizedParts = []
+                for (let i = parts.length - 1; i >= 0; i--) {
+                    const asciified = asciify(parts[i]).replace(/\./g, "")
+                    normalizedParts.push(asciified[0].toUpperCase() + asciified.slice(1))
+                }
+                return normalizedParts
+            }
         }
     }
 
@@ -1005,8 +1019,8 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             const match = patterns.contributor.exec(contribLine)
             if (match) {
                 const name = match.groups.name
-                const [lastname, firstnameInit] = normalizeAuthorName(name)
-                const authorCmd = `\\Author${lastname}${firstnameInit}`
+                const nameParts = normalizeAuthorName(name)
+                const authorCmd = "\\Author" + nameParts.join("")
                 const lowercaseCountryCode = codes.countryCodeByCountryName[match.groups.country]?.toLowerCase() ?? "aa"
                 if (lowercaseCountryCode === "aa") {
                     console.log(`WARNING: unrecognized country '${match.groups.country}'`)
@@ -1092,8 +1106,7 @@ ${sectionTexFor("Keywords and Websites", "Informatics Keywords and Websites")}
 }{}
 
 % all authors
-% ATTENTION: you HAVE to make sure an according entry is in ../main/authors.tex.
-% Syntax: \\def\\AuthorLastnameF{} (Lastname is last name, F is first letter of first name, this serves as a marker for ../main/authors.tex)
+% Note: there has to be a corresponding entry is in ../main/authors.tex.
 ${authorDefs()}
 
 \\newpage}{}

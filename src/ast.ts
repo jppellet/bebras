@@ -141,8 +141,8 @@ export async function buildASTOf(taskFile: string, options: Partial<PluginOption
     const mdText = await readFileStrippingBom(taskFile)
     const langCode = parseLanguageCodeFromTaskPath(taskFile)
     const [tokens, metadata] = parseMarkdown(mdText, taskFile, path.dirname(taskFile), { ...options, langCode })
-    const ast = tokensToAST(tokens)
-    console.log(JSON.stringify(ast, null, 2))
+    // const ast = tokensToAST(tokens)
+    // console.log(JSON.stringify(ast, null, 2))
     return toJsonRepr(tokens, taskFile, metadata)
 }
 
