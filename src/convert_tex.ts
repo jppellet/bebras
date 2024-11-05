@@ -37,22 +37,35 @@ export async function convertTask_tex(taskFile: string, output: string | true, o
     }
 
     const texDataStandalone = renderTex(linealizedTokens, langCode, metadata, taskFile, true)
-    const result = await writeData(texDataStandalone, output, "Standalone TeX")
+    const result = await writeData(texDataStandalone.tex, output, "Standalone TeX")
+    if (texDataStandalone.verbatims.length > 0) {
+        console.log(`Standalone TeX generated separate verbatims which should have been inlined: ${texDataStandalone.verbatims.map(v => v.name).join(", ")}`)
+    }
 
     if (output !== true) {
         // write the brochure version
         const texDataBrochure = renderTex(linealizedTokens, langCode, metadata, taskFile, false)
         const fileOutBrochure = siblingWithExtension(output, "_brochure.tex")
-        await writeData(texDataBrochure, fileOutBrochure, "Brochure TeX")
+        await writeData(texDataBrochure.tex, fileOutBrochure, "Brochure TeX")
+        for (const v of texDataBrochure.verbatims) {
+            const verbatimFile = siblingWithExtension(fileOutBrochure, `_${v.name}.tex`)
+            await writeData(v.content, verbatimFile, `Brochure TeX verbatim ${v.name}`)
+        }
     }
 
     return result
 }
 
-export function renderTex(linealizedTokens: Token[], langCode: string, metadata: TaskMetadata, taskFile: string, standalone: boolean,): string {
+type TexRender = {
+    tex: string
+    verbatims: Array<{ name: string, content: string }>
+}
+
+export function renderTex(linealizedTokens: Token[], langCode: string, metadata: TaskMetadata, taskFile: string, standalone: boolean): TexRender {
 
     const year = TaskMetadata.formatYear(metadata)
     const license = patterns.genLicense(metadata)
+    const verbatims = [] as Array<{ name: string, content: string }>
 
     const skip = () => ""
 
@@ -399,8 +412,18 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         },
 
         "code_block": (tokens, idx, env) => {
-            const content = texEscapeChars(tokens[idx].content)
-            return `\\begin{BrochureCode}\n${content}\\end{BrochureCode}\n\n`
+            const code = texEscapeChars(tokens[idx].content)
+            const content = `\\begin{BrochureCode}\n${code}\\end{BrochureCode}`
+            if (standalone) {
+                return content + "\n\n"
+            } else {
+                // we have to put it in a separate file, otherwise it
+                // causes issues with verbatims in an ifthenelse
+                const i = verbatims.length
+                const name = `verbatim${i}`
+                verbatims.push({ name, content })
+                return `\\input{\\taskBrochureFile_${name}.tex}\n\n`
+            }
         },
 
         "math_inline_double": (tokens, idx, env) => {
@@ -1058,8 +1081,9 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
     const isInteractiveTask = metadata.answer_type.toLowerCase().includes("interact")
 
+    let tex: string
     if (!standalone) {
-        return `% Definition of the meta information: task difficulties, task ID, task title, task country; definition of the variables as well as their scope is in commands.tex
+        tex = `% Definition of the meta information: task difficulties, task ID, task title, task country; definition of the variables as well as their scope is in commands.tex
 \\setcounter{taskAgeDifficulty3to4}{${difficultyIndex("8-10")}}
 \\setcounter{taskAgeDifficulty5to6}{${difficultyIndex("10-12")}}
 \\setcounter{taskAgeDifficulty7to8}{${difficultyIndex("12-14")}}
@@ -1117,7 +1141,7 @@ ${authorDefs()}
 \\newpage}{}
 `
     } else {
-        return '' +
+        tex = '' +
             `\\documentclass[a4paper,11pt]{report}
 \\usepackage[T1]{fontenc}
 \\usepackage[utf8]{inputenc}
@@ -1211,4 +1235,6 @@ ${taskTex}
 `
 
     }
+
+    return { tex, verbatims }
 }
