@@ -216,10 +216,33 @@ img.only-img-in-p {
    margin-left: 30px;
 }
 
-.comment {
-   padding-left: 10px;
-   font-size: 90%;
-   border-left: 2px solid lightgrey;
+.qrcode {
+    display: block;
+    float: right;
+    width: 2.5cm;
+    height: 2.5cm;
+    border: 1px solid black;
+    font-size: 70%;
+    font-style: normal;
+    line-height: 100%;
+    word-break: break-word;
+    overflow: hidden;
+}
+
+.qrcode::before {
+    content: "Brochure QR Code";
+    display: block;
+    text-align: center;
+    font-size: 80%;
+    font-weight: bold;
+}
+
+.qrcode::before {
+   content: "QR code for brochure";
+   display: block;
+   text-align: center;
+   font-size: 80%;
+   font-weight: bold;
 }
 
 /* sub and sup rules to not disgracefully affect line-height */

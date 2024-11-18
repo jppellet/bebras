@@ -806,6 +806,7 @@ export function formatTable(orig: string, eol: string): string {
 
     type Row = { cells: string[], hasTrailingBackslash: boolean }
 
+    // Parses a row
     function rowFromLine(line: string): Row {
         let hasTrailingBackslash = false
         const cells = line.split(/(?:\||‖)/)
@@ -827,17 +828,21 @@ export function formatTable(orig: string, eol: string): string {
         .split(/\r?\n/) // split lines
         .map(rowFromLine)
 
+    // return if we don't have any rows
     const numCols = _.max(rows.map(row => row.cells.length))
     if (isUndefined(numCols)) {
         return orig
     }
-    const addOpeningTrainingBars = numCols > 2
     const headerContent = /:?(?:\^|v)?\-+:?/
 
     type HAlign = "l" | "c" | "r" | "j"
     type VAlign = "t" | "m" | "b"
 
-    const maxColWidths = new Array(numCols).fill(2)
+    const cellSep = " | "
+    const widthCutoffForPadding = 110
+    const padLines: boolean[] = new Array(rows.length).fill(true)
+
+    const maxColWidths: number[] = new Array(numCols).fill(2)
     const hAligns: HAlign[] = new Array(numCols).fill("j")
     const vAligns: VAlign[] = new Array(numCols).fill("m")
     let headerRow = -1
@@ -850,8 +855,13 @@ export function formatTable(orig: string, eol: string): string {
                 row.cells[i] = row.cells[i].replace(/--+/g, "--")
             }
         }
+        const rowLength = row.cells.reduce((acc, cell) => acc + cell.length, cellSep.length * (numCols - 1))
+        const skipLineForPadding = rowLength > widthCutoffForPadding
+        padLines[rowIndex] = !skipLineForPadding
         row.cells.forEach((cell, colIndex) => {
-            maxColWidths[colIndex] = Math.max(maxColWidths[colIndex], cell.length)
+            if (!skipLineForPadding) {
+                maxColWidths[colIndex] = Math.max(maxColWidths[colIndex], cell.length)
+            }
             if (isHeader) {
                 let hAlign: HAlign
                 let vAlign: VAlign
@@ -886,6 +896,7 @@ export function formatTable(orig: string, eol: string): string {
         })
     })
 
+    const addOpeningTrainingBars = false // numCols > 2
 
     rows.forEach((row, rowIndex) => {
         const isHeader = headerRow === rowIndex
@@ -918,14 +929,12 @@ export function formatTable(orig: string, eol: string): string {
             row.cells.push(emptyCell)
         }
 
-        // maybe we won't want to pad at all if the total width is too large
-        const totalWidth = maxColWidths.reduce((acc, w) => acc + w, 3 * numCols - 1)
-        const skipPadding = totalWidth > 110
-
         row.cells.forEach((cell, colIndex) => {
             let cellContent
-            if (skipPadding || !addOpeningTrainingBars && colIndex === numCols - 1 && headerRow === 0) {
+            const skipThisPadding = !padLines[rowIndex] ||
                 // also don't pad last col if we can
+                colIndex === numCols - 1 && rowIndex !== headerRow && !addOpeningTrainingBars && !row.hasTrailingBackslash
+            if (skipThisPadding) {
                 cellContent = cell
             } else {
                 const toPad = maxColWidths[colIndex] - cell.length
@@ -938,5 +947,5 @@ export function formatTable(orig: string, eol: string): string {
     const [linePrefix, lineSuffix] = addOpeningTrainingBars ? ["| ", " |"] : ["", ""]
     const getLineSuffix = (r: Row) => r.hasTrailingBackslash ? " \\" : lineSuffix
 
-    return rows.map(row => linePrefix + row.cells.join(" | ") + getLineSuffix(row)).join(eol) + eol
+    return rows.map(row => linePrefix + row.cells.join(cellSep) + getLineSuffix(row)).join(eol) + eol
 }

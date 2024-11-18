@@ -1,6 +1,6 @@
 {
   "name": "bebras",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Tools to support the editing of Bebras tasks in Markdown",
   "main": "./out/main.js",
   "types": "./out/main.d.ts",
@@ -61,6 +61,7 @@
     "lodash": "^4.17.21",
     "markdown-it": "^12.3.2",
     "markdown-it-anchor": "^8.1.2",
+    "markdown-it-color": "^2.1.1",
     "markdown-it-container": "^3.0.0",
     "markdown-it-inline-comments": "^1.0.1",
     "markdown-it-multimd-table-ext": "^4.2.3",

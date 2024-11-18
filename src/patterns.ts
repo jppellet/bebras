@@ -413,7 +413,7 @@ export const imageOptions = capturing<{
     placement: maybe,
     placement_args: maybe,
 }>(
-    "\\s*\\((?:(?<width_abs>" + decimal.source + "?)(?:px)?|(?<width_rel>" + decimal.source + "%)(?: min (?<width_min>" + decimal.source + ")(?:px)?)?(?: max (?<width_max>" + decimal.source + ")(?:px)?)?)?(?: ?x ?(?<height_abs>" + decimal.source + ")(?:px)?)?(?: *(?:(?<placement>left|right|inline) *?(?:\\((?<placement_args>.*?)\\))?))?\\)"
+    "\\s*\\((?:(?<width_abs>" + decimal.source + "?)(?:px)?|(?<width_rel>" + decimal.source + "%)(?: min (?<width_min>" + decimal.source + ")(?:px)?)?(?: max (?<width_max>" + decimal.source + ")(?:px)?)?)?(?: ?x ?(?<height_abs>" + decimal.source + ")(?:px)?)?(?: *(?:(?<placement>left|right|inline|nocenter) *?(?:\\((?<placement_args>.*?)\\))?))?\\)"
 )
 
 
@@ -426,4 +426,8 @@ export const texInlineNumbersPattern = capturing<{
     "(?<pre>\\b)(?<n>([\\+\\-])?[\\d]+(?:\\.[\\d]+)?)(?=[^\\-\\\\])(?<post>\\b)", "g"
 )
 
-
+export const lineStretchPattern = capturing<{
+    params: always
+}>(
+    /^linestretch\s*\(?(?<params>.*?)\)?\s*$/
+)

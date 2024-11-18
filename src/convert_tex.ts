@@ -3,13 +3,14 @@ import path = require('path')
 import _ = require('lodash')
 import Token = require('markdown-it/lib/token')
 import patterns = require("./patterns")
-import { HtmlToTexPixelRatio, TaskMetadata, texEscapeChars, texMath, texMathify } from './util'
+import { HtmlToTexPixelRatio, TaskMetadata, texEscapeChars, texEscapeVerbatim, texMath, texMathify } from './util'
 import codes = require("./codes")
 // import { numberToString } from 'pdf-lib'
 import { isString, isUndefined } from 'lodash'
 import { parseTask, PluginOptions } from './convert_html'
 import { siblingWithExtension, writeData } from './fsutil'
 import { getImageSize } from './img_cache'
+import { lineStretchPattern } from './patterns'
 
 const DUMP_TOKENS = false
 
@@ -49,7 +50,7 @@ export async function convertTask_tex(taskFile: string, output: string | true, o
         await writeData(texDataBrochure.tex, fileOutBrochure, "Brochure TeX")
         for (const v of texDataBrochure.verbatims) {
             const verbatimFile = siblingWithExtension(fileOutBrochure, `_${v.name}.tex`)
-            await writeData(v.content, verbatimFile, `Brochure TeX verbatim ${v.name}`)
+            await writeData(v.content, verbatimFile, `Brochure TeX ${v.name}`)
         }
     }
 
@@ -126,7 +127,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         }
     }
 
-    type Rules = { [key: string]: undefined | ((tokens: Token[], idx: number, env: RendererEnv) => string | { skipToNext: string }) }
+    type Rules = { [key: string]: undefined | ((tokens: Token[], idx: number, env: RendererEnv) => string | { skipToNext: string, text?: string }) }
 
     const sectionCommands: Array<[string, string]> = [
         ["\\section*{\\centering{} ", "}"],
@@ -378,6 +379,21 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         return surrounded
     }
 
+
+    function renderCodeBlockWith(code: string) {
+        const content = `\\begin{BrochureCode}\n${texEscapeVerbatim(code)}\\end{BrochureCode}`
+        if (standalone) {
+            return content + "\n\n"
+        } else {
+            // we have to put it in a separate file, otherwise it
+            // causes issues with verbatims in an ifthenelse
+            const i = verbatims.length
+            const name = `verbatim${i}`
+            verbatims.push({ name, content })
+            return `\\input{\\taskBrochureFile_${name}.tex}\n\n`
+        }
+    }
+
     const rules: Rules = {
 
         "inline": (tokens, idx, env) => {
@@ -412,17 +428,16 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         },
 
         "code_block": (tokens, idx, env) => {
-            const code = texEscapeChars(tokens[idx].content)
-            const content = `\\begin{BrochureCode}\n${code}\\end{BrochureCode}`
-            if (standalone) {
-                return content + "\n\n"
+            return renderCodeBlockWith(tokens[idx].content)
+        },
+
+        "fence": (tokens, idx, env) => {
+            const tag = tokens[idx].tag
+            if (tag === "code") {
+                return renderCodeBlockWith(tokens[idx].content)
             } else {
-                // we have to put it in a separate file, otherwise it
-                // causes issues with verbatims in an ifthenelse
-                const i = verbatims.length
-                const name = `verbatim${i}`
-                verbatims.push({ name, content })
-                return `\\input{\\taskBrochureFile_${name}.tex}\n\n`
+                warnNoRendererRule(`fence.${tag}`)
+                return ""
             }
         },
 
@@ -445,7 +460,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             let title = t.attrGet("title")
             let includeOpts = ""
             let placement = "unspecified"
-            let placementArgs = undefined as string | undefined
+            let placementArgs: string[] = []
             let widthStr: string | undefined = undefined
             let scale: number | undefined = undefined
             let match, value
@@ -464,7 +479,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                     placement = value
                 }
                 if (value = match.groups.placement_args) {
-                    placementArgs = value
+                    placementArgs = value.split(",").map(s => s.trim())
                 }
             }
 
@@ -517,7 +532,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                     } else {
                         // inline in table cell
                         // console.log("use raisebox1")
-                        useRaisebox(false, placementArgs)
+                        useRaisebox(false, placementArgs.length > 0 ? placementArgs[0] : undefined)
                     }
                 } else if (isSurrounded(tokens, idx, 1, "td")) {
                     // console.log("use makecell2")
@@ -528,26 +543,31 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                 ) {
                     // inline in paragraph
                     let ignoreHeight = true
-                    let referenceWidth
-                    try {
-                        // heuristic: if width is >= 30, then don't ignore
-                        const indicatedWidthOr0 = parseInt(widthStr?.replace(/px/, "") ?? "0")
-                        if (indicatedWidthOr0 !== 0) {
-                            referenceWidth = indicatedWidthOr0
-                        } else {
-                            const realImgPath = path.join(path.dirname(taskFile), imgPathForHtml)
-                            referenceWidth = (scale ?? 1) * getImageSize(realImgPath)
-                        }
-                        ignoreHeight = referenceWidth < 30
-                    } catch { }
+                    const neverIgnore = placementArgs.length > 1 && placementArgs[1] === "full"
+                    if (neverIgnore) {
+                        ignoreHeight = false
+                    } else {
+                        let referenceWidth
+                        try {
+                            // heuristic: if width is >= 30, then don't ignore
+                            const indicatedWidthOr0 = parseInt(widthStr?.replace(/px/, "") ?? "0")
+                            if (indicatedWidthOr0 !== 0) {
+                                referenceWidth = indicatedWidthOr0
+                            } else {
+                                const realImgPath = path.join(path.dirname(taskFile), imgPathForHtml)
+                                referenceWidth = (scale ?? 1) * getImageSize(realImgPath)
+                            }
+                            ignoreHeight = referenceWidth < 30
+                        } catch { }
+                    }
                     // console.log("use raisebox2, ignoreHeight=" + ignoreHeight + ", referenceWidth=" + referenceWidth)
-                    useRaisebox(ignoreHeight, placementArgs)
+                    useRaisebox(ignoreHeight, placementArgs.length > 0 ? placementArgs[0] : undefined)
                 } else {
                     // console.log("use raw")
                     // console.log(tokens.slice(idx - 5, idx + 5))
                 }
 
-            } else {
+            } else if (placement === "left" || placement === "right") {
                 // left or right
                 const placementSpec = placement[0].toUpperCase()
                 if (!widthStr && !isUndefined(scale)) {
@@ -563,6 +583,8 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                 } else {
                     warn(`Undefined width for floating image '${imgPathForHtml}'`)
                 }
+            } else {
+                // probably nocenter, for which we don't need to do anything before or after
             }
 
             return `${before}${includeCmd}${after}`
@@ -843,6 +865,20 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         },
 
 
+        "color_open": (tokens, idx, env) => {
+            const color = tokens[idx].info
+            if (color.length === 0) {
+                return "{"
+            }
+            const colorArgs = color[0] === "#" ? `[HTML]{${color.slice(1)}}` : `{${color}}`
+            return `\\textcolor${colorArgs}{`
+        },
+
+        "color_close": (tokens, idx, env) => {
+            return `}`
+        },
+
+
         "container_clear_open": (tokens, idx, env) => {
             return `` // TODO: try to clear all figures
         },
@@ -878,6 +914,41 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
         "container_fullwidth_close": (tokens, idx, env) => {
             return `\n}\n\n`
+        },
+
+
+        "container_linestretch_open": (tokens, idx, env) => {
+            const match = lineStretchPattern.exec(tokens[idx].info)
+            let stretch = 1
+            if (match) {
+                try {
+                    stretch = parseFloat(match.groups.params)
+                } catch { }
+            }
+            return `{\\setstretch{${stretch}}\n`
+        },
+
+        "container_linestretch_close": (tokens, idx, env) => {
+            return `\n\n}\n\n`
+        },
+
+
+        "container_qrcode_open": (tokens, idx, env) => {
+            const textParts: string[] = []
+            let i = idx + 1
+            while (i < tokens.length && tokens[i].type !== "container_qrcode_close") {
+                if (tokens[i].type === "text") {
+                    textParts.push(tokens[i].content)
+                }
+                i++
+            }
+            const text = textParts.join("").trim()
+            const size = "1.5cm"
+            return { text: `\\begin{wrapfigure}{R}{${size}}\\vspace{-1.5em}\\qrcode[height=${size},level=L]{${text}}\\end{wrapfigure}\n\n`, skipToNext: "container_qrcode_close" }
+        },
+
+        "container_qrcode_close": (tokens, idx, env) => {
+            return ``
         },
 
 
@@ -929,27 +1000,36 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
     const sectionStrs: Record<string, Array<string>> = {}
 
+    function warnNoRendererRule(type: string) {
+        warn(`No renderer rule for '${type}'`)
+    }
 
     function traverse(tokens: Token[], env: RendererEnv): string {
         const parts = [] as string[]
-        let r
+        function pushPart(part: string) {
+            parts.push(part)
+            let secParts = sectionStrs[_currentSection]
+            if (isUndefined(secParts)) {
+                secParts = [part]
+                sectionStrs[_currentSection] = secParts
+            } else {
+                secParts.push(part)
+            }
+        }
 
+        let r
         for (let idx = 0; idx < tokens.length; idx++) {
             _currentToken = tokens[idx]
             const rule = rules[_currentToken.type]
             if (rule) {
                 if (r = rule(tokens, idx, env)) {
                     if (isString(r)) {
-                        parts.push(r)
-                        let secParts = sectionStrs[_currentSection]
-                        if (isUndefined(secParts)) {
-                            secParts = [r]
-                            sectionStrs[_currentSection] = secParts
-                        } else {
-                            secParts.push(r)
-                        }
+                        pushPart(r)
                     } else {
-                        const { skipToNext } = r
+                        const { skipToNext, text } = r
+                        if (text !== undefined) {
+                            pushPart(text)
+                        }
                         while (tokens[idx].type !== skipToNext) {
                             idx++
                             if (idx === tokens.length) {
@@ -959,7 +1039,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                     }
                 }
             } else {
-                warn(`No renderer rule for ${_currentToken.type}`)
+                warnNoRendererRule(_currentToken.type)
             }
         }
         return parts.join("")
@@ -1150,6 +1230,7 @@ ${babel}
 \\AtBeginDocument{\\def\\labelitemi{$\\bullet$}}
 
 \\usepackage{etoolbox}
+\\usepackage{qrcode}
 
 \\usepackage[margin=2cm]{geometry}
 \\usepackage{changepage}
@@ -1189,6 +1270,7 @@ ${babel}
       basicstyle=\\ttfamily,
       aboveskip=\\parskip,
       belowskip=\\parskip,
+      escapeinside={\\%*}{*)},
       columns=flexible
   }}{}
 \\newcommand{\\BrochureInlineCode}[1]{{\\ttfamily #1}}

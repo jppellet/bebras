@@ -19,7 +19,9 @@ import { isRecord, isString, parseLanguageCodeFromTaskPath, TaskMetadata } from 
 import _ = require("lodash")
 
 import * as markdownItAnchor from "markdown-it-anchor"
+import { colorPlugin as markdownItColor } from "markdown-it-color"
 import * as markdownItTocDoneRight from "markdown-it-toc-done-right"
+import { lineStretchPattern } from "./patterns"
 
 export type PluginContext = {
   taskFile: string
@@ -40,6 +42,12 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
       .use(require("markdown-it-sub"))
       .use(require("markdown-it-sup"))
       .use(require('markdown-it-inline-comments'))
+
+      // see https://github.com/nkjmsss/markdown-it-color
+      .use(markdownItColor, {
+        defaultClassName: "bebras-color",
+        inline: true,
+      })
 
       // see https://www.npmjs.com/package/markdown-it-multimd-table
       .use(require("markdown-it-multimd-table-ext"), {
@@ -77,6 +85,12 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
       .use(customContainerPlugin, "nobreak")
       .use(customContainerPlugin, "comment")
       .use(customContainerPlugin, "fullwidth")
+      .use(customContainerPlugin, "qrcode")
+      .use(customContainerPlugin, "linestretch", {
+        validate: function (params: string) {
+          return params.match(lineStretchPattern)
+        },
+      })
 
 
     const quotesByLang: Record<string, [string, string, string, string]> = {
@@ -712,11 +726,6 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
 
       const imgScale = taskMetadata?.settings?.default_image_scale
 
-      if (tokens.length === 1 && pluginOptions.fullHtml) {
-        // this is the only image in a block
-        token.attrJoin("class", "only-img-in-p")
-      }
-
       let styles = [] as string[]
 
       function addStyle(name: string, value: string) {
@@ -727,6 +736,7 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
         addStyle(name, `${decimalValue}px`)
       }
 
+      let preventAutoCentering = false
       let title, match
       if ((title = token.attrGet("title")) && (match = patterns.imageOptions.exec(title))) {
 
@@ -754,10 +764,14 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
         if (value = match.groups.placement) {
           if (value === "left" || value === "right") {
             addStyle("float", value)
+          } else if (value === "nocenter") {
+            preventAutoCentering = true
           }
+
         }
 
         if (value = match.groups.placement_args) {
+          value = value.split(",").map(s => s.trim())[0]
           addStyle("position", "relative")
           addStyle("bottom", value)
         }
@@ -774,6 +788,11 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
             addStylePx("width", String(finalWidth))
           }
         }
+      }
+
+      if (!preventAutoCentering && tokens.length === 1 && pluginOptions.fullHtml) {
+        // this is the only image in a block
+        token.attrJoin("class", "only-img-in-p")
       }
 
       if (styles.length !== 0) {

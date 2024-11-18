@@ -444,6 +444,14 @@ export function texEscapeChars(text: string): string {
         })
 }
 
+export function texEscapeVerbatim(text: string): string {
+    // prefix all non-ASCII chars with our verbatim escape marker
+    // eslint-disable-next-line prefer-named-capture-group
+    return text.replace(/[^\x00-\x7F]+/g, function (matched) {
+        return "%*" + texEscapeChars(matched) + "*)"
+    })
+}
+
 export function texMathify(text: string): string {
     // sample in:  There is a room with 4 corners
     // sample out: There is a room with $4$ corners

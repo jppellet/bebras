@@ -4,12 +4,14 @@
 
 html {
     box-sizing: border-box;
-    background:#eee;
+    background: #eee;
     -webkit-text-size-adjust: 100%;
 }
-  
-*, *:before, *:after {
-  box-sizing: inherit;
+
+*,
+*:before,
+*:after {
+    box-sizing: inherit;
 }
 
 body {
@@ -19,7 +21,7 @@ body {
     max-width: 750px;
     margin: auto;
     padding: 40px;
-    background:white;
+    background: white;
     border-left: 1px solid lightgrey;
     border-right: 1px solid lightgrey;
 }
@@ -54,7 +56,9 @@ h2 {
     page-break-after: avoid;
 }
 
-p, ul, ol {
+p,
+ul,
+ol {
     margin: 10px 0;
 }
 
@@ -85,6 +89,27 @@ img.only-img-in-p {
     display: none;
 }
 
+.qrcode {
+    display: block;
+    float: right;
+    width: 2.5cm;
+    height: 2.5cm;
+    border: 1px solid black;
+    font-size: 70%;
+    font-style: normal;
+    line-height: 100%;
+    word-break: break-word;
+    overflow: hidden;
+}
+
+.qrcode::before {
+    content: "Brochure QR Code";
+    display: block;
+    text-align: center;
+    font-size: 80%;
+    font-weight: bold;
+}
+
 /* sub and sup rules to not disgracefully affect line-height */
 
 sup {
@@ -105,7 +130,8 @@ sub {
         padding: 20px;
     }
 
-    ul, ol {
+    ul,
+    ol {
         padding-left: 20px;
     }
 
@@ -117,9 +143,9 @@ sub {
  */
 
 @page {
-  margin: 60px 60px 80px;
+    margin: 60px 60px 80px;
 }
-  
+
 @media only print {
 
     html {
@@ -194,7 +220,7 @@ sub {
  * Header
  */
 
- .bebras-header {
+.bebras-header {
     line-height: 100%;
     width: 100%;
     display: flex;
@@ -296,8 +322,7 @@ sub {
 }
 
 .bebras-sectioncontainer-questionchallenge,
-.bebras-sectioncontainer-answer-optionsinteractivity-description
-.bebras-sectioncontainer-contributors,
+.bebras-sectioncontainer-answer-optionsinteractivity-description .bebras-sectioncontainer-contributors,
 .bebras-sectioncontainer-supportfiles,
 .bebras-sectioncontainer-keywords-and-websites,
 .bebras-sectioncontainer-wording-and-phrases {
