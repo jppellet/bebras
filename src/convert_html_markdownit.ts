@@ -54,6 +54,8 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
         multiline: true,
         rowspan: true,
         headerless: true,
+        multibody: true,
+        autolabel: false,
       })
 
       // see https://github.com/goessner/markdown-it-texmath

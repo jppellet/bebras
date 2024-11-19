@@ -90,7 +90,8 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             currentTableRowIndex: -1,
             currentTableColumnIndex: -1,
             validMultirows: [] as Array<{ colIndex: number, rowIndex: number, rowspan: number }>,
-            lastRowTypeInThisTable: undefined as undefined | "header" | "body",
+            latestTableRowToken: undefined as undefined | Token,
+            latestTableCellType: undefined as undefined | "header" | "body",
             hasCellOnThisLine: false,
             closeSectionWith: "",
             disableMathify: false,
@@ -260,10 +261,12 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
     function closeLineIfNeeded(env: RendererEnv) {
         env.setState({ currentTableColumnIndex: -1 })
-        const lastRowType = env.state().lastRowTypeInThisTable
-        if (lastRowType) {
-            env.setState({ lastRowTypeInThisTable: undefined })
-            const lineIfNeeded = (lastRowType === "header") ? "\\midrule\n" : "" // \topstrut doesn't work if followed by \muticolumn...
+        const { latestTableCellType, latestTableRowToken } = env.state()
+        if (latestTableCellType) {
+            env.setState({ latestTableCellType: undefined, latestTableRowToken: undefined })
+            const lineBelow = latestTableRowToken?.meta.lineBelow
+            const needsLine = latestTableCellType === "header" || lineBelow
+            const lineIfNeeded = needsLine ? "\\midrule\n" : "" // \topstrut doesn't work if followed by \muticolumn...
             return ` \\\\ \n${lineIfNeeded}`
         }
         return ""
@@ -754,6 +757,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                 aligns: Array<string>
                 valigns: Array<string>
                 wraps: Array<boolean>
+                vlines: Array<boolean>
                 map: [number, number]
             }
             interface TableMeta {
@@ -782,16 +786,25 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             const tableMeta: TableMeta = t.meta
             const ncols = tableMeta.sep.aligns.length
             const specs: Array<string> = []
+            const specsWithLines: Array<string> = []
             let hasAnyHResize = false
             for (let i = 0; i < ncols; i++) {
                 const hresize = tableMeta.sep.wraps[i]
                 if (hresize) {
                     hasAnyHResize = true
                 }
-                specs.push(columnSpec(tableMeta.sep.aligns[i], hresize))
+                if (tableMeta.sep.vlines[i]) {
+                    specsWithLines.push("|")
+                }
+                const s = columnSpec(tableMeta.sep.aligns[i], hresize)
+                specs.push(s)
+                specsWithLines.push(s)
+            }
+            if (tableMeta.sep.vlines[ncols]) {
+                specsWithLines.push("|")
             }
 
-            const spec = "@{} " + specs.join(" ") + " @{}"
+            const spec = "@{} " + specsWithLines.join(" ") + " @{}"
             const open = !hasAnyHResize ? `\\begin{tabular}{ ${spec} }\n` : `\\begin{tabularx}{\\columnwidth}{ ${spec} }\n`
             const close = !hasAnyHResize ? `\n\\end{tabular}\n\n` : `\n\\end{tabularx}\n\n`
 
@@ -813,13 +826,19 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
         "tr_open": (tokens, idx, env) => {
             const closeIfNeeded = closeLineIfNeeded(env)
-            env.setState({ currentTableRowIndex: env.state().currentTableRowIndex + 1 })
+            env.setState({
+                currentTableRowIndex: env.state().currentTableRowIndex + 1,
+                latestTableRowToken: tokens[idx],
+            })
             return closeIfNeeded + "  "
         },
 
         "tr_close": (tokens, idx, env) => {
             const lastRowInThisTable = (tokens[idx - 1].type === "th_close") ? "header" : "body"
-            env.setState({ hasCellOnThisLine: false, lastRowTypeInThisTable: lastRowInThisTable })
+            env.setState({
+                hasCellOnThisLine: false,
+                latestTableCellType: lastRowInThisTable,
+            })
             return ""
         },
 
