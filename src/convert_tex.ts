@@ -963,7 +963,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             }
             const text = textParts.join("").trim()
             const size = "1.5cm"
-            return { text: `\\begin{wrapfigure}{R}{${size}}\\vspace{-1.5em}\\qrcode[height=${size},level=L]{${text}}\\end{wrapfigure}\n\n`, skipToNext: "container_qrcode_close" }
+            return { text: `\\begin{wrapfigure}{r}{${size}}\\vspace{-1.5em}\\qrcode[height=${size},level=L]{${text}}\\end{wrapfigure}\n\n`, skipToNext: "container_qrcode_close" }
         },
 
         "container_qrcode_close": (tokens, idx, env) => {

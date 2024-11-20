@@ -804,23 +804,69 @@ export async function findAllSupportFilesFor(taskFile: string): Promise<[string,
 
 export function formatTable(orig: string, eol: string): string {
 
-    type Row = { cells: string[], hasTrailingBackslash: boolean }
+    const SEP_BAR = "|"
+    const SEP_DOUBLE_BAR = "‖"
+
+    type Sep = typeof SEP_BAR | typeof SEP_DOUBLE_BAR | ""
+    type Row = { cells: string[], seps: Sep[], hasTrailingBackslash: boolean, isHeaderLike: boolean }
+
+    // TODO: this only makes sense for text on multiple lines with a backslash at the
+    // end of the line, otherwise we can just decide not to care
+    // const SMALLEST_MEANINGFUL_INDENT = "   "
+    // const MAX_INSERTED_LEFT_INDENT = SMALLEST_MEANINGFUL_INDENT.length - 1
 
     // Parses a row
     function rowFromLine(line: string): Row {
+        const isHeaderLike = patterns.tableHeaderOrSepPattern.test(line)
         let hasTrailingBackslash = false
-        const cells = line.split(/(?:\||‖)/)
-            .filter(cell => cell.length !== 0) // filter out last/first empty cells
-            .map(cell => cell.trim())          // make sure we do the job of adding whitespace back // TODO: this may strip 3+ more spaces at the beginning, which have semantic meaning! Don't strip!
+        const cells: string[] = []
+        const seps: Sep[] = []
+        let lastSep = -1
+
+        function pushCell(start: number, end: number) {
+            const content = line.substring(start, end).trim()
+            // if (!content.startsWith(SMALLEST_MEANINGFUL_INDENT)) {
+            //     // if it is not a meaningful indent
+            //     content = content.trimLeft()
+            // }
+            cells.push(content)
+        }
+
+        // first char, maybe a sep, maybe not
+        if (line[0] === SEP_BAR || line[0] === SEP_DOUBLE_BAR) {
+            seps.push(line[0])
+            lastSep = 0
+        } else {
+            seps.push("")
+        }
+
+        // actual cells
+        for (let i = 0; i < line.length; i++) {
+            const c = line[i]
+            if (c === SEP_BAR || c === SEP_DOUBLE_BAR) {
+                seps.push(c)
+                pushCell(lastSep + 1, i)
+                lastSep = i
+            }
+        }
+
+        // last cell
+        if (lastSep < line.length - 1) {
+            pushCell(lastSep + 1, line.length)
+            seps.push("")
+        }
+
         const lastCell = cells[cells.length - 1]
         if (lastCell === "\\") {
             cells.pop()
+            seps.pop()
             hasTrailingBackslash = true
         } else if (lastCell.endsWith("\\")) {
             hasTrailingBackslash = true
             cells[cells.length - 1] = lastCell.substring(0, lastCell.length - 1).trimEnd()
         }
-        return { cells, hasTrailingBackslash }
+
+        return { cells, seps, hasTrailingBackslash, isHeaderLike }
     }
 
     const rows = orig
@@ -828,34 +874,33 @@ export function formatTable(orig: string, eol: string): string {
         .split(/\r?\n/) // split lines
         .map(rowFromLine)
 
+
     // return if we don't have any rows
     const numCols = _.max(rows.map(row => row.cells.length))
     if (isUndefined(numCols)) {
         return orig
     }
-    const headerContent = /:?(?:\^|v)?\-+:?/
 
     type HAlign = "l" | "c" | "r" | "j"
     type VAlign = "t" | "m" | "b"
 
-    const cellSep = " | "
+    const cellSepLength = 3
     const widthCutoffForPadding = 110
     const padLines: boolean[] = new Array(rows.length).fill(true)
 
     const maxColWidths: number[] = new Array(numCols).fill(2)
     const hAligns: HAlign[] = new Array(numCols).fill("j")
     const vAligns: VAlign[] = new Array(numCols).fill("m")
-    let headerRow = -1
-    let headerSeen = false
+    let headerRow = undefined as Row | undefined
     rows.forEach((row, rowIndex) => {
-        const isHeader = !headerSeen && row.cells.every(cell => headerContent.test(cell))
+        const isHeader = headerRow === undefined && row.isHeaderLike
         if (isHeader) {
-            headerRow = rowIndex
+            headerRow = row
             for (let i = 0; i < row.cells.length; i++) {
                 row.cells[i] = row.cells[i].replace(/--+/g, "--")
             }
         }
-        const rowLength = row.cells.reduce((acc, cell) => acc + cell.length, cellSep.length * (numCols - 1))
+        const rowLength = row.cells.reduce((acc, cell) => acc + cell.length, cellSepLength * (numCols - 1))
         const skipLineForPadding = rowLength > widthCutoffForPadding
         padLines[rowIndex] = !skipLineForPadding
         row.cells.forEach((cell, colIndex) => {
@@ -896,14 +941,13 @@ export function formatTable(orig: string, eol: string): string {
         })
     })
 
-    const addOpeningTrainingBars = false // numCols > 2
+    const seps = headerRow?.seps ?? new Array(numCols + 1).fill(SEP_BAR)
+    const hasClosingRightBar = seps[seps.length - 1] === SEP_DOUBLE_BAR
 
     rows.forEach((row, rowIndex) => {
-        const isHeader = headerRow === rowIndex
         let emptyCell
         let pad: (cell: string, toPad: number, hAlign: HAlign) => string
-        if (isHeader) {
-            headerSeen = true
+        if (row.isHeaderLike) {
             emptyCell = "--"
             pad = (cell, toPad, _align) => {
                 const mid = Math.floor(cell.length / 2)
@@ -919,7 +963,7 @@ export function formatTable(orig: string, eol: string): string {
                     case "r":
                         return _.pad("", toPad, " ") + cell
                     case "c":
-                        const firstHalf = Math.min(2, Math.floor(toPad / 2)) // not more than 2, otherwise interpreted as code
+                        const firstHalf = Math.floor(toPad / 2)
                         const secondHalf = toPad - firstHalf
                         return _.pad("", firstHalf, " ") + cell + _.pad("", secondHalf, " ")
                 }
@@ -931,9 +975,10 @@ export function formatTable(orig: string, eol: string): string {
 
         row.cells.forEach((cell, colIndex) => {
             let cellContent
+            const alignsLeft = hAligns[colIndex] === "j" || hAligns[colIndex] === "l"
             const skipThisPadding = !padLines[rowIndex] ||
                 // also don't pad last col if we can
-                colIndex === numCols - 1 && rowIndex !== headerRow && !addOpeningTrainingBars && !row.hasTrailingBackslash
+                colIndex === numCols - 1 && alignsLeft && !row.isHeaderLike && !hasClosingRightBar && !row.hasTrailingBackslash
             if (skipThisPadding) {
                 cellContent = cell
             } else {
@@ -944,8 +989,26 @@ export function formatTable(orig: string, eol: string): string {
         })
     })
 
-    const [linePrefix, lineSuffix] = addOpeningTrainingBars ? ["| ", " |"] : ["", ""]
-    const getLineSuffix = (r: Row) => r.hasTrailingBackslash ? " \\" : lineSuffix
+    function joinRow(row: Row): string {
+        const parts = []
+        if (seps[0] === SEP_DOUBLE_BAR) {
+            parts.push(SEP_DOUBLE_BAR + " ")
+        }
+        parts.push(row.cells[0])
+        for (let i = 1; i < row.cells.length; i++) {
+            parts.push(" " + seps[i] + " " + row.cells[i])
+        }
+        if (hasClosingRightBar) {
+            if (row.hasTrailingBackslash) {
+                parts.push(" " + SEP_DOUBLE_BAR + "\\")
+            } else {
+                parts.push(" " + SEP_DOUBLE_BAR)
+            }
+        } else if (row.hasTrailingBackslash) {
+            parts.push(" \\")
+        }
+        return parts.join("")
+    }
 
-    return rows.map(row => linePrefix + row.cells.join(cellSep) + getLineSuffix(row)).join(eol) + eol
+    return rows.map(joinRow).join(eol) + eol
 }
