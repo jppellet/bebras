@@ -17,6 +17,7 @@ export function makeCommand_convert() {
         .option('-r, --recursive', 'batch converts all tasks file in the source folder', false)
         .option('-F, --filter <pattern>', 'when in recursive mode, only consider files matching this pattern', false)
         .option('-q, --quotes <quoted>', 'a string of two (or four) characters to use as quotes (optionally delimited by | for multi-char quotes). Example: “”‘’')
+        .option('-d, --dump', 'dumps the Markdown tokens after parsing', false)
         .argument("<format>", 'the output format, ' + OutputFormats.values.join("|"))
         .argument("<source>", 'the source task file (or folder if -r is used)')
         .action(convert)
@@ -26,6 +27,7 @@ async function convert(format: string, source: string, options: any): Promise<vo
     const force = !!options.force
     const isRecursive = !!options.recursive
     const quotes = options.quotes
+    const dumpTokens = !!options.dump
 
     if (!OutputFormats.isValue(format)) {
         fatalError("unknown format: " + format + ". Valid formats are " + mkStringCommaAnd(OutputFormats.values))
@@ -49,6 +51,10 @@ async function convert(format: string, source: string, options: any): Promise<vo
             fatalError("Invalid number of quotes. Expected 2 or 4")
         }
         pluginOptions.customQuotes = quotesArr
+    }
+
+    if (dumpTokens) {
+        pluginOptions.dumpTokens = true
     }
 
     const convModule: any = require('../convert_' + format)

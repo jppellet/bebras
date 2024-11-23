@@ -73,6 +73,7 @@ export function defaultPluginOptions() {
       customQuotes: undefined as undefined | [string, string, string, string] | [string, string],
       addToc: false,
       fullHtml: true,
+      dumpTokens: false,
    }
 }
 
@@ -113,6 +114,20 @@ export function parseMarkdown(text: string, taskFile: string, basePath: string, 
       throw e
    }
    const metadata: TaskMetadata = env.taskMetadata ?? TaskMetadata.defaultValue(taskFile)
+
+   if (parseOptions.dumpTokens) {
+      for (const t of tokens) {
+         if (t.type === "inline") {
+            for (const tt of (t.children ?? [])) {
+               console.log(tt)
+            }
+         } else {
+            console.log(t)
+         }
+      }
+      console.log(metadata)
+   }
+
    return [tokens, metadata]
 }
 

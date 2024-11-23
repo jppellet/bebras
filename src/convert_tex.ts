@@ -12,8 +12,6 @@ import { siblingWithExtension, writeData } from './fsutil'
 import { getImageSize } from './img_cache'
 import { lineStretchPattern } from './patterns'
 
-const DUMP_TOKENS = false
-
 export async function convertTask_tex(taskFile: string, output: string | true, options: Partial<PluginOptions> = {}): Promise<string | true> {
 
     const [tokens, metadata, langCode] = await parseTask(taskFile, {
@@ -29,13 +27,6 @@ export async function convertTask_tex(taskFile: string, output: string | true, o
             return [t]
         }
     })
-
-    if (DUMP_TOKENS) {
-        for (const t of linealizedTokens) {
-            console.log(t)
-        }
-        console.log(metadata)
-    }
 
     const texDataStandalone = renderTex(linealizedTokens, langCode, metadata, taskFile, true)
     const result = await writeData(texDataStandalone.tex, output, "Standalone TeX")
