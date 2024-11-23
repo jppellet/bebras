@@ -72,15 +72,18 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
     type CellType = "thead" | "makecell" | "plain"
 
+    type RendererStateTable = { cellAlignmentChars: Array<string>, closeWith: string }
+    type RendererStateCell = { table: RendererStateTable, type: CellType, closeWith: string }
+    type RendererStateMultirow = { colIndex: number, rowIndex: number, rowspan: number }
     function defaultRendererState() {
         return {
             isInHeading: false,
             isInBold: false,
-            currentTable: undefined as undefined | { cellAlignmentChars: Array<string>, closeWith: string },
-            currentTableCell: undefined as undefined | { type: CellType, closeWith: string },
+            currentTable: undefined as undefined | RendererStateTable,
+            currentTableCell: undefined as undefined | RendererStateCell,
             currentTableRowIndex: -1,
             currentTableColumnIndex: -1,
-            validMultirows: [] as Array<{ colIndex: number, rowIndex: number, rowspan: number }>,
+            validMultirows: [] as RendererStateMultirow[],
             latestTableRowToken: undefined as undefined | Token,
             latestTableCellType: undefined as undefined | "header" | "body",
             hasCellOnThisLine: false,
@@ -299,8 +302,8 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             state = env.setState({ currentTableColumnIndex: colIndex })
         }
 
-        const align = nonExpandingAlignment(state.currentTable?.cellAlignmentChars[colIndex])
 
+        let align: string
         let disableMathify = false
         let isInBold = false
         let open = "" // default open and close markup
@@ -308,13 +311,19 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         if (type === "thead") {
             // second char 'b' means 'bottom vertical alignement', which
             // we should have for headers
+            align = nonExpandingAlignment(state.currentTable?.cellAlignmentChars[colIndex])
             open = `{\\setstretch{1.0}\\thead[${align}b]{`
             close = `}}`
             disableMathify = true
             isInBold = true
-        } else if (type === "makecell") {
-            open = `\\makecell[${align}]{`
-            close = `}`
+        } else {
+            align = state.currentTable?.cellAlignmentChars[colIndex] ?? "l"
+            if (type === "makecell") {
+                const isMiddleAligned = false // TODO get actual value here
+                const valign = isMiddleAligned ? "c" : "t"
+                open = `\\makecell[${align}${valign}]{`
+                close = `}`
+            }
         }
 
         const rowspanStr = token.attrGet("rowspan")
@@ -334,7 +343,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             close = close + `}`
         }
 
-        env.pushState({ currentTableCell: { type, closeWith: close }, disableMathify, isInBold })
+        env.pushState({ currentTableCell: { table: state.currentTable!, type, closeWith: close }, disableMathify, isInBold })
         const debug = ""
         // const debug = `(${rowIndex},${colIndex})--`
         return sep + open + debug
@@ -346,16 +355,34 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         return cellState.currentTableCell?.closeWith ?? ""
     }
 
-    function breakIfInTableCell(env: RendererEnv): string | undefined {
-        const currentTableCell = env.state().currentTableCell
-        if (currentTableCell) {
-            if (currentTableCell.type === "plain") {
-                return " \\newline "
-            } else {
+    function breakIfInTableCell(env: RendererEnv, breakType: 'par' | 'hard' | 'soft'): string | undefined {
+        const { currentTableCell, currentTableColumnIndex } = env.state()
+        if (!currentTableCell) {
+            // we are not in a table, we shouldn't get called
+            return undefined
+        }
+
+        let alignmentChar // we use || and not ?? in this, because we want to replace the empty string too
+        const isExpanding = currentTableColumnIndex !== -1 && (alignmentChar = currentTableCell.table.cellAlignmentChars[currentTableColumnIndex] || 'l').toUpperCase() === alignmentChar
+
+        // we break on all hard breaks and on soft breaks in non-expanding columns and in headers
+        const needsBreak = breakType !== "soft" || !isExpanding || currentTableCell?.type === "thead"
+        if (!needsBreak) {
+            return undefined
+        }
+
+        // by now, we need a break, which depends on the type of cell
+        if (currentTableCell.type === "plain") {
+            return " \\newline "
+        } else {
+            // we are in a header or makecell, we can use \\
+            // possibly with a height adjustment for new paragraphs
+            if (breakType !== "par") {
                 return " \\\\ "
+            } else {
+                return " \\vspace{\\BrochureParSkip}\\\\ "
             }
         }
-        return undefined
     }
 
     function isSurrounded(tokens: Array<Token>, idx: number, distance: number, item: string, itemClose?: string): boolean {
@@ -488,20 +515,27 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             let before = ""
             let after = ""
 
-            function useMakecell() {
+            // this is used when the image is alone in a table cell
+            function useMakecell(cell: RendererStateCell) {
+                const rowAlignIsMiddle = false // TODO get actual value here
                 const colIndex = state.currentTableColumnIndex
                 const align = nonExpandingAlignment(state.currentTable?.cellAlignmentChars[colIndex])
                 before = `\\makecell[${align}]{`
                 after = `}`
+                if (!rowAlignIsMiddle) {
+                    // wrap in raisebox so that the baseline is at the top of the image
+                    before = `\\raisebox{\\dimexpr -\\height+\\ht\\strutbox+\\dp\\strutbox \\relax}{${before}`
+                    after += `}`
+                }
             }
 
+            // this is used when the image is alone in a paragraph
             function useCenterEnv() {
-                // before = `{\\centering%\\begin{center}\n`
-                // after = `\n\\end{center}`
                 before = `{\\centering%\n`
                 after = `\\par}`
             }
 
+            // this is used when the image is inline
             function useRaisebox(ignoreHeight: boolean, vAdjust?: string) {
                 const baseOffset = "-0.5ex"
                 const raiseboxParam = isUndefined(vAdjust)
@@ -519,7 +553,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                 if (isSurrounded(tokens, idx, 1, "paragraph")) {
                     if (isSurrounded(tokens, idx, 2, "td")) {
                         // console.log("use makecell1")
-                        useMakecell()
+                        useMakecell(state.currentTableCell!)
                     } else if (!isInTable) {
                         // console.log("use center env")
                         useCenterEnv()
@@ -530,7 +564,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                     }
                 } else if (isSurrounded(tokens, idx, 1, "td")) {
                     // console.log("use makecell2")
-                    useMakecell()
+                    useMakecell(state.currentTableCell!)
                 } else if (
                     (idx > 0 && elemsConsideredSurroundingText.includes(tokens[idx - 1].type))
                     || idx < tokens.length - 1 && elemsConsideredSurroundingText.includes(tokens[idx + 1].type)
@@ -615,7 +649,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
         "hardbreak": (tokens, idx, env) => {
             let value
-            if (value = breakIfInTableCell(env)) {
+            if (value = breakIfInTableCell(env, "hard")) {
                 return value
             }
             return " \\\\\n"
@@ -623,7 +657,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
         "softbreak": (tokens, idx, env) => {
             let value
-            if (value = breakIfInTableCell(env)) {
+            if (value = breakIfInTableCell(env, "soft")) {
                 return value
             }
             return "\n"
@@ -648,7 +682,13 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             const state = env.state()
             let type
             if (state.currentTableCell) {
-                // ignore
+                // ignore only if no following paragraph in same cell
+                if (tokens[idx + 1].type === "paragraph_open") {
+                    let value
+                    if (value = breakIfInTableCell(env, "par")) {
+                        return value
+                    }
+                }
                 return ""
             } else if (idx + 1 < tokens.length && (type = tokens[idx + 1].type).endsWith("_close") && type !== "secbody_close") {
                 // ignore, too... // TODO have a system that ensures a certain number of max newlines?
@@ -760,7 +800,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             function columnSpec(alignString: string, hresize: boolean): string {
                 switch (alignString) {
                     case "":
-                        // default is justified
+                        // default is left if narrow column, justified if expanding column
                         return hresize ? "J" : "l"
                     case "left":
                         return hresize ? "L" : "l"
@@ -774,6 +814,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                 }
             }
 
+            // prepare the column specifier string
             const tableMeta: TableMeta = t.meta
             const ncols = tableMeta.sep.aligns.length
             const specs: Array<string> = []
@@ -795,11 +836,24 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                 specsWithLines.push("|")
             }
 
+            // @{} removes the padding around the table
             const spec = "@{} " + specsWithLines.join(" ") + " @{}"
-            const open = !hasAnyHResize ? `\\begin{tabular}{ ${spec} }\n` : `\\begin{tabularx}{\\columnwidth}{ ${spec} }\n`
-            const close = !hasAnyHResize ? `\n\\end{tabular}\n\n` : `\n\\end{tabularx}\n\n`
 
-            env.pushState({ currentTableRowIndex: -1, validMultirows: [], currentTable: { cellAlignmentChars: specs, closeWith: close } })
+            // tabularx is used if any column is resizable
+            const [open, close] = hasAnyHResize
+                ? [`\\begin{tabularx}{\\columnwidth}{ ${spec} }\n`,
+                    `\n\\end{tabularx}\n\n`]
+                : [`\\begin{tabular}{ ${spec} }\n`,
+                    `\n\\end{tabular}\n\n`]
+
+            env.pushState({
+                currentTableRowIndex: -1,
+                validMultirows: [],
+                currentTable: {
+                    cellAlignmentChars: specs,
+                    closeWith: close,
+                },
+            })
 
             return open
         },
@@ -825,10 +879,10 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         },
 
         "tr_close": (tokens, idx, env) => {
-            const lastRowInThisTable = (tokens[idx - 1].type === "th_close") ? "header" : "body"
+            const latestTableCellType = (tokens[idx - 1].type === "th_close") ? "header" : "body"
             env.setState({
                 hasCellOnThisLine: false,
-                latestTableCellType: lastRowInThisTable,
+                latestTableCellType,
             })
             return ""
         },
@@ -842,20 +896,21 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         },
 
         "td_open": (tokens, idx, env) => {
-            let hasBreaks = false
+            // We use makecell by default unless there are items that prevent it.
+            // This means that such cells cannot contain newline or may harm the
+            // vertical alignment of the row... we just hope they will not really occur
             const itemsPreventingMakecell = ["table_open", "ordered_list_open", "bullet_list_open"]
             let hasItemPreventingMakecell = false
             for (let i = idx + 1; i < tokens.length; i++) {
                 const type = tokens[i].type
                 if (type === "td_close") {
                     break
-                } else if (type === "softbreak" || type === "hardbreak") {
-                    hasBreaks = true
                 } else if (itemsPreventingMakecell.includes(type)) {
                     hasItemPreventingMakecell = true
+                    break
                 }
             }
-            const cellType = (hasBreaks && !hasItemPreventingMakecell) ? "makecell" : "plain"
+            const cellType = hasItemPreventingMakecell ? "plain" : "makecell"
             return openCellPushingState(cellType, tokens[idx], env)
         },
 
@@ -1267,6 +1322,7 @@ ${babel}
 \\usepackage{booktabs}
 \\usepackage{makecell}
 \\usepackage{multirow}
+\\usepackage[export]{adjustbox}
 \\renewcommand\\theadfont{\\bfseries}
 \\renewcommand{\\tabularxcolumn}[1]{>{}m{#1}}
 \\newcolumntype{R}{>{\\raggedleft\\arraybackslash}X}
@@ -1305,7 +1361,9 @@ ${babel}
 \\setlist{nosep,itemsep=.5ex}
 
 \\setlength{\\parindent}{0pt}
-\\setlength{\\parskip}{2ex}
+\\newlength{\\BrochureParSkip}
+\\setlength{\\BrochureParSkip}{0.8em}
+\\setlength{\\parskip}{\\BrochureParSkip}
 \\raggedbottom
 
 \\usepackage{fancyhdr}
