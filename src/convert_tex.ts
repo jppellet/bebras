@@ -71,8 +71,18 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
     }
 
     type CellType = "thead" | "makecell" | "plain"
-
-    type RendererStateTable = { cellAlignmentChars: Array<string>, closeWith: string }
+    type TableMeta = {
+        sep: {
+            aligns: Array<"" | "left" | "right" | "center">
+            valigns: Array<"" | "top" | "bottom">
+            wraps: Array<boolean>
+            vlines: Array<boolean>
+            map: [number, number]
+        }
+        cap: null | object
+        tr: Array<Token>
+    }
+    type RendererStateTable = { meta: TableMeta, cellAlignmentChars: Array<string>, closeWith: string }
     type RendererStateCell = { table: RendererStateTable, type: CellType, closeWith: string }
     type RendererStateMultirow = { colIndex: number, rowIndex: number, rowspan: number }
     function defaultRendererState() {
@@ -279,7 +289,9 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
     function openCellPushingState(type: CellType, token: Token, env: RendererEnv): string {
         let state = env.setState({ currentTableColumnIndex: env.state().currentTableColumnIndex + 1 })
         let colIndex = state.currentTableColumnIndex
+        const startColIndex = colIndex
         const rowIndex = state.currentTableRowIndex
+        const table = state.currentTable!
 
         let sep = ""
         if (state.hasCellOnThisLine) {
@@ -319,8 +331,8 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         } else {
             align = state.currentTable?.cellAlignmentChars[colIndex] ?? "l"
             if (type === "makecell") {
-                const isMiddleAligned = false // TODO get actual value here
-                const valign = isMiddleAligned ? "c" : "t"
+                const isMiddleVAligned = table.meta.sep.valigns[startColIndex] === ""
+                const valign = isMiddleVAligned ? "" /* default */ : "t"
                 open = `\\makecell[${align}${valign}]{`
                 close = `}`
             }
@@ -517,12 +529,12 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
             // this is used when the image is alone in a table cell
             function useMakecell(cell: RendererStateCell) {
-                const rowAlignIsMiddle = false // TODO get actual value here
+                const isMiddleVAligned = cell.table.meta.sep.valigns[state.currentTableColumnIndex] === ""
                 const colIndex = state.currentTableColumnIndex
                 const align = nonExpandingAlignment(state.currentTable?.cellAlignmentChars[colIndex])
                 before = `\\makecell[${align}]{`
                 after = `}`
-                if (!rowAlignIsMiddle) {
+                if (!isMiddleVAligned) {
                     // wrap in raisebox so that the baseline is at the top of the image
                     before = `\\raisebox{\\dimexpr -\\height+\\ht\\strutbox+\\dp\\strutbox \\relax}{${before}`
                     after += `}`
@@ -784,19 +796,6 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         "table_open": (tokens, idx, env) => {
             const t = tokens[idx]
 
-            interface TableMetaSep {
-                aligns: Array<string>
-                valigns: Array<string>
-                wraps: Array<boolean>
-                vlines: Array<boolean>
-                map: [number, number]
-            }
-            interface TableMeta {
-                sep: TableMetaSep
-                cap: null | object
-                tr: Array<Token>
-            }
-
             function columnSpec(alignString: string, hresize: boolean): string {
                 switch (alignString) {
                     case "":
@@ -815,24 +814,24 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             }
 
             // prepare the column specifier string
-            const tableMeta: TableMeta = t.meta
-            const ncols = tableMeta.sep.aligns.length
+            const meta: TableMeta = t.meta
+            const ncols = meta.sep.aligns.length
             const specs: Array<string> = []
             const specsWithLines: Array<string> = []
             let hasAnyHResize = false
             for (let i = 0; i < ncols; i++) {
-                const hresize = tableMeta.sep.wraps[i]
+                const hresize = meta.sep.wraps[i]
                 if (hresize) {
                     hasAnyHResize = true
                 }
-                if (tableMeta.sep.vlines[i]) {
+                if (meta.sep.vlines[i]) {
                     specsWithLines.push("|")
                 }
-                const s = columnSpec(tableMeta.sep.aligns[i], hresize)
+                const s = columnSpec(meta.sep.aligns[i], hresize)
                 specs.push(s)
                 specsWithLines.push(s)
             }
-            if (tableMeta.sep.vlines[ncols]) {
+            if (meta.sep.vlines[ncols]) {
                 specsWithLines.push("|")
             }
 
@@ -850,6 +849,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                 currentTableRowIndex: -1,
                 validMultirows: [],
                 currentTable: {
+                    meta,
                     cellAlignmentChars: specs,
                     closeWith: close,
                 },
@@ -896,21 +896,21 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         },
 
         "td_open": (tokens, idx, env) => {
-            // We use makecell by default unless there are items that prevent it.
-            // This means that such cells cannot contain newline or may harm the
-            // vertical alignment of the row... we just hope they will not really occur
+            let hasBreaks = false
             const itemsPreventingMakecell = ["table_open", "ordered_list_open", "bullet_list_open"]
             let hasItemPreventingMakecell = false
             for (let i = idx + 1; i < tokens.length; i++) {
                 const type = tokens[i].type
                 if (type === "td_close") {
                     break
+                } else if (type === "softbreak" || type === "hardbreak") {
+                    hasBreaks = true
                 } else if (itemsPreventingMakecell.includes(type)) {
                     hasItemPreventingMakecell = true
                     break
                 }
             }
-            const cellType = hasItemPreventingMakecell ? "plain" : "makecell"
+            const cellType = (hasBreaks && !hasItemPreventingMakecell) ? "makecell" : "plain"
             return openCellPushingState(cellType, tokens[idx], env)
         },
 
