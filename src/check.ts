@@ -893,21 +893,19 @@ export function formatTable(orig: string, eol: string): string {
     const vAligns: VAlign[] = new Array(numCols).fill("m")
     let headerRow = undefined as Row | undefined
     rows.forEach((row, rowIndex) => {
-        const isHeader = headerRow === undefined && row.isHeaderLike
-        if (isHeader) {
-            headerRow = row
+        if (row.isHeaderLike) {
             for (let i = 0; i < row.cells.length; i++) {
                 row.cells[i] = row.cells[i].replace(/--+/g, "--")
             }
+            if (headerRow !== undefined) {
+                headerRow = row
+            }
         }
         const rowLength = row.cells.reduce((acc, cell) => acc + cell.length, cellSepLength * (numCols - 1))
-        const skipLineForPadding = rowLength > widthCutoffForPadding
-        padLines[rowIndex] = !skipLineForPadding
+        const padThisLine = row.isHeaderLike || rowLength <= widthCutoffForPadding
+        padLines[rowIndex] = padThisLine
         row.cells.forEach((cell, colIndex) => {
-            if (!skipLineForPadding) {
-                maxColWidths[colIndex] = Math.max(maxColWidths[colIndex], cell.length)
-            }
-            if (isHeader) {
+            if (row === headerRow) {
                 let hAlign: HAlign
                 let vAlign: VAlign
                 let strippedCell
@@ -937,6 +935,10 @@ export function formatTable(orig: string, eol: string): string {
                     vAlign = "m"
                 }
                 vAligns[colIndex] = vAlign
+                row.cells[colIndex] = cell.replace(/--+/g, "--")
+            }
+            if (padThisLine) {
+                maxColWidths[colIndex] = Math.max(maxColWidths[colIndex], cell.length)
             }
         })
     })

@@ -443,5 +443,5 @@ export const tableHeaderOrSepPattern = capturing<{
     // 4. optional caret, vee, colon
     // 5. separator, either -- or ==
     // 6. optional other header characters are tolerated
-    /^ *[\|‖]? ?[\^vV:]{0,2}(?<sepchars>--|==)[\^vV: \-=\|‖]*$/g
+    /^ *[\|‖]? ?[\^vV:]{0,2}(?<sepchars>--|==)[\^vV: \-=\|‖\+]*$/g
 )
