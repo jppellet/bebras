@@ -71,29 +71,26 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
     }
 
     type CellType = "thead" | "makecell" | "plain"
+    type TableHAlign = "" | "left" | "right" | "center"
+    type TableVAlign = "" | "top" | "bottom"
     type TableMeta = {
-        sep: {
-            aligns: Array<"" | "left" | "right" | "center">
-            valigns: Array<"" | "top" | "bottom">
-            wraps: Array<boolean>
-            vlines: Array<boolean>
-            map: [number, number]
-        }
-        cap: null | object
-        tr: Array<Token>
+        aligns: Array<TableHAlign>
+        valigns: Array<TableVAlign>
+        wraps: Array<boolean>
+        vlines: Array<boolean>
+        map: [number, number]
     }
-    type RendererStateTable = { meta: TableMeta, cellAlignmentChars: Array<string>, closeWith: string }
-    type RendererStateCell = { table: RendererStateTable, type: CellType, closeWith: string }
-    type RendererStateMultirow = { colIndex: number, rowIndex: number, rowspan: number }
+    type RendererStateCell = { table: TableMeta, isHeader: boolean }
+    type RendererStateMultirowMulticol = { colIndex: number, colspan: number, rowIndex: number, rowspan: number }
     function defaultRendererState() {
         return {
             isInHeading: false,
             isInBold: false,
-            currentTable: undefined as undefined | RendererStateTable,
+            currentTable: undefined as undefined | TableMeta,
             currentTableCell: undefined as undefined | RendererStateCell,
             currentTableRowIndex: -1,
             currentTableColumnIndex: -1,
-            validMultirows: [] as RendererStateMultirow[],
+            multirowsMulticols: [] as RendererStateMultirowMulticol[],
             latestTableRowToken: undefined as undefined | Token,
             latestTableCellType: undefined as undefined | "header" | "body",
             hasCellOnThisLine: false,
@@ -276,17 +273,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         return ""
     }
 
-    function nonExpandingAlignment(possiblyExpandingAlignment?: string): string {
-        if (possiblyExpandingAlignment === "J") {
-            return "l"
-        } else if (isUndefined(possiblyExpandingAlignment)) {
-            return "l"
-        } else {
-            return possiblyExpandingAlignment.toLowerCase()
-        }
-    }
-
-    function openCellPushingState(type: CellType, token: Token, env: RendererEnv): string {
+    function openCellPushingState(isHeader: boolean, token: Token, env: RendererEnv): string {
         let state = env.setState({ currentTableColumnIndex: env.state().currentTableColumnIndex + 1 })
         let colIndex = state.currentTableColumnIndex
         const startColIndex = colIndex
@@ -299,72 +286,62 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             sep = " & "
         }
 
-        function isSpannedByMultirow(): boolean {
-            for (const multirow of state.validMultirows) {
-                if (colIndex === multirow.colIndex && rowIndex <= multirow.rowIndex + multirow.rowspan - 1) {
+        function isSpannedByMultirowOrMulticol(): boolean {
+            for (const multi of state.multirowsMulticols) {
+                if (colIndex > multi.colIndex && colIndex < multi.colIndex + multi.colspan
+                    && rowIndex > multi.rowIndex && rowIndex < multi.rowIndex + multi.rowspan) {
                     return true
                 }
             }
             return false
         }
-        while (isSpannedByMultirow()) {
+        while (isSpannedByMultirowOrMulticol()) {
             // add a blank cell
             sep += "& "
             colIndex++
             state = env.setState({ currentTableColumnIndex: colIndex })
         }
 
+        const setCellOptArgs: string[] = []
+        const setCellArgs: string[] = []
 
-        let align: string
         let disableMathify = false
         let isInBold = false
-        let open = "" // default open and close markup
-        let close = ""
-        if (type === "thead") {
-            // second char 'b' means 'bottom vertical alignement', which
-            // we should have for headers
-            align = nonExpandingAlignment(state.currentTable?.cellAlignmentChars[colIndex])
-            open = `{\\setstretch{1.0}\\thead[${align}b]{`
-            close = `}}`
+        if (isHeader) {
+            // we put it in bold at the bottom of the cell
+            setCellArgs.push("f", "font=\\bfseries\\setstretch{1.0}")
             disableMathify = true
             isInBold = true
-        } else {
-            align = state.currentTable?.cellAlignmentChars[colIndex] ?? "l"
-            if (type === "makecell") {
-                const isMiddleVAligned = table.meta.sep.valigns[startColIndex] === ""
-                const valign = isMiddleVAligned ? "" /* default */ : "t"
-                open = `\\makecell[${align}${valign}]{`
-                close = `}`
+        }
+
+        const rowspan = parseInt(token.attrGet("rowspan") ?? "1")
+        const colspan = parseInt(token.attrGet("colspan") ?? "1")
+
+        if (rowspan > 1 || colspan > 1) {
+            // multirow or multicolumn
+            if (rowspan > 1) {
+                setCellOptArgs.push(`r=${rowspan}`)
             }
+            if (colspan > 1) {
+                setCellOptArgs.push(`c=${colspan}`)
+            }
+            state.multirowsMulticols.push({ colIndex, colspan, rowIndex, rowspan })
         }
 
-        const rowspanStr = token.attrGet("rowspan")
-        let rowspan
-        if (rowspanStr && (rowspan = parseInt(rowspanStr)) >= 2) {
-            // multirow
-            open = `\\multirow{${rowspan}}{*}{` + open
-            close = close + `}`
-            state.validMultirows.push({ colIndex, rowIndex, rowspan })
-        }
+        env.pushState({ currentTableCell: { table: state.currentTable!, isHeader }, disableMathify, isInBold })
 
-        const colspanStr = token.attrGet("colspan")
-        let colspan
-        if (colspanStr && (colspan = parseInt(colspanStr)) >= 2) {
-            // multicolumn
-            open = `\\multicolumn{${colspan}}{${align}}{` + open
-            close = close + `}`
-        }
+        const setCellOptArgsStr = setCellOptArgs.length === 0 ? "" : `[${setCellOptArgs.join(",")}]`
+        const open = setCellOptArgs.length === 0 && setCellArgs.length === 0
+            ? "{"
+            : `\\SetCell${setCellOptArgsStr}{${setCellArgs.join(",")}}{`
 
-        env.pushState({ currentTableCell: { table: state.currentTable!, type, closeWith: close }, disableMathify, isInBold })
-        const debug = ""
-        // const debug = `(${rowIndex},${colIndex})--`
-        return sep + open + debug
+        return sep + open
     }
 
     function closeCellPoppingState(env: RendererEnv): string {
-        const cellState = env.popState()
+        env.popState()
         env.setState({ hasCellOnThisLine: true })
-        return cellState.currentTableCell?.closeWith ?? ""
+        return "}"
     }
 
     function breakIfInTableCell(env: RendererEnv, breakType: 'par' | 'hard' | 'soft'): string | undefined {
@@ -375,25 +352,19 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         }
 
         let alignmentChar // we use || and not ?? in this, because we want to replace the empty string too
-        const isExpanding = currentTableColumnIndex !== -1 && (alignmentChar = currentTableCell.table.cellAlignmentChars[currentTableColumnIndex] || 'l').toUpperCase() === alignmentChar
+        const isExpanding = currentTableCell.table.wraps[currentTableColumnIndex]
 
         // we break on all hard breaks and on soft breaks in non-expanding columns and in headers
-        const needsBreak = breakType !== "soft" || !isExpanding || currentTableCell?.type === "thead"
+        const needsBreak = breakType !== "soft" || !isExpanding || currentTableCell?.isHeader
         if (!needsBreak) {
             return undefined
         }
 
-        // by now, we need a break, which depends on the type of cell
-        if (currentTableCell.type === "plain") {
-            return " \\newline "
+        // we can use \\, possibly with a height adjustment for new paragraphs
+        if (breakType !== "par") {
+            return " \\\\ "
         } else {
-            // we are in a header or makecell, we can use \\
-            // possibly with a height adjustment for new paragraphs
-            if (breakType !== "par") {
-                return " \\\\ "
-            } else {
-                return " \\vspace{\\BrochureParSkip}\\\\ "
-            }
+            return " \\vspace{\\BrochureParSkip}\\\\ "
         }
     }
 
@@ -528,17 +499,16 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             let after = ""
 
             // this is used when the image is alone in a table cell
-            function useMakecell(cell: RendererStateCell) {
-                const isMiddleVAligned = cell.table.meta.sep.valigns[state.currentTableColumnIndex] === ""
+            function useInCellMarkup(cell: RendererStateCell) {
                 const colIndex = state.currentTableColumnIndex
-                const align = nonExpandingAlignment(state.currentTable?.cellAlignmentChars[colIndex])
-                before = `\\makecell[${align}]{`
+                const valignString = cell.table.valigns[colIndex]
+                const raiseboxDim =
+                    valignString === "top" ? "-\\height+\\ht\\strutbox" :
+                        valignString === "bottom" ? "-\\dp\\strutbox" :
+                /* else, middle */ "-\\height/2+\\dp\\strutbox/2"
+
+                before = `\\raisebox{\\dimexpr ${raiseboxDim} \\relax}{`
                 after = `}`
-                if (!isMiddleVAligned) {
-                    // wrap in raisebox so that the baseline is at the top of the image
-                    before = `\\raisebox{\\dimexpr -\\height+\\ht\\strutbox+\\dp\\strutbox \\relax}{${before}`
-                    after += `}`
-                }
             }
 
             // this is used when the image is alone in a paragraph
@@ -558,14 +528,14 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                 after = `}`
             }
 
-            const isInTable = !!state.currentTableCell
+            const isInTable = Boolean(state.currentTableCell)
             // console.log({ imgPath, placement, placementArgs })
             if (placement === "unspecified" || placement === "inline" || isInTable) {
                 const elemsConsideredSurroundingText = ["text", "paragraph_open", "paragraph_close", "image", "softbreak"]
                 if (isSurrounded(tokens, idx, 1, "paragraph")) {
                     if (isSurrounded(tokens, idx, 2, "td")) {
                         // console.log("use makecell1")
-                        useMakecell(state.currentTableCell!)
+                        useInCellMarkup(state.currentTableCell!)
                     } else if (!isInTable) {
                         // console.log("use center env")
                         useCenterEnv()
@@ -576,7 +546,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                     }
                 } else if (isSurrounded(tokens, idx, 1, "td")) {
                     // console.log("use makecell2")
-                    useMakecell(state.currentTableCell!)
+                    useInCellMarkup(state.currentTableCell!)
                 } else if (
                     (idx > 0 && elemsConsideredSurroundingText.includes(tokens[idx - 1].type))
                     || idx < tokens.length - 1 && elemsConsideredSurroundingText.includes(tokens[idx + 1].type)
@@ -796,78 +766,72 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         "table_open": (tokens, idx, env) => {
             const t = tokens[idx]
 
-            function columnSpec(alignString: string, hresize: boolean): string {
-                switch (alignString) {
-                    case "":
-                        // default is left if narrow column, justified if expanding column
-                        return hresize ? "J" : "l"
-                    case "left":
-                        return hresize ? "L" : "l"
-                    case "center":
-                        return hresize ? "C" : "c"
-                    case "right":
-                        return hresize ? "R" : "r"
-                    default:
-                        warn(`Unknown table column alignment: '${alignString}'`)
-                        return "l"
+            function columnSpec(halignStr: TableHAlign, valignStr: TableVAlign, hresize: boolean): string {
+                let halignChar =
+                    halignStr === "" ? (hresize ? "j" : "l") : // default is left if narrow column, justified if expanding column
+                        halignStr === "left" ? "l" :
+                            halignStr === "right" ? "r" :
+                                halignStr === "center" ? "c" : "?"
+
+                if (halignChar === "?") {
+                    warn(`Unknown table horizontal column alignment: '${halignStr}'`)
+                    halignChar = "l"
                 }
+
+                let valignChar =
+                    valignStr === "" ? "m" :
+                        valignStr === "top" ? "h" :
+                            valignStr === "bottom" ? "f" : "?"
+
+                if (valignChar === "?") {
+                    warn(`Unknown table vertical column alignment: '${valignStr}'`)
+                    valignChar = "m"
+                }
+
+                const resizeSpec = hresize ? "co=1," : ""
+
+                return `Q[${resizeSpec}${halignChar},${valignChar}]`
             }
 
             // prepare the column specifier string
-            const meta: TableMeta = t.meta
-            const ncols = meta.sep.aligns.length
-            const specs: Array<string> = []
-            const specsWithLines: Array<string> = []
-            let hasAnyHResize = false
+            const meta: TableMeta = t.meta.sep
+            const ncols = meta.aligns.length
+            const specParts: Array<string> = []
+
             for (let i = 0; i < ncols; i++) {
-                const hresize = meta.sep.wraps[i]
-                if (hresize) {
-                    hasAnyHResize = true
+                const hresize = meta.wraps[i]
+                if (meta.vlines[i]) {
+                    specParts.push("|")
                 }
-                if (meta.sep.vlines[i]) {
-                    specsWithLines.push("|")
-                }
-                const s = columnSpec(meta.sep.aligns[i], hresize)
-                specs.push(s)
-                specsWithLines.push(s)
+                const s = columnSpec(meta.aligns[i], meta.valigns[i], hresize)
+                specParts.push(s)
             }
-            if (meta.sep.vlines[ncols]) {
-                specsWithLines.push("|")
+            if (meta.vlines[ncols]) {
+                specParts.push("|")
             }
 
             // @{} removes the padding around the table
-            const spec = "@{} " + specsWithLines.join(" ") + " @{}"
+            const spec = "@{} " + specParts.join(" ") + " @{}"
 
-            // tabularx is used if any column is resizable
-            const [open, close] = hasAnyHResize
-                ? [`\\begin{tabularx}{\\columnwidth}{ ${spec} }\n`,
-                    `\n\\end{tabularx}\n\n`]
-                : [`\\begin{tabular}{ ${spec} }\n`,
-                    `\n\\end{tabular}\n\n`]
 
             env.pushState({
                 currentTableRowIndex: -1,
-                validMultirows: [],
-                currentTable: {
-                    meta,
-                    cellAlignmentChars: specs,
-                    closeWith: close,
-                },
+                multirowsMulticols: [],
+                currentTable: meta,
             })
 
-            return open
+            return `\\begin{tblr}{ ${spec} }\n`
         },
 
         "table_close": (tokens, idx, env) => {
-            const state = env.popState()
-            return state.currentTable!.closeWith
+            env.popState()
+            return `\n\\end{tblr}\n\n`
         },
 
         "thead_open": skip,
         "thead_close": skip,
         "tbody_open": skip,
         "tbody_close": skip,
-
 
         "tr_open": (tokens, idx, env) => {
             const closeIfNeeded = closeLineIfNeeded(env)
@@ -888,7 +852,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         },
 
         "th_open": (tokens, idx, env) => {
-            return openCellPushingState("thead", tokens[idx], env)
+            return openCellPushingState(true, tokens[idx], env)
         },
 
         "th_close": (tokens, idx, env) => {
@@ -896,22 +860,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         },
 
         "td_open": (tokens, idx, env) => {
-            let hasBreaks = false
-            const itemsPreventingMakecell = ["table_open", "ordered_list_open", "bullet_list_open"]
-            let hasItemPreventingMakecell = false
-            for (let i = idx + 1; i < tokens.length; i++) {
-                const type = tokens[i].type
-                if (type === "td_close") {
-                    break
-                } else if (type === "softbreak" || type === "hardbreak") {
-                    hasBreaks = true
-                } else if (itemsPreventingMakecell.includes(type)) {
-                    hasItemPreventingMakecell = true
-                    break
-                }
-            }
-            const cellType = (hasBreaks && !hasItemPreventingMakecell) ? "makecell" : "plain"
-            return openCellPushingState(cellType, tokens[idx], env)
+            return openCellPushingState(false, tokens[idx], env)
         },
 
         "td_close": (tokens, idx, env) => {
@@ -1319,6 +1268,9 @@ ${babel}
 \\setstretch{1.15}
 
 \\usepackage{tabularx}
+\\usepackage{tabularray}
+\\UseTblrLibrary{booktabs}
+\\SetTblrInner{rowsep=0.5pt}
 \\usepackage{booktabs}
 \\usepackage{makecell}
 \\usepackage{multirow}
@@ -1376,6 +1328,9 @@ ${babel}
 \\lfoot{\\scriptsize ${texEscapeChars(license.shortCopyright())}}
 \\cfoot{\\scriptsize\\itshape ${texEscapeChars(metadata.id)} ${texEscapeChars(metadata.title)}}
 \\rfoot{\\scriptsize Page~\\thepage{}/\\pageref*{LastPage}}
+
+\\setlength{\\fboxrule}{0.5pt}
+\\setlength{\\fboxsep}{-\\fboxrule}
 
 \\newcommand{\\taskGraphicsFolder}{..}
 
