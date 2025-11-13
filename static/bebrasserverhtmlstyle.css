@@ -1,0 +1,51 @@
+/* 
+ * Add-on CSS for Bebras tasks in Switzerland when viewed locally
+ * with the Cuttle stylesheets; this provides some visual separation
+ * between the question, explanation, and itsinformatics sections.
+ */
+
+html {
+    font: 16px sans-serif;
+    background-color: #eee;
+}
+
+body {
+    width: 700px !important;
+    border: 0;
+    margin: 20px;
+    background-color: #f9f9f9 !important
+}
+
+body>div {
+    position: relative;
+    border: 1px solid lightgray;
+    margin: 2em -10px 3em !important;
+    padding: 5px 9px;
+}
+
+body>div::before {
+    content: attr(id);
+    position: absolute;
+    top: -1.5em;
+    font-variant: small-caps;
+    font-weight: bold;
+}
+
+#question {
+    background-color: white;
+}
+
+#explanation {
+    background-color: rgb(250, 255, 245);
+}
+
+#itsinformatics {
+    background-color: rgb(245, 245, 255);
+}
+
+#task-container {
+    margin: 5px 0;
+    min-height: 50px;
+    border: 1px solid #ccc;
+    background-image: repeating-linear-gradient(45deg, #f9f9f9, #f9f9f9 10px, #eee 10px, #eee 20px);
+}
