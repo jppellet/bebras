@@ -1,12 +1,16 @@
+import * as cheerio from 'cheerio'
+import * as fs from 'fs'
 import * as path from 'path'
 import MarkdownIt = require('markdown-it')
 import Token = require('markdown-it/lib/token')
 
-import { isUndefined } from 'lodash'
+import { createHash } from 'crypto'
+import { ChildNode } from 'domhandler'
+import { isString, isUndefined } from 'lodash'
 import { defaultLanguageCode, languageNameAndShortCodeByLongCode } from './codes'
 import { plugin, PluginContext } from './convert_html_markdownit'
 import { readFileStrippingBom, writeData } from './fsutil'
-import { parseLanguageCodeFromTaskPath, TaskMetadata } from './util'
+import { ExtractPlaceholders, parseLanguageCodeFromTaskPath, TaskMetadata } from './util'
 
 export async function convertTask_html(taskFile: string, outputFile: string, options: Partial<PluginOptions> = {}): Promise<string | true> {
    return convertTask_html_impl(taskFile, outputFile, true, options)
@@ -29,7 +33,7 @@ export function renderMarkdown(text: string, taskFile: string, basePath: string,
    const langCode = langCodeOpt ?? defaultLanguageCode()
    const parseOptions = { ...defaultPluginOptions(), ...options, fullHtml, langCode }
    const md = makeMdParser(taskFile, basePath, parseOptions)
-   const env: any = {}
+   const env: Record<string, any> = {}
    let result: string
    try {
       result = md.render(text, env)
@@ -41,7 +45,7 @@ export function renderMarkdown(text: string, taskFile: string, basePath: string,
 
    const style =
       isUndefined(CssStylesheet)
-         ? `<link href="https://gitcdn.link/repo/jppellet/bebras/main/static/bebrasmdstyle.css" rel="stylesheet" />`
+         ? `<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jppellet/bebras/static/bebrasmdstyle.css" />`
          : "" // set later inline
 
    const langCodeShort = languageNameAndShortCodeByLongCode[langCode]?.[1] ?? "en"
@@ -91,18 +95,20 @@ export function parseQuotes(quotes: string): [string, string, string, string] | 
 }
 
 export type PluginOptions = ReturnType<typeof defaultPluginOptions>
+export type ParseResult = { md: MarkdownIt, tokens: Token[], metadata: TaskMetadata, options: PluginOptions, langCode: string }
 
-export async function parseTask(taskFile: string, parseOptions: Partial<PluginOptions> = {}): Promise<[Token[], TaskMetadata, string]> {
+export async function parseTask(taskFile: string, parseOptions: Partial<PluginOptions> = {}): Promise<ParseResult> {
    const mdText = await readFileStrippingBom(taskFile)
    return parseTaskMd(mdText, taskFile, parseOptions)
 }
 
-export async function parseTaskMd(mdText: string, taskFile: string, parseOptions: Partial<PluginOptions> = {}): Promise<[Token[], TaskMetadata, string]> {
+export async function parseTaskMd(mdText: string, taskFile: string, parseOptions: Partial<PluginOptions> = {}): Promise<ParseResult> {
    const langCode = parseLanguageCodeFromTaskPath(taskFile) ?? defaultLanguageCode()
-   return [...parseMarkdown(mdText, taskFile, path.dirname(taskFile), { langCode, ...parseOptions }), langCode]
+   const result = parseMarkdown(mdText, taskFile, path.dirname(taskFile), { langCode, ...parseOptions })
+   return { ...result, langCode }
 }
 
-export function parseMarkdown(text: string, taskFile: string, basePath: string, parseOptions: Partial<PluginOptions>): [Token[], TaskMetadata] {
+export function parseMarkdown(text: string, taskFile: string, basePath: string, parseOptions: Partial<PluginOptions>): Omit<ParseResult, 'langCode'> {
    const options: PluginOptions = { ...defaultPluginOptions(), ...parseOptions }
    const md = makeMdParser(taskFile, basePath, options)
    const env: any = {}
@@ -128,8 +134,167 @@ export function parseMarkdown(text: string, taskFile: string, basePath: string, 
       console.log(metadata)
    }
 
-   return [tokens, metadata]
+   return { md, options, tokens, metadata }
 }
+
+export type ServerHtmlTemplatePlaceholders = ExtractPlaceholders<typeof ServerHtmlTemplate>
+export type ServerHTMLParts = Record<ServerHtmlTemplatePlaceholders, string | number>
+
+export function makeServerHTMLFile(parts: ServerHTMLParts): string {
+   return ServerHtmlTemplate.replace(/\{(?<key>[a-zA-Z_]+)\}/g, (_, key) => {
+      return String(parts[key as keyof typeof parts])
+   })
+}
+
+export function decodeHtmlEntitiesFromHtmlSegment(text: string, transformImagesFromTaskFile: string | false): string {
+   const $: DOM = cheerio.load(text)
+   if (isString(transformImagesFromTaskFile)) {
+      const folder = path.dirname(transformImagesFromTaskFile)
+      $('img').each((_, elem) => {
+         const src = $(elem).attr('src')
+         if (!src) {
+            return
+         }
+         const imgPath = path.join(folder, src)
+         if (!fs.existsSync(imgPath)) {
+            console.warn(`Image file ${src} does not exist locally`)
+            return
+         }
+         // md5 of image file
+         const buf = fs.readFileSync(imgPath)
+         const md5 = createHash('md5').update(buf).digest('hex')
+         const filename = path.basename(src)
+         const cuttleFilename = filename.toLowerCase().replace(/-/g, '_')
+         const newPath = `/question_files/${md5[0]}/${md5[1]}/${md5[2]}/${cuttleFilename}`
+         $(elem).attr('src', newPath)
+         $(elem).attr('data-local-src', src)
+      })
+   }
+   return $("body").html() ?? ""
+}
+
+type DOM = cheerio.CheerioAPI
+
+export function parseServerHTMLFile(htmlText: string): ServerHTMLParts {
+   const $: DOM = cheerio.load(htmlText)
+
+   const baseUrl = $('base').attr('href') ?? ""
+   const htmlTitle = $('title').text()
+   const taskTitle = $('#taskTitle').text()
+   const taskId = $('#taskId').text()
+
+   const namedComments = getNamedHtmlComments($)
+
+   const yamlMetadata = namedComments["metadata"] ?? ""
+   const graderSpec = namedComments["grader"] ?? ""
+
+   function getContentsOfDiv(id: string, $: DOM): string {
+      let contents = ($(`div[id="${id}"]`).first().html() ?? "")
+         .replace(/^\s*<!--\s*START [a-zA-Z_]+\s*-->\s*/, '')
+         .replace(/\s*<!--\s*END [a-zA-Z_]+\s*-->\s*$/, '')
+      return contents
+   }
+
+   const questionHtml = getContentsOfDiv("question", $)
+   const answerHtml = getContentsOfDiv("answer", $)
+   const itsinformaticsHtml = getContentsOfDiv("itsinformatics", $)
+
+   return {
+      baseUrl,
+      htmlTitle,
+      taskTitle,
+      taskId,
+      yamlMetadata,
+      graderSpec,
+      questionHtml,
+      answerHtml,
+      itsinformaticsHtml,
+   }
+}
+
+function getNamedHtmlComments($: DOM): Record<string, string> {
+   const comments: Record<string, string> = {}
+   traverse($._root.children)
+   function traverse(children: ChildNode[]) {
+      children.forEach(child => {
+         if ('children' in child && child.children) {
+            traverse(child.children)
+         } else if (child.type === 'comment') {
+            const comment = child.data.trim()
+            const splitAt = comment.indexOf('\n')
+            if (splitAt === -1) {
+               return
+            }
+            const title = comment.substring(0, splitAt).trim()
+            const payload = comment.substring(splitAt + 1).trim()
+            comments[title] = payload
+         }
+      })
+   }
+
+   return comments
+}
+
+
+const ServerHtmlTemplate = `<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>{htmlTitle}</title>
+    <base href="{baseUrl}">
+    <link rel="stylesheet" type="text/css" href="/shared/style/style_common_stripped.css">
+    <link rel="stylesheet" type="text/css" href="/shared/style/style_ch.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jppellet/bebras/static/bebrasserverhtmlstyle.css" />
+</head>
+
+
+<!-- metadata
+{yamlMetadata}
+-->
+
+
+<!-- grader
+{graderSpec}
+-->
+
+
+<body id="page_content">
+
+    <h2 id="taskTitle">{taskTitle}</h2>
+    <tt id="taskId">{taskId}</tt>
+    
+    <div id="question">
+        <!-- START QUESTION -->
+
+        {questionHtml}
+
+        <!-- END QUESTION -->
+    </div>
+
+
+    <div id="answer">
+        <!-- START ANSWER -->
+
+        {answerHtml}
+
+        <!-- END ANSWER -->
+    </div>
+
+
+
+    <div id="itsinformatics">
+        <!-- START ITSINFORMATICS -->
+
+        {itsinformaticsHtml}
+
+        <!-- END ITSINFORMATICS -->
+    </div> 
+
+</body>
+
+</html>`
+
 
 // TODO load from file!
 export const CssStylesheet: string | undefined = `

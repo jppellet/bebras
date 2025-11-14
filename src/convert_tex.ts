@@ -14,7 +14,7 @@ import { lineStretchPattern } from './patterns'
 
 export async function convertTask_tex(taskFile: string, output: string | true, options: Partial<PluginOptions> = {}): Promise<string | true> {
 
-    const [tokens, metadata, langCode] = await parseTask(taskFile, {
+    const { tokens, metadata, langCode } = await parseTask(taskFile, {
         ...options,
         // we use ⍀ to avoid escaping \ to \\, and we later convert it back to true latex blackslash
         customQuotes: ["⍀enquote⦃", "⦄", "⍀enquote⦃", "⦄"],
@@ -1317,6 +1317,8 @@ ${babel}
 \\setlength{\\BrochureParSkip}{0.8em}
 \\setlength{\\parskip}{\\BrochureParSkip}
 \\raggedbottom
+
+\\usepackage{CJKutf8}
 
 \\usepackage{fancyhdr}
 \\usepackage{lastpage}

@@ -18,6 +18,7 @@
         "noFallthroughCasesInSwitch": true,
         "noImplicitAny": true,
         "noImplicitOverride": true,
+		"esModuleInterop": true
 	},
 	"exclude": [
 		"out",

@@ -1,9 +1,10 @@
+import { AbortController } from 'abort-controller'
 import * as fs from "fs"
+import fetch from "node-fetch"
 import * as path from "path"
 import { taskFileExtension } from "./patterns"
 import { fatalError, isString } from "./util"
 import hasbin = require("hasbin")
-
 
 export function isTaskFile(path: string, ensureExistenceToo: boolean): boolean {
     if (!path.endsWith(taskFileExtension) || (ensureExistenceToo && !(fs.existsSync(path)))) {
@@ -19,10 +20,27 @@ export function ensureIsTaskFile(path: string, ensureExistenceToo: boolean): str
     return path
 }
 
-export async function findTaskFilesRecursively(folger: string, pattern: string | undefined): Promise<string[]> {
+
+export async function findTasksFilesOrEnsureIsTaskFile(source: string, recursive: boolean, pattern: string | undefined): Promise<string[]> {
+    // returns an error or a list of task files
+    if (recursive) {
+        if (!fs.existsSync(source)) {
+            fatalError("source folder does not exist: " + source)
+        }
+        if (!fs.lstatSync(source).isDirectory()) {
+            fatalError("source folder is not a directory: " + source)
+        }
+        return findTaskFilesRecursively(source, pattern)
+    } else {
+        ensureIsTaskFile(source, true)
+        return [source]
+    }
+}
+
+export async function findTaskFilesRecursively(folder: string, pattern: string | undefined): Promise<string[]> {
     const res: string[] = []
-    for (const f of fs.readdirSync(folger)) {
-        const fullPath = path.join(folger, f)
+    for (const f of fs.readdirSync(folder)) {
+        const fullPath = path.join(folder, f)
         if (fs.lstatSync(fullPath).isDirectory()) {
             res.push(...await findTaskFilesRecursively(fullPath, pattern))
         } else {
@@ -98,4 +116,21 @@ export function isBinaryAvailable(binName: string): Promise<boolean> {
     return new Promise((resolve, reject) => {
         hasbin(binName, resolve)
     })
+}
+
+export async function urlExists(url: string, timeoutMs: number): Promise<boolean> {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+    try {
+        const response = await fetch(url, {
+            method: "HEAD",
+            signal: controller.signal,
+        })
+        return response.ok
+    } catch {
+        return false
+    } finally {
+        clearTimeout(timer)
+    }
 }

@@ -140,7 +140,7 @@ async function loadASTFrom(jsonFile: string, taskFile: string): Promise<TaskAST>
 export async function buildASTOf(taskFile: string, options: Partial<PluginOptions>): Promise<TaskAST_Saved> {
     const mdText = await readFileStrippingBom(taskFile)
     const langCode = parseLanguageCodeFromTaskPath(taskFile)
-    const [tokens, metadata] = parseMarkdown(mdText, taskFile, path.dirname(taskFile), { ...options, langCode })
+    const { tokens, metadata } = parseMarkdown(mdText, taskFile, path.dirname(taskFile), { ...options, langCode })
     // const ast = tokensToAST(tokens)
     // console.log(JSON.stringify(ast, null, 2))
     return toJsonRepr(tokens, taskFile, metadata)

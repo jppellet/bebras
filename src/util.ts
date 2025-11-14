@@ -192,6 +192,11 @@ export function defaultOutputFilename(taskFile: string, format: OutputFormat): s
     return basename + outputOpts.extension
 }
 
+export type ExtractPlaceholders<T extends string> =
+  T extends `${string}{${infer Key}}${infer Rest}`
+    ? Key | ExtractPlaceholders<Rest>
+    : never
+
 
 export const Difficulties = ["--", "easy", "medium", "hard", "bonus"] as const
 export type Difficulty = typeof Difficulties[number]
@@ -437,11 +442,19 @@ const texExpansionPattern = (function () {
 })()
 
 export function texEscapeChars(text: string): string {
-    return text
-        .replace(texExpansionPattern, function (matched) {
-            const value = texExpansionDefs[matched]!
-            return isString(value) ? value : value.repl
-        })
+    // single-character replacements
+    let escaped = text.replace(texExpansionPattern, function (matched) {
+        const value = texExpansionDefs[matched]!
+        return typeof value === 'string' ? value : value.repl
+    })
+
+    // Korean sequences in CJK environment
+    escaped = escaped.replace(
+        /(?:[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF]+)/g,
+        (match) => `\\begin{CJK}{UTF8}{mj}${match}\\end{CJK}`
+    )
+
+    return escaped
 }
 
 export function texEscapeVerbatim(text: string): string {

@@ -191,7 +191,7 @@ const _answerTypes_2022 = [
     "interactive (other)",
 ] as const
 
-const _answerTypes_Current = [
+const _answerTypes_2023_2024 = [
     "multiple choice",
     "multiple choice with images",
     "multiple select",
@@ -204,9 +204,30 @@ const _answerTypes_Current = [
     "interactive (other)",
 ] as const
 
+const _answerTypes_Current = [
+    "multiple choice",
+    "multiple choice with images",
+    "multiple select",
+    "multiple select with images",
+    "dropdown select",
+    "open integer",
+    "open text",
+    "interactive (click-to-select)",
+    "interactive (click-to-change)",
+    "interactive (drag-and-drop)",
+    "interactive (drag-and-drop-infinite)",
+    "interactive (drag-lines)",
+    "interactive (drag-to-order)",
+    "interactive (programming)",
+    "interactive (other)",
+] as const
+
 export function answerTypesFor(year: TaskYear) {
     if (year === "latest") {
         return _answerTypes_Current
+    }
+    if (year === 2023 || year === 2024) {
+        return _answerTypes_2023_2024
     }
     if (year === 2022) {
         return _answerTypes_2022
@@ -283,7 +304,8 @@ export const roleSupportFiles = "support files"
 export const roleTranslation = "translation"
 export const roleInteractivity = "interactivity"
 export const roleInspiration = "inspiration"
-export const validRoles = [roleMainAuthor, roleContributor, roleGraphics, roleSupportFiles, roleInteractivity, roleTranslation, roleInspiration] as const
+export const roleProofreading = "proofreading"
+export const validRoles = [roleMainAuthor, roleContributor, roleGraphics, roleSupportFiles, roleInteractivity, roleTranslation, roleInspiration, roleProofreading] as const
 export const supportFilesRoles = [roleGraphics, roleSupportFiles, roleInteractivity] as const
 
 
@@ -362,6 +384,12 @@ export const translation = capturing<{
     to: always,
 }>(
     "^" + roleTranslation + " from (?<from>.*) into (?<to>.*)$"
+)
+
+export const proofreading = capturing<{
+    lang: always,
+}>(
+    "^(?<lang>.*) " + roleProofreading + "$"
 )
 
 export const contributor = capturing<{

@@ -4,7 +4,7 @@ import * as path from 'path'
 import { Command } from 'commander'
 
 import { parseQuotes, PluginOptions } from '../convert_html'
-import { ensureIsTaskFile, findTaskFilesRecursively, modificationDateIsLater } from '../fsutil'
+import { findTasksFilesOrEnsureIsTaskFile, modificationDateIsLater } from '../fsutil'
 import { defaultOutputFile, defaultOutputFilename, fatalError, isString, mkStringCommaAnd, OutputFormat, OutputFormats } from '../util'
 
 export function makeCommand_convert() {
@@ -26,6 +26,7 @@ export function makeCommand_convert() {
 async function convert(format: string, source: string, options: any): Promise<void> {
     const force = !!options.force
     const isRecursive = !!options.recursive
+    const filter: string | undefined = options.filter
     const quotes = options.quotes
     const dumpTokens = !!options.dump
 
@@ -33,7 +34,7 @@ async function convert(format: string, source: string, options: any): Promise<vo
         fatalError("unknown format: " + format + ". Valid formats are " + mkStringCommaAnd(OutputFormats.values))
     }
 
-    const taskFiles = await findTaskFiles(source, isRecursive, options.filter)
+    const taskFiles = await findTasksFilesOrEnsureIsTaskFile(source, isRecursive, filter)
     if (taskFiles.length === 0) {
         fatalError("No task file found in " + source)
     }
@@ -96,19 +97,3 @@ function getOutputDestination(outputFileOption: string | undefined, taskFile: st
     return defaultOutputFile(taskFile, format)
 }
 
-
-async function findTaskFiles(source: string, recursive: boolean, pattern: string | undefined): Promise<string[]> {
-    // returns an error or a list of task files
-    if (recursive) {
-        if (!fs.existsSync(source)) {
-            fatalError("source folder does not exist: " + source)
-        }
-        if (!fs.lstatSync(source).isDirectory()) {
-            fatalError("source folder is not a directory: " + source)
-        }
-        return findTaskFilesRecursively(source, pattern)
-    } else {
-        ensureIsTaskFile(source, true)
-        return [source]
-    }
-}

@@ -1,6 +1,6 @@
 {
   "name": "bebras",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Tools to support the editing of Bebras tasks in Markdown",
   "main": "./out/main.js",
   "types": "./out/main.d.ts",
@@ -37,6 +37,7 @@
   "devDependencies": {
     "@types/hasbin": "^1.2.0",
     "@types/jmespath": "^0.15.0",
+    "@types/js-beautify": "^1.14.3",
     "@types/js-yaml": "^4.0.2",
     "@types/katex": "^0.16.7",
     "@types/lodash": "^4.14.172",
@@ -51,10 +52,13 @@
     "typescript": "^5.5.3"
   },
   "dependencies": {
+    "abort-controller": "^3.0.0",
+    "cheerio": "^1.1.2",
     "commander": "^8.1.0",
     "hasbin": "^1.2.3",
     "image-size": "^1.0.0",
     "jmespath": "^0.15.0",
+    "js-beautify": "^1.15.4",
     "js-yaml": "^4.1.0",
     "jsrender": "^1.0.11",
     "katex": "^0.16.11",
@@ -70,6 +74,7 @@
     "markdown-it-texmath": "^0.9.1",
     "markdown-it-toc-done-right": "^4.2.0",
     "minimatch": "^3.0.4",
+    "node-fetch": "^3.3.2",
     "pdf-lib": "^1.16.0",
     "pdfjs-dist": "^4.4.168",
     "puppeteer": "^22.13.1",

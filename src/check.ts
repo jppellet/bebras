@@ -470,6 +470,21 @@ export async function check(text: string, taskFile: string, strictChecks: boolea
                         }
                     }
                     const roles = match.groups.roles.split(new RegExp(", ?"))
+                    function checkLang(lang: string) {
+                        if (isUndefined(codes.languageLongCodeByLanguageName[lang])) {
+                            let suggStr = ""
+                            const sugg = codes.languageSuggestionsFor(lang)
+                            if (sugg.length !== 0) {
+                                if (sugg.length === 1) {
+                                    suggStr = ` Did you mean ${sugg[0]}?`
+                                } else {
+                                    suggStr = ` Did you mean of the following? ${sugg.join(", ")}`
+                                }
+                            }
+                            warn(fmRangeForValueInDef("contributors", lang), `Language '${lang}' is not recognized.${suggStr}\nNote: we know this may be a sensible topic and mean no offense if your language is not recognized here by mistake. Please contact us if you feel this is wrong.`, QuickFixReplacements(sugg))
+                        }
+                    }
+
                     for (const role of roles) {
                         if (role === patterns.roleMainAuthor) {
                             if (country) {
@@ -480,24 +495,19 @@ export async function check(text: string, taskFile: string, strictChecks: boolea
                         } else if (role.startsWith(patterns.roleTranslation)) {
                             let submatch
                             if (submatch = patterns.translation.exec(role)) {
-                                function checkLang(lang: string) {
-                                    if (isUndefined(codes.languageLongCodeByLanguageName[lang])) {
-                                        let suggStr = ""
-                                        const sugg = codes.languageSuggestionsFor(lang)
-                                        if (sugg.length !== 0) {
-                                            if (sugg.length === 1) {
-                                                suggStr = ` Did you mean ${sugg[0]}?`
-                                            } else {
-                                                suggStr = ` Did you mean of the following? ${sugg.join(", ")}`
-                                            }
-                                        }
-                                        warn(fmRangeForValueInDef("contributors", lang), `Language '${lang}' is not recognized.${suggStr}\nNote: we know this may be a sensible topic and mean no offense if your language is not recognized here by mistake. Please contact us if you feel this is wrong.`, QuickFixReplacements(sugg))
-                                    }
-                                }
+
                                 checkLang(submatch.groups.from)
                                 checkLang(submatch.groups.to)
                             } else {
                                 warn(fmRangeForValueInDef("contributors", role), `The role '${patterns.roleTranslation}' should have the format:\ntranslation from <source language> into <target language>\n\nPattern:\n${patterns.translation.source}`)
+                            }
+                        } else if (role.endsWith(patterns.roleProofreading)) {
+                            let submatch
+                            if (submatch = patterns.proofreading.exec(role)) {
+
+                                checkLang(submatch.groups.lang)
+                            } else if (role !== patterns.roleProofreading) {
+                                warn(fmRangeForValueInDef("contributors", role), `The role '${patterns.roleProofreading}' should have the format:\n<language> proofreading\n\nPattern:\n${patterns.proofreading.source}`)
                             }
                         } else if (!patterns.validRoles.includes(role as any)) {
                             warn(fmRangeForValueInDef("contributors", role), `Role '${role}' is not recognized. Expected one of:\n  - ${patterns.validRoles.join("\n  - ")}`, QuickFixReplacements(patterns.validRoles))
@@ -611,7 +621,7 @@ export async function check(text: string, taskFile: string, strictChecks: boolea
                 }
                 let matchedBy: string | undefined = undefined
                 for (const pattern of allFilePatterns) {
-                    if (minimatch(existingFile, "**/" + pattern)) {
+                    if ((minimatch as any)(existingFile, "**/" + pattern)) {
                         matchedBy = pattern
                         unmatchedFilePatterns.delete(pattern)
                         break

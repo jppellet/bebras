@@ -4,6 +4,7 @@ import { Command } from 'commander'
 import { makeCommand_check } from './bebras-check'
 import { makeCommand_convert } from './bebras-convert'
 import { makeCommand_find } from './bebras-find'
+import { makeCommand_server } from './bebras-server'
 
 (() => {
 
@@ -17,6 +18,7 @@ import { makeCommand_find } from './bebras-find'
         .addCommand(makeCommand_convert().showHelpAfterError())
         .addCommand(makeCommand_check().showHelpAfterError())
         .addCommand(makeCommand_find().showHelpAfterError())
+        .addCommand(makeCommand_server().showHelpAfterError())
         .addHelpCommand(false)
         .showHelpAfterError()
 
