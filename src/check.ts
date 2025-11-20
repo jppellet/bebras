@@ -3,7 +3,7 @@ import * as yaml from "js-yaml"
 import * as _ from 'lodash'
 import * as path from "path"
 
-import * as minimatch from "minimatch"
+import { minimatch } from 'minimatch'
 import * as codes from './codes'
 import * as patterns from './patterns'
 import { Category, TaskYear } from "./patterns"
@@ -621,7 +621,7 @@ export async function check(text: string, taskFile: string, strictChecks: boolea
                 }
                 let matchedBy: string | undefined = undefined
                 for (const pattern of allFilePatterns) {
-                    if ((minimatch as any)(existingFile, "**/" + pattern)) {
+                    if (minimatch(existingFile, "**/" + pattern)) {
                         matchedBy = pattern
                         unmatchedFilePatterns.delete(pattern)
                         break
