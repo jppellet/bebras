@@ -24,11 +24,11 @@ export function makeCommand_convert() {
 }
 
 async function convert(format: string, source: string, options: any): Promise<void> {
-    const force = !!options.force
-    const isRecursive = !!options.recursive
+    const force = Boolean(options.force)
+    const isRecursive = Boolean(options.recursive)
     const filter: string | undefined = options.filter
     const quotes = options.quotes
-    const dumpTokens = !!options.dump
+    const dumpTokens = Boolean(options.dump)
 
     if (!OutputFormats.isValue(format)) {
         fatalError("unknown format: " + format + ". Valid formats are " + mkStringCommaAnd(OutputFormats.values))

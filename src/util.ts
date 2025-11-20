@@ -2,6 +2,7 @@ import path = require('path')
 import patterns = require('./patterns')
 import codes = require("./codes")
 import hasbin = require('hasbin')
+import { BinaryLike, createHash } from 'crypto'
 
 
 export function keysOf<K extends keyof any>(d: Record<K, any>): K[]
@@ -119,6 +120,36 @@ export function fatalError(msg: string): never {
     process.exit(1)
 }
 
+export class ProgressBar {
+
+    private _current = 0
+
+    constructor(
+        public readonly max: number,
+        public opname: string | undefined = undefined,
+        public width: number = 30
+    ) {
+    }
+
+    public step(num_steps: number = 1) {
+        this._current += num_steps
+        this.render()
+    }
+
+    public render() {
+        const ratio = Math.min(this._current / this.max, 1)
+        const filled = Math.round(ratio * this.width)
+        const bar = "█".repeat(filled) + " ".repeat(this.width - filled)
+        process.stdout.write(`\r[${bar}] ${Math.floor(ratio * 100)}%${this.opname ? " " + this.opname + "... " : ""}`)
+    }
+
+    public done() {
+        this.step(this.max - this._current)
+        process.stdout.write("Done.\n")
+    }
+}
+
+
 interface CheckBase<A> {
     fold<B>(f: (a: A) => B, g: (err: string) => B): B
 }
@@ -193,7 +224,7 @@ export function defaultOutputFilename(taskFile: string, format: OutputFormat): s
 }
 
 export type ExtractPlaceholders<T extends string> =
-  T extends `${string}{${infer Key}}${infer Rest}`
+    T extends `${string}{${infer Key}}${infer Rest}`
     ? Key | ExtractPlaceholders<Rest>
     : never
 
@@ -529,3 +560,12 @@ export function levenshteinDistance(a: string, b: string): number {
 
     return matrix[b.length][a.length]
 };
+
+export function md5(data: BinaryLike): string {
+    return createHash('md5').update(data).digest('hex')
+}
+
+export function md5Matches(data: BinaryLike, expectedHash: string): boolean {
+    const hash = md5(data)
+    return hash === expectedHash
+}

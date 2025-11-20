@@ -17,7 +17,7 @@ export function makeCommand_check() {
 }
 
 async function doCheck(taskFile: string, options: any) {
-    const strictChecks = !!options.all
+    const strictChecks = Boolean(options.all)
     console.log(strictChecks, options)
 
     await ensureIsTaskFile(taskFile, true)

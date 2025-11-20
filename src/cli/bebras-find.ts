@@ -44,9 +44,9 @@ export function makeCommand_find() {
 
 
 async function find(folder: string, options: any) {
-    const debug = !!options.debug
-    const asArray = !!options.array
-    const uniq = !!options.uniq
+    const debug = Boolean(options.debug)
+    const asArray = Boolean(options.array)
+    const uniq = Boolean(options.uniq)
     const indent = +(options.indent ?? "2")
     const outputFile: string | undefined = options.output
     const projection = options.id ? "[].id" :

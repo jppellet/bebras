@@ -192,7 +192,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             const uncheckedBox = `$\\square$`
 
             function catToRow(catName: string) {
-                const isRelated = !!metadata.categories.find(c => c.name === catName)
+                const isRelated = Boolean(metadata.categories.find(c => c.name === catName))
                 const catChecked = isRelated ? checkedBox : uncheckedBox
                 return `${catChecked} ${texEscapeChars(catName)}`
             }

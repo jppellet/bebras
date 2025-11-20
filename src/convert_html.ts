@@ -4,13 +4,12 @@ import * as path from 'path'
 import MarkdownIt = require('markdown-it')
 import Token = require('markdown-it/lib/token')
 
-import { createHash } from 'crypto'
-import { ChildNode } from 'domhandler'
+import { ChildNode, Comment } from 'domhandler'
 import { isString, isUndefined } from 'lodash'
 import { defaultLanguageCode, languageNameAndShortCodeByLongCode } from './codes'
 import { plugin, PluginContext } from './convert_html_markdownit'
 import { readFileStrippingBom, writeData } from './fsutil'
-import { ExtractPlaceholders, parseLanguageCodeFromTaskPath, TaskMetadata } from './util'
+import { ExtractPlaceholders, md5, parseLanguageCodeFromTaskPath, TaskMetadata } from './util'
 
 export async function convertTask_html(taskFile: string, outputFile: string, options: Partial<PluginOptions> = {}): Promise<string | true> {
    return convertTask_html_impl(taskFile, outputFile, true, options)
@@ -138,7 +137,32 @@ export function parseMarkdown(text: string, taskFile: string, basePath: string, 
 }
 
 export type ServerHtmlTemplatePlaceholders = ExtractPlaceholders<typeof ServerHtmlTemplate>
-export type ServerHTMLParts = Record<ServerHtmlTemplatePlaceholders, string | number>
+export type ServerHTMLParts = Record<ServerHtmlTemplatePlaceholders, string | number | boolean>
+export const ServerHtmlTemplatePlaceholdersDirect = [
+   "htmlTitle", "baseUrl", "yamlMetadata", "graderSpec", "taskTitle", "taskId",
+] as const satisfies ServerHtmlTemplatePlaceholders[]
+export const ServerHtmlTemplatePlaceholdersChecked = [
+   "question", "answer", "itsinformatics",
+] as const satisfies BaseHtmlPlaceholdersOf<ServerHtmlTemplatePlaceholders>[]
+
+type BaseHtmlPlaceholdersOf<T extends string> = T extends `${infer Prefix}${"Html"}` ? Prefix : never
+
+export function emptyServerHTMLParts(baseUrl: string): ServerHTMLParts {
+   const hash = "-"
+   const source = "empty"
+   const empty = ""
+   return {
+      baseUrl,
+      htmlTitle: empty,
+      taskTitle: empty,
+      taskId: "1900-AA-00",
+      yamlMetadata: empty,
+      graderSpec: empty,
+      questionHtml: empty, questionHash: hash, questionSource: source,
+      answerHtml: empty, answerHash: hash, answerSource: source,
+      itsinformaticsHtml: empty, itsinformaticsHash: hash, itsinformaticsSource: source,
+   }
+}
 
 export function makeServerHTMLFile(parts: ServerHTMLParts): string {
    return ServerHtmlTemplate.replace(/\{(?<key>[a-zA-Z_]+)\}/g, (_, key) => {
@@ -146,7 +170,7 @@ export function makeServerHTMLFile(parts: ServerHTMLParts): string {
    })
 }
 
-export function decodeHtmlEntitiesFromHtmlSegment(text: string, transformImagesFromTaskFile: string | false): string {
+export function decodeHtmlEntitiesFromHtmlSegment(text: string, transformImagesFromTaskFile: string | false, removeKatexHtml: boolean): string {
    const $: DOM = cheerio.load(text)
    if (isString(transformImagesFromTaskFile)) {
       const folder = path.dirname(transformImagesFromTaskFile)
@@ -160,15 +184,17 @@ export function decodeHtmlEntitiesFromHtmlSegment(text: string, transformImagesF
             console.warn(`Image file ${src} does not exist locally`)
             return
          }
-         // md5 of image file
-         const buf = fs.readFileSync(imgPath)
-         const md5 = createHash('md5').update(buf).digest('hex')
+         const hash = md5(fs.readFileSync(imgPath))
          const filename = path.basename(src)
          const cuttleFilename = filename.toLowerCase().replace(/-/g, '_')
-         const newPath = `/question_files/${md5[0]}/${md5[1]}/${md5[2]}/${cuttleFilename}`
+         const newPath = `/question_files/${hash[0]}/${hash[1]}/${hash[2]}/${cuttleFilename}`
          $(elem).attr('src', newPath)
          $(elem).attr('data-local-src', src)
       })
+   }
+   if (removeKatexHtml) {
+      // $('.katex-html').remove()
+      $('.katex-mathml').remove()
    }
    return $("body").html() ?? ""
 }
@@ -183,21 +209,32 @@ export function parseServerHTMLFile(htmlText: string): ServerHTMLParts {
    const taskTitle = $('#taskTitle').text()
    const taskId = $('#taskId').text()
 
-   const namedComments = getNamedHtmlComments($)
+   const commentNodes = getCommentNodes($)
+   const namedComments = getNamedHtmlComments(commentNodes)
 
    const yamlMetadata = namedComments["metadata"] ?? ""
    const graderSpec = namedComments["grader"] ?? ""
 
-   function getContentsOfDiv(id: string, $: DOM): string {
-      let contents = ($(`div[id="${id}"]`).first().html() ?? "")
+   function getContentsOfDiv(id: string, $: DOM): [html: string, hash: string, source: string] {
+      const divQueryStr = `div[id="${id}"]`
+      const contents = ($(divQueryStr).first().html() ?? "")
          .replace(/^\s*<!--\s*START [a-zA-Z_]+\s*-->\s*/, '')
          .replace(/\s*<!--\s*END [a-zA-Z_]+\s*-->\s*$/, '')
-      return contents
+
+
+      const comment = commentNodes.find(c => c.data.includes(`hash:`) && $(c).prev(divQueryStr).length > 0)
+      const hashMatch = comment?.data.match(/hash:\s*(?<hash>[a-f0-9]+)/)
+      const hash = hashMatch?.groups?.hash ?? "-"
+
+      const sourceMatch = comment?.data.match(/source:\s*(?<source>[a-zA-Z_\-]+)/)
+      const source = sourceMatch?.groups?.source ?? "-"
+
+      return [contents, hash, source]
    }
 
-   const questionHtml = getContentsOfDiv("question", $)
-   const answerHtml = getContentsOfDiv("answer", $)
-   const itsinformaticsHtml = getContentsOfDiv("itsinformatics", $)
+   const [questionHtml, questionHash, questionSource] = getContentsOfDiv("question", $)
+   const [answerHtml, answerHash, answerSource] = getContentsOfDiv("answer", $)
+   const [itsinformaticsHtml, itsinformaticsHash, itsinformaticsSource] = getContentsOfDiv("itsinformatics", $)
 
    return {
       baseUrl,
@@ -206,30 +243,39 @@ export function parseServerHTMLFile(htmlText: string): ServerHTMLParts {
       taskId,
       yamlMetadata,
       graderSpec,
-      questionHtml,
-      answerHtml,
-      itsinformaticsHtml,
+      questionHtml, questionHash, questionSource,
+      answerHtml, answerHash, answerSource,
+      itsinformaticsHtml, itsinformaticsHash, itsinformaticsSource,
    }
 }
 
-function getNamedHtmlComments($: DOM): Record<string, string> {
-   const comments: Record<string, string> = {}
+function getCommentNodes($: DOM): Comment[] {
+   const comments: Comment[] = []
    traverse($._root.children)
    function traverse(children: ChildNode[]) {
       children.forEach(child => {
          if ('children' in child && child.children) {
             traverse(child.children)
-         } else if (child.type === 'comment') {
-            const comment = child.data.trim()
-            const splitAt = comment.indexOf('\n')
-            if (splitAt === -1) {
-               return
-            }
-            const title = comment.substring(0, splitAt).trim()
-            const payload = comment.substring(splitAt + 1).trim()
-            comments[title] = payload
+         }
+         else if (child.type === 'comment') {
+            comments.push(child)
          }
       })
+   }
+   return comments
+}
+
+function getNamedHtmlComments(commentNodes: Comment[]): Record<string, string> {
+   const comments: Record<string, string> = {}
+   for (const node of commentNodes) {
+      const comment = node.data.trim()
+      const splitAt = comment.indexOf('\n')
+      if (splitAt === -1) {
+         continue
+      }
+      const title = comment.substring(0, splitAt).trim()
+      const payload = comment.substring(splitAt + 1).trim()
+      comments[title] = payload
    }
 
    return comments
@@ -243,8 +289,9 @@ const ServerHtmlTemplate = `<!DOCTYPE html>
     <meta charset="UTF-8">
     <title>{htmlTitle}</title>
     <base href="{baseUrl}">
-    <link rel="stylesheet" type="text/css" href="/shared/style/style_common_stripped.css">
-    <link rel="stylesheet" type="text/css" href="/shared/style/style_ch.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.25/dist/katex.min.css">
+    <link rel="stylesheet" href="/shared/style/style_common_stripped.css">
+    <link rel="stylesheet" href="/shared/style/style_ch.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jppellet/bebras/static/bebrasserverhtmlstyle.css" />
 </head>
 
@@ -263,33 +310,37 @@ const ServerHtmlTemplate = `<!DOCTYPE html>
 
     <h2 id="taskTitle">{taskTitle}</h2>
     <tt id="taskId">{taskId}</tt>
-    
-    <div id="question">
+
+
+    <div class="task-section" id="question">
         <!-- START QUESTION -->
 
         {questionHtml}
 
         <!-- END QUESTION -->
     </div>
+    <!-- hash: {questionHash}, source: {questionSource} -->
 
 
-    <div id="answer">
+    <div class="task-section" id="answer">
         <!-- START ANSWER -->
 
         {answerHtml}
 
         <!-- END ANSWER -->
     </div>
+    <!-- hash: {answerHash}, source: {answerSource} -->
 
 
-
-    <div id="itsinformatics">
+    <div class="task-section" id="itsinformatics">
         <!-- START ITSINFORMATICS -->
 
         {itsinformaticsHtml}
 
         <!-- END ITSINFORMATICS -->
-    </div> 
+    </div>
+    <!-- hash: {itsinformaticsHash}, source: {itsinformaticsSource} -->
+
 
 </body>
 
