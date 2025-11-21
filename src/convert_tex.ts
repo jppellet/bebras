@@ -8,9 +8,11 @@ import codes = require("./codes")
 // import { numberToString } from 'pdf-lib'
 import { isString, isUndefined } from 'lodash'
 import { parseTask, PluginOptions } from './convert_html'
+import { ImageTokenMeta, linearizeTokens } from './convert_html_markdownit'
 import { siblingWithExtension, writeData } from './fsutil'
-import { getImageSize } from './img_cache'
 import { lineStretchPattern } from './patterns'
+
+
 
 export async function convertTask_tex(taskFile: string, output: string | true, options: Partial<PluginOptions> = {}): Promise<string | true> {
 
@@ -20,13 +22,7 @@ export async function convertTask_tex(taskFile: string, output: string | true, o
         customQuotes: ["⍀enquote⦃", "⦄", "⍀enquote⦃", "⦄"],
     })
 
-    const linealizedTokens = _.flatMap(tokens, t => {
-        if (t.type === "inline") {
-            return t.children ?? []
-        } else {
-            return [t]
-        }
-    })
+    const linealizedTokens = linearizeTokens(tokens)
 
     const texDataStandalone = renderTex(linealizedTokens, langCode, metadata, taskFile, true)
     const result = await writeData(texDataStandalone.tex, output, "Standalone TeX")
@@ -451,6 +447,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
         "image": (tokens, idx, env) => {
             const t = tokens[idx]
+            const meta: ImageTokenMeta = t.meta
 
             const imgPathForHtml = t.attrGet("src")!
             let type = "graphics"
@@ -461,35 +458,23 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             const imgPathIsAbsolute = imgPathForHtml.startsWith("/")
             const imgPath = imgPathIsAbsolute ? imgPathForHtml : "\\taskGraphicsFolder/" + imgPathForHtml
 
-            let title = t.attrGet("title")
+            const imgScale = metadata.settings?.default_image_scale ?? 1.0
             let includeOpts = ""
-            let placement = "unspecified"
-            let placementArgs: string[] = []
             let widthStr: string | undefined = undefined
-            let scale: number | undefined = undefined
-            let match, value
-            if (title && (match = patterns.imageOptions.exec(title))) {
-                title = title.replace(patterns.imageOptions, "")
-                if (value = match.groups.width_abs) {
-                    const f = roundTenth(parseFloat(value) * HtmlToTexPixelRatio)
-                    widthStr = `${f}px`
+            if (meta.scaledSpecifiedSize) {
+                if (meta.scaledSpecifiedSize.type === "px") {
+                    const latexPixels = roundTenth(meta.scaledSpecifiedSize.widthPx * HtmlToTexPixelRatio)
+                    widthStr = `${latexPixels}px`
                     includeOpts = `[width=${widthStr}]`
-                } else if (value = match.groups.width_rel) {
-                    const f = roundTenth(parseFloat(value.slice(0, value.length - 1)) / 100)
+                } else if (meta.scaledSpecifiedSize.type === "%") {
+                    const f = roundTenth(meta.scaledSpecifiedSize.widthPercent / 100)
                     widthStr = `${f}\\linewidth`
                     includeOpts = `[width=${widthStr}]`
                 }
-                if (value = match.groups.placement) {
-                    placement = value
-                }
-                if (value = match.groups.placement_args) {
-                    placementArgs = value.split(",").map(s => s.trim())
-                }
             }
 
-            if (includeOpts.length === 0 && (value = metadata.settings?.default_image_scale)) {
-                scale = value
-                includeOpts = `[scale=${value}]`
+            if (includeOpts.length === 0 && imgScale !== 1.0) {
+                includeOpts = `[scale=${imgScale}]`
             }
 
             const state = env.state()
@@ -530,8 +515,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
             const isInTable = Boolean(state.currentTableCell)
             // console.log({ imgPath, placement, placementArgs })
-            if (placement === "unspecified" || placement === "inline" || isInTable) {
-                const elemsConsideredSurroundingText = ["text", "paragraph_open", "paragraph_close", "image", "softbreak"]
+            if (meta.placement === undefined || meta.placement === "inline" || isInTable) {
                 if (isSurrounded(tokens, idx, 1, "paragraph")) {
                     if (isSurrounded(tokens, idx, 2, "td")) {
                         // console.log("use makecell1")
@@ -542,49 +526,26 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                     } else {
                         // inline in table cell
                         // console.log("use raisebox1")
-                        useRaisebox(false, placementArgs.length > 0 ? placementArgs[0] : undefined)
+                        useRaisebox(false, meta.voffset)
                     }
                 } else if (isSurrounded(tokens, idx, 1, "td")) {
                     // console.log("use makecell2")
                     useInCellMarkup(state.currentTableCell!)
-                } else if (
-                    (idx > 0 && elemsConsideredSurroundingText.includes(tokens[idx - 1].type))
-                    || idx < tokens.length - 1 && elemsConsideredSurroundingText.includes(tokens[idx + 1].type)
-                ) {
+                } else if (meta.shouldInline) {
                     // inline in paragraph
-                    let ignoreHeight = true
-                    const neverIgnore = placementArgs.length > 1 && placementArgs[1] === "full"
-                    if (neverIgnore) {
-                        ignoreHeight = false
-                    } else {
-                        let referenceWidth
-                        try {
-                            // heuristic: if width is >= 30, then don't ignore
-                            const indicatedWidthOr0 = parseInt(widthStr?.replace(/px/, "") ?? "0")
-                            if (indicatedWidthOr0 !== 0) {
-                                referenceWidth = indicatedWidthOr0
-                            } else {
-                                const realImgPath = path.join(path.dirname(taskFile), imgPathForHtml)
-                                referenceWidth = (scale ?? 1) * getImageSize(realImgPath)
-                            }
-                            ignoreHeight = referenceWidth < 30
-                        } catch { }
-                    }
+                    const ignoreHeight = meta.heuristicSaysIgnoreHeightWhenInline && !meta.forceFullHeightWhenInline
                     // console.log("use raisebox2, ignoreHeight=" + ignoreHeight + ", referenceWidth=" + referenceWidth)
-                    useRaisebox(ignoreHeight, placementArgs.length > 0 ? placementArgs[0] : undefined)
+                    useRaisebox(ignoreHeight, meta.voffset)
                 } else {
                     // console.log("use raw")
                     // console.log(tokens.slice(idx - 5, idx + 5))
                 }
 
-            } else if (placement === "left" || placement === "right") {
+            } else if (meta.placement === "left" || meta.placement === "right") {
                 // left or right
-                const placementSpec = placement[0].toUpperCase()
-                if (!widthStr && !isUndefined(scale)) {
-                    // read teh image wto know its width
-                    const realImgPath = path.join(path.dirname(taskFile), imgPathForHtml)
-                    const imgSize = getImageSize(realImgPath)
-                    widthStr = (scale * imgSize) + "px"
+                const placementSpec = meta.placement[0].toUpperCase()
+                if (!widthStr && imgScale !== 1.0) {
+                    widthStr = (imgScale * meta.nativeWidth) + "px"
                 }
 
                 if (widthStr) {

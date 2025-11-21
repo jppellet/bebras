@@ -9,7 +9,7 @@ import * as path from "path"
 
 import { warn } from "console"
 import { languageNameAndShortCodeByLongCode } from "../codes"
-import { decodeHtmlEntitiesFromHtmlSegment, emptyServerHTMLParts, makeServerHTMLFile, parseServerHTMLFile, parseTask, ServerHTMLParts, ServerHtmlTemplatePlaceholders, ServerHtmlTemplatePlaceholdersChecked, ServerHtmlTemplatePlaceholdersDirect } from "../convert_html"
+import { emptyServerHTMLParts, makeServerHTMLFile, parseServerHTMLFile, parseTask, postprocessHtmlDecodingEntities, ServerHTMLParts, ServerHtmlTemplatePlaceholders, ServerHtmlTemplatePlaceholdersChecked, ServerHtmlTemplatePlaceholdersDirect } from "../convert_html"
 import { findTasksFilesOrEnsureIsTaskFile, siblingWithExtension, urlExists, writeData } from "../fsutil"
 import { answerTypesFor } from "../patterns"
 import { fatalError, md5, md5Matches } from "../util"
@@ -55,6 +55,7 @@ export function makeCommand_server() {
 
     addCommand("checkimages", "Reports missing images on the Cuttle server", false, cmd, cmd => cmd
         .option('--show-present', 'shows also images that are present on the server', false)
+        .option('--unique', "don't mention images several times even if linked to multiple tasks", false)
     )
 
     return cmd
@@ -175,12 +176,10 @@ async function serverAction(subcommand: Subcommand, hasFields: boolean, ...varar
 
     const tasksFolder = path.dirname(path.dirname(taskFiles[0]))
 
-    const apiKey = getCuttleApiKey()
-    if (!apiKey) {
-        fatalError("Cuttle API key not found in macOS Keychain")
-    }
+    const hostname = "wettbewerb.informatik-biber.ch"
+    const apiKey = getCuttleApiKey(hostname)
 
-    const context = new ServerTaskContext("wettbewerb.informatik-biber.ch", apiKey, debug)
+    const context = new ServerTaskContext(hostname, apiKey, debug)
     context.loadServerIDs(tasksFolder)
 
     if (debug) {
@@ -212,7 +211,7 @@ async function serverAction(subcommand: Subcommand, hasFields: boolean, ...varar
         case "insert":
             return runInsertTaskOn(tasks, fields!, Boolean(options.overwrite), Boolean(options.overwriteAll), context)
         case "checkimages":
-            return runCheckImagesOn(tasks, Boolean(options.showPresent), context)
+            return runCheckImagesOn(tasks, Boolean(options.showPresent), Boolean(options.unique), context)
     }
 }
 
@@ -488,7 +487,7 @@ async function runInsertTaskOn(tasks: TaskSpec[], fields: string[], overwrite: b
                 const answersTitle = `<div class="answer-options-title">${getString("PossibleAnswers")}</div>`
                 renderedHtml = '<div class="answer-options">' + answersTitle + answerOptionsHtml + "</div>" + renderedHtml
             }
-            const htmlContent = prettifySectionHtml(renderedHtml, taskFile, true)
+            const htmlContent = prettifySectionHtml(renderedHtml, taskFile, true, true)
             newContent[`${placeholderTitlePrefix}Html`] = htmlContent
             newContent[`${placeholderTitlePrefix}Hash`] = md5(htmlContent)
             newContent[`${placeholderTitlePrefix}Source`] = "markdown"
@@ -507,10 +506,19 @@ async function runInsertTaskOn(tasks: TaskSpec[], fields: string[], overwrite: b
     }
 }
 
-async function runCheckImagesOn(tasks: TaskSpec[], showPresent: boolean, context: ServerTaskContext): Promise<void> {
+async function runCheckImagesOn(tasks: TaskSpec[], showPresent: boolean, unique: boolean, context: ServerTaskContext): Promise<void> {
 
     let numMissing = 0
     let numPresent = 0
+    const cachedResults: Record<string, boolean> = {}
+    const urlExistsCached = async (url: string): Promise<boolean> => {
+        if (url in cachedResults) {
+            return cachedResults[url]
+        }
+        const exists = await urlExists(url, 3000)
+        cachedResults[url] = exists
+        return exists
+    }
 
     for (const { taskFile, taskIdWithLang, serverTaskId } of tasks) {
         const targetFile = serverFileForTaskFile(taskFile)
@@ -532,9 +540,11 @@ async function runCheckImagesOn(tasks: TaskSpec[], showPresent: boolean, context
             const src = $(imgElem).attr('src')
             if (src) {
                 const fullUrl = `${context.baseUrl}${src}`
-                const localSrc = $(imgElem).attr('data-local-src');
-                // console.log(`Checking image URL: ${fullUrl}`)
-                (await urlExists(fullUrl, 3000) ? present : missing).push([src, localSrc, parentId])
+                if (!unique || !(fullUrl in cachedResults)) {
+                    const localSrc = $(imgElem).attr('data-local-src');
+                    // console.log(`Checking image URL: ${fullUrl}`)
+                    (await urlExistsCached(fullUrl) ? present : missing).push([src, localSrc, parentId])
+                }
             }
         }
 
@@ -556,7 +566,7 @@ async function runCheckImagesOn(tasks: TaskSpec[], showPresent: boolean, context
             }
 
             function logImage([img, localSrc, parentId]: [string, string | undefined, string | undefined]) {
-                console.log(`    ${localSrc ? localSrc + "  -->   " : ""}${img}` + (parentId ? ` (in ${parentId})` : ''))
+                console.log(`    ${localSrc ? localSrc + "  -->  " : ""}${img}` + (parentId ? ` (in ${parentId})` : ''))
             }
         }
 
@@ -564,7 +574,8 @@ async function runCheckImagesOn(tasks: TaskSpec[], showPresent: boolean, context
         numPresent += present.length
     }
 
-    console.log(`Total missing: ${numMissing}; total present: ${numPresent} (checked ${numMissing + numPresent} images in ${tasks.length} tasks)`)
+    const dupesExpl = unique ? "each image mentioned only in the first task where it appears" : "images may be mentioned multiple times if they appear in multiple tasks"
+    console.log(`Total missing: ${numMissing}; total present: ${numPresent} (checked ${numMissing + numPresent} images in ${tasks.length} tasks; ${dupesExpl})`)
 }
 
 function extractTokensForSection(sectionName: string, tokens: Token[]): Token[] {
@@ -670,7 +681,7 @@ function parseServerJson(json: unknown, taskId: string, serverTaskId: number, co
     }
 
     function getHtmlField(fieldName: string): [html: string, hash: string] {
-        const html = prettifySectionHtml((json as any)[fieldName], false, false)
+        const html = prettifySectionHtml((json as any)[fieldName], false, false, false)
         const hash = html.length === 0 ? "-" : md5(html)
         return [html, hash]
     }
@@ -695,11 +706,15 @@ function parseServerJson(json: unknown, taskId: string, serverTaskId: number, co
     return content
 }
 
-function prettifySectionHtml(rawHtml: string | undefined, transformImagesFromTaskFile: string | false, removeKatexHtml: boolean): string {
+function prettifySectionHtml(rawHtml: string | undefined,
+    transformImagesFromTaskFile: string | false,
+    removeKatexHtml: boolean,
+    moveImgTitleToAlt: boolean,
+): string {
     if (!rawHtml?.trim()) {
         return ""
     }
-    const withDecodedEntities = decodeHtmlEntitiesFromHtmlSegment(rawHtml, transformImagesFromTaskFile, removeKatexHtml)
+    const withDecodedEntities = postprocessHtmlDecodingEntities(rawHtml, transformImagesFromTaskFile, removeKatexHtml, moveImgTitleToAlt)
     const prettified = beautify.html(withDecodedEntities, {
         indent_size: 4,
         indent_level: 2,
@@ -715,16 +730,20 @@ function prettifySectionHtml(rawHtml: string | undefined, transformImagesFromTas
     return prettified
 }
 
-function getCuttleApiKey(): string | undefined {
-    // Get the CUTTLEAPIKEY from macOS Keychain; it can be stored there using:
-    // security add-generic-password -a biber -s cuttle_question_api -w CUTTLEAPIKEY
+function getCuttleApiKey(hostname: string): string {
+    // Get the CUTTLEAPIKEY from macOS Keychain
     try {
         const key = execSync(
-            'security find-generic-password -a biber -s cuttle_question_api -w',
+            `security find-generic-password -a bebras -s "cuttle_question_api:${hostname}" -w`,
             { encoding: "utf8" }
         ).trim()
+        if (key.length === 0) {
+            throw new Error("Empty key")
+        }
         return key
     } catch (err) {
-        return undefined
+        fatalError("Cuttle API key not found in macOS Keychain; add it using:\n" +
+            `  security add-generic-password -a bebras -s "cuttle_question_api:${hostname}" -w <API_KEY>\n` +
+            "where <API_KEY> is your Cuttle question API key.")
     }
 }

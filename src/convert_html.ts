@@ -170,7 +170,11 @@ export function makeServerHTMLFile(parts: ServerHTMLParts): string {
    })
 }
 
-export function decodeHtmlEntitiesFromHtmlSegment(text: string, transformImagesFromTaskFile: string | false, removeKatexHtml: boolean): string {
+export function postprocessHtmlDecodingEntities(text: string,
+   transformImagesFromTaskFile: string | false,
+   removeKatexHtml: boolean,
+   moveImgTitleToAlt: boolean,
+): string {
    const $: DOM = cheerio.load(text)
    if (isString(transformImagesFromTaskFile)) {
       const folder = path.dirname(transformImagesFromTaskFile)
@@ -195,6 +199,17 @@ export function decodeHtmlEntitiesFromHtmlSegment(text: string, transformImagesF
    if (removeKatexHtml) {
       // $('.katex-html').remove()
       $('.katex-mathml').remove()
+   }
+   if (moveImgTitleToAlt) {
+      $('img').each((_, elem) => {
+         const title = $(elem).attr('data-title')
+         if (title) {
+            $(elem)
+               .attr('alt', title)
+               .removeAttr('data-title')
+         }
+         $(elem).removeAttr('title')
+      })
    }
    return $("body").html() ?? ""
 }

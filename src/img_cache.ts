@@ -1,18 +1,29 @@
 import imageSize from 'image-size'
 
-const cache = new Map<string, number>()
+type ImageSize = { width: number, height: number }
+const cache = new Map<string, ImageSize>()
 
-export function getImageSize(path: string) {
-    let width = cache.get(path)
-    if (width) {
-        return width
+export function getImageSize(path: string): ImageSize {
+    let size = cache.get(path)
+    if (size) {
+        return size
     }
-    width = 0
+    size = { width: FallbackDefaultImageSize, height: FallbackDefaultImageSize }
     try {
-        width = imageSize(path).width ?? 0
-        cache.set(path, width)
+        const result = imageSize(path)
+        if (result.width === undefined || result.height === undefined) {
+            throw new Error('undefined image size')
+        }
+        size = { width: result.width, height: result.height }
+        cache.set(path, size)
     } catch (err) {
-        console.log(`Couldn't find size of image '${path}': ` + (err as any).message ?? String(err))
+        console.log(`Couldn't find size of image '${path}': ` + (err as any).message ?? String(err) + ", using fallback size " + FallbackDefaultImageSize)
     }
-    return width
+    return size
 }
+
+export function getImageWidth(path: string): number {
+    return getImageSize(path).width
+}
+
+export const FallbackDefaultImageSize = 30

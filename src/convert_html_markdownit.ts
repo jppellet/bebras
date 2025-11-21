@@ -13,7 +13,7 @@ import { isUndefined } from "lodash"
 import { normalizeRawMetadataToStandardYaml, postYamlLoadObjectCorrections } from "./check"
 import { defaultLanguageCode } from "./codes"
 import { CssStylesheet, defaultPluginOptions, PluginOptions } from "./convert_html"
-import { getImageSize } from "./img_cache"
+import { FallbackDefaultImageSize, getImageWidth } from "./img_cache"
 import * as patterns from './patterns'
 import { isRecord, isString, parseLanguageCodeFromTaskPath, TaskMetadata } from "./util"
 import _ = require("lodash")
@@ -28,6 +28,38 @@ export type PluginContext = {
   basePath: string
   setOptionsFromMetadata: boolean
 }
+
+type FlexSize =
+  | { type: "px", widthPx: number, heightPx: number | undefined }
+  | { type: "%", widthPercent: number, minWidthPx: number | undefined, maxWidthPx: number | undefined, heightPx: number | undefined }
+
+function defaultImageTokenMeta(imgId: string) {
+  return {
+    /** Image identifier as used in Markdown. Don't use as HTML id, it could appear multiple times */
+    imgId,
+    /** For the alt text -- title is never output */
+    imgTitle: undefined as string | undefined,
+    /** Pixel value read from the image file */
+    nativeWidth: FallbackDefaultImageSize,
+    /** If image scale or fixed pixel width is set, this is the resulting pixel width */
+    scaledSpecifiedSize: undefined as FlexSize | undefined,
+    /** If image was specified with "nocenter" option */
+    preventAutoCentering: false,
+    /** Placement indicator, if any */
+    placement: undefined as string | undefined,
+    /** Vertical offset value from image options, if any */
+    voffset: undefined as string | undefined,
+    /** Is true based on the surroundings if it should be inlined */
+    shouldInline: false,
+    /** If it can be inlined, should auto-ignore height by default */
+    heuristicSaysIgnoreHeightWhenInline: false,
+    /** Should we take it out of the line height calculation */
+    forceFullHeightWhenInline: false,
+  }
+}
+
+export type ImageTokenMeta = ReturnType<typeof defaultImageTokenMeta>
+
 
 export function plugin(getCurrentPluginContext: () => PluginContext) {
   return (md: MarkdownIt, _parseOptions: any) => {
@@ -423,7 +455,6 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
       return true
     })
 
-
     md.core.ruler.after('block', 'bebras_html_expand', (state: StateCore) => {
       if (!pluginOptions.fullHtml) {
         return false
@@ -722,11 +753,95 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
       }
     }
 
+    md.core.ruler.push('inject_image_meta', state => {
+      // we need to linearize tokens to find image context properly
+      const linealizedTokens = linearizeTokens(state.tokens)
+      for (let idx = 0; idx < linealizedTokens.length; idx++) {
+        if (linealizedTokens[idx].type === 'image') {
+          linealizedTokens[idx].meta = buildImageMeta(linealizedTokens, idx)
+        }
+      }
+    })
+
+    function buildImageMeta(tokens: Token[], idx: number): ImageTokenMeta {
+      const token = tokens[idx]
+      const imageId = token.content
+      const meta = defaultImageTokenMeta(imageId)
+      token.meta = meta
+
+      const imgScale = taskMetadata?.settings?.default_image_scale ?? 1
+
+      const href = token.attrGet("src")!
+      const imgPath = href.startsWith("/") ? href : path.join(basePath, href)
+      meta.nativeWidth = getImageWidth(imgPath)
+
+      const elemsConsideredSurroundingText = ["text", "paragraph_open", "paragraph_close", "image", "softbreak"]
+      meta.shouldInline =
+        (idx > 0 && elemsConsideredSurroundingText.includes(tokens[idx - 1].type))
+        || idx < tokens.length - 1 && elemsConsideredSurroundingText.includes(tokens[idx + 1].type)
+
+      let title, match, value
+      if ((title = token.attrGet("title")) && (match = patterns.imageOptions.exec(title))) {
+
+        const newTitle = title.replace(patterns.imageOptions, "")
+        token.attrSet("title", newTitle)
+
+        const heightPx = (value = match.groups.height_abs) ? parseFloat(value) : undefined
+
+        if (value = match.groups.width_abs) {
+          const widthPx = parseFloat(value) * 1
+          meta.scaledSpecifiedSize = { type: "px", widthPx, heightPx }
+        } else if (value = match.groups.width_rel) {
+          const widthPercent = parseFloat(value)
+          const maxWidthPx = (value = match.groups.width_max) ? parseFloat(value) : undefined
+          const minWidthPx = (value = match.groups.width_min) ? parseFloat(value) : undefined
+          meta.scaledSpecifiedSize = { type: "%", widthPercent, minWidthPx, maxWidthPx, heightPx }
+        }
+
+        if (value = match.groups.placement) {
+          meta.placement = value
+          if (value === "nocenter") {
+            meta.preventAutoCentering = true
+          } else if (value === "inline") {
+            meta.shouldInline = true
+            meta.heuristicSaysIgnoreHeightWhenInline = true
+          }
+
+          if (value = match.groups.placement_args) {
+            value = value.split(",").map(s => s.trim())
+            meta.voffset = value[0]
+            if (value.length >= 2 && value[1] === "full") {
+              meta.forceFullHeightWhenInline = true
+            }
+          }
+        }
+      }
+
+      meta.imgTitle = token.attrGet("title") ?? imageId
+
+      if (imgScale !== 1 && meta.scaledSpecifiedSize === undefined) {
+        // if no width specified and we have an img scale, add its width
+        const widthPx = Math.floor(meta.nativeWidth * imgScale)
+        meta.scaledSpecifiedSize = { type: "px", widthPx, heightPx: undefined }
+      }
+
+      if (meta.shouldInline && !meta.heuristicSaysIgnoreHeightWhenInline) {
+        const referenceWidth =
+          meta.scaledSpecifiedSize === undefined ? meta.nativeWidth
+            : meta.scaledSpecifiedSize.type === "px" ? meta.scaledSpecifiedSize.widthPx
+              : NaN // relative widths never indicate inline usage
+
+        meta.heuristicSaysIgnoreHeightWhenInline = referenceWidth < 30
+      }
+
+      return meta
+    }
+
+
     const defaultImageRenderer = md.renderer.rules.image!
     md.renderer.rules.image = (tokens: Token[], idx: number, options: MarkdownIt.Options, env: any, self: Renderer) => {
       const token = tokens[idx]
-
-      const imgScale = taskMetadata?.settings?.default_image_scale
+      const meta = token.meta as ImageTokenMeta
 
       let styles = [] as string[]
 
@@ -734,87 +849,73 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
         styles.push(`${name}:${value}`)
       }
 
-      function addStylePx(name: string, decimalValue: string) {
-        addStyle(name, `${decimalValue}px`)
+      if (meta.scaledSpecifiedSize) {
+        if (meta.scaledSpecifiedSize.heightPx !== undefined) {
+          addStyle("height", `${meta.scaledSpecifiedSize.heightPx}px`)
+        }
+        if (meta.scaledSpecifiedSize.type === "px") {
+          addStyle("width", `${meta.scaledSpecifiedSize.widthPx}px`)
+        } else {
+          addStyle("width", `${meta.scaledSpecifiedSize.widthPercent}%`)
+          if (meta.scaledSpecifiedSize.minWidthPx !== undefined) {
+            addStyle("min-width", `${meta.scaledSpecifiedSize.minWidthPx}px`)
+          }
+          if (meta.scaledSpecifiedSize.maxWidthPx !== undefined) {
+            addStyle("max-width", `${meta.scaledSpecifiedSize.maxWidthPx}px`)
+          }
+        }
       }
 
-      let preventAutoCentering = false
-      let title, match
-      if ((title = token.attrGet("title")) && (match = patterns.imageOptions.exec(title))) {
-
-        const newTitle = title.replace(patterns.imageOptions, "")
-        token.attrSet("title", newTitle)
-
-        let value
-
-        type GroupName = patterns.GroupNameOf<typeof patterns.imageOptions>
-
-        const parserElems: Array<[GroupName, string, (n: string, v: string) => void]> = [
-          ["width_abs", "width", addStylePx],
-          ["width_rel", "width", addStyle],
-          ["width_min", "min-width", addStylePx],
-          ["width_max", "max-width", addStylePx],
-          ["height_abs", "height", addStylePx],
-        ]
-
-        for (const [groupName, cssName, doAddStyle] of parserElems) {
-          if (value = match.groups[groupName]) {
-            doAddStyle(cssName, value)
-          }
+      if (meta.placement === "left" || meta.placement === "right") {
+        addStyle("float", meta.placement)
+        if (meta.placement === "left") {
+          addStyle("margin-right", "20px")
+        } else {
+          addStyle("margin-left", "20px")
         }
+      }
 
-        if (value = match.groups.placement) {
-          if (value === "left" || value === "right") {
-            addStyle("float", value)
-          } else if (value === "nocenter") {
-            preventAutoCentering = true
-          }
+      const isInlineIgnoringHeight = meta.shouldInline && meta.heuristicSaysIgnoreHeightWhenInline && !meta.forceFullHeightWhenInline
 
-        }
+      let wrapperStart = ""
+      let wrapperEnd = ""
 
-        if (value = match.groups.placement_args) {
-          value = value.split(",").map(s => s.trim())[0]
+      if (isInlineIgnoringHeight) {
+        const widthPx = meta.scaledSpecifiedSize?.type === "px" ? meta.scaledSpecifiedSize.widthPx : meta.nativeWidth
+        wrapperStart = `<span style="display:inline-block; position:relative; width:${widthPx}px;">`
+        wrapperEnd = `</span>`
+        addStyle("position", "absolute")
+        // console.log(`Rendering image ${imageId} as inline ignoring height with width ${widthPx}px`)
+      } else {
+        if (meta.voffset) {
           addStyle("position", "relative")
-          addStyle("bottom", value)
         }
+        // console.log(`Rendering image ${imageId} as block`)
       }
 
-      if (!isUndefined(imgScale) && isUndefined(_.find(styles, s => s.startsWith("width:")))) {
-        // if no width specified and we have an img scale, add its width
-        const href = token.attrGet("src")
-        if (href) {
-          const imgPath = href.startsWith("/") ? href : path.join(basePath, href)
-          const nativeWidth = getImageSize(imgPath)
-          if (nativeWidth !== 0) {
-            const finalWidth = Math.floor(nativeWidth * imgScale)
-            addStylePx("width", String(finalWidth))
-          }
-        }
+      if (meta.voffset) {
+        addStyle("bottom", meta.voffset)
       }
 
-      if (!preventAutoCentering && tokens.length === 1 && pluginOptions.fullHtml) {
+      if (!meta.preventAutoCentering && tokens.length === 1 && pluginOptions.fullHtml) {
         // this is the only image in a block
         token.attrJoin("class", "only-img-in-p")
       }
+
+      token.attrSet("data-title", meta.imgTitle ?? meta.imgId)
 
       if (styles.length !== 0) {
         const style = styles.join("; ")
         token.attrPush(["style", style])
       }
 
-      const altText = token.attrGet("alt")
-      if ((altText === null || altText.length === 0) && (title = token.attrGet("title"))) {
-        token.attrSet("alt", title)
-      }
-
-      return defaultImageRenderer(tokens, idx, options, env, self)
+      return wrapperStart + defaultImageRenderer(tokens, idx, options, env, self) + wrapperEnd
     }
 
     md.renderer.rules.bebras_html_expand = (tokens, idx) => {
       const templateName = tokens[idx].meta as HtmlTemplateName
       return HtmlGeneratorTemplates[templateName](taskMetadata)
     }
-
 
     md.renderer.rules.main_open = (tokens, idx) => {
 
@@ -869,3 +970,12 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
 
 }
 
+export function linearizeTokens(tokens: Token[]): Token[] {
+  return _.flatMap(tokens, t => {
+    if (t.type === "inline") {
+      return t.children ?? []
+    } else {
+      return [t]
+    }
+  })
+}
