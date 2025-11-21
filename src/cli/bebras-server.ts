@@ -465,6 +465,12 @@ async function runInsertTaskOn(tasks: TaskSpec[], fields: string[], overwrite: b
                 fra: "Réponses possibles",
                 ita: "Possibili risposte",
             },
+            KeywordsAndWebsites: {
+                eng: "Keywords",
+                deu: "Stichwörter",
+                fra: "Mots clés",
+                ita: "Parole chiave",
+            },
         }
 
         type TranslationString = keyof typeof CuttleConversionStrings
@@ -480,13 +486,33 @@ async function runInsertTaskOn(tasks: TaskSpec[], fields: string[], overwrite: b
         const newContent: Partial<ServerHTMLParts> = {}
         for (const field of fields) {
             const { sectionTitle, placeholderTitlePrefix } = AllFields[field]
+
+            // base field html
             let renderedHtml = sectionHtmlFor(sectionTitle)
-            if (field === "answer" && AnswerTypesWhereAnswerOptionsAreShown.includes(metadata.answer_type as AnswerType)) {
+
+            // customized postprocessing for some fields
+            if (field as any === "question") {
+                // TODO
+                //  Generating the question body from Markdown:
+                // - skip "body"
+                // - skip "question/challenge"
+                // - skip whole section for brochures
+                // - make question strong
+                // - add interactivity instructions in em tags
+                
+            } else if (field === "answer" && AnswerTypesWhereAnswerOptionsAreShown.includes(metadata.answer_type as AnswerType)) {
                 const answerOptionsHtml = sectionHtmlFor("Answer Options/Interactivity Description")
                 // console.log("--- " + metadata.id + " " + answerOptionsHtml.substring(0, 80).replace(/\s+/g, " ") + " ...")
-                const answersTitle = `<div class="answer-options-title">${getString("PossibleAnswers")}</div>`
+                const answersTitle = `<div class="subtitle">${getString("PossibleAnswers")}</div>`
                 renderedHtml = '<div class="answer-options">' + answersTitle + answerOptionsHtml + "</div>" + renderedHtml
+
+            } else if (field === "itsinformatics") {
+                const keywordsHtml = sectionHtmlFor("Informatics Keywords and Websites")
+                const keywordsTitle = `<div class="subtitle">${getString("KeywordsAndWebsites")}</div>`
+                renderedHtml = renderedHtml + '<div class="keywords">' + keywordsTitle + keywordsHtml + "</div>"
             }
+
+            // final prettification and storage
             const htmlContent = prettifySectionHtml(renderedHtml, taskFile, true, true)
             newContent[`${placeholderTitlePrefix}Html`] = htmlContent
             newContent[`${placeholderTitlePrefix}Hash`] = md5(htmlContent)

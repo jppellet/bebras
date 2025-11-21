@@ -263,7 +263,8 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             env.setState({ latestTableCellType: undefined, latestTableRowToken: undefined })
             const lineBelow = latestTableRowToken?.meta.lineBelow
             const needsLine = latestTableCellType === "header" || lineBelow
-            const lineIfNeeded = needsLine ? "\\midrule\n" : "" // \topstrut doesn't work if followed by \muticolumn...
+            const lineIfNeeded = needsLine ? "\\specialrule{\\lightrulewidth}{0.5pt}{2pt}\n" : "" // \topstrut doesn't work if followed by \muticolumn...
+            // const lineIfNeeded = needsLine ? "\\midrule\n" : "" // \topstrut doesn't work if followed by \muticolumn...
             return ` \\\\ \n${lineIfNeeded}`
         }
         return ""
