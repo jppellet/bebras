@@ -77,6 +77,7 @@ export function defaultPluginOptions() {
       addToc: false,
       fullHtml: true,
       dumpTokens: false,
+      makeImgSizeAbsoluteWithFullWidth: undefined as undefined | number,
    }
 }
 

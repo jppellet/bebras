@@ -20,6 +20,8 @@ import assert = require("assert")
 
 type Subcommand = "upload" | "download" | "insert" | "checkimages"
 
+const FixedOutputWidthPx = 700
+
 export function makeCommand_server() {
     let cmd = new Command()
         .name("server")
@@ -446,7 +448,7 @@ async function runInsertTaskOn(tasks: TaskSpec[], fields: string[], overwrite: b
             fatalError(`Target server HTML file does not exist for insertion: ${targetFile} `)
         }
 
-        const { md, options, tokens, metadata, langCode } = await parseTask(taskFile)
+        const { md, options, tokens, metadata, langCode } = await parseTask(taskFile, { makeImgSizeAbsoluteWithFullWidth: FixedOutputWidthPx })
 
         type AnswerType = ReturnType<typeof answerTypesFor>[number]
         const AnswerTypesWhereAnswerOptionsAreShown: Array<AnswerType> =
@@ -499,7 +501,7 @@ async function runInsertTaskOn(tasks: TaskSpec[], fields: string[], overwrite: b
                 // - skip whole section for brochures
                 // - make question strong
                 // - add interactivity instructions in em tags
-                
+
             } else if (field === "answer" && AnswerTypesWhereAnswerOptionsAreShown.includes(metadata.answer_type as AnswerType)) {
                 const answerOptionsHtml = sectionHtmlFor("Answer Options/Interactivity Description")
                 // console.log("--- " + metadata.id + " " + answerOptionsHtml.substring(0, 80).replace(/\s+/g, " ") + " ...")

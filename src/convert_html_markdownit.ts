@@ -855,6 +855,8 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
         }
         if (meta.scaledSpecifiedSize.type === "px") {
           addStyle("width", `${meta.scaledSpecifiedSize.widthPx}px`)
+        } else if (pluginOptions.makeImgSizeAbsoluteWithFullWidth) {
+          addStyle("width", `${meta.scaledSpecifiedSize.widthPercent * pluginOptions.makeImgSizeAbsoluteWithFullWidth / 100}px`)
         } else {
           addStyle("width", `${meta.scaledSpecifiedSize.widthPercent}%`)
           if (meta.scaledSpecifiedSize.minWidthPx !== undefined) {
