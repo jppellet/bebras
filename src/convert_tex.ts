@@ -656,9 +656,12 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
 
         "ordered_list_open": (tokens, idx, env) => {
-            const start = tokens[idx].attrGet("start")
+            const t = tokens[idx]
+            const start = t.attrGet("start")
+            const type = t.attrGet("type")
+            const enumerateOpt = type ? `[${type}${t.markup}]` : ""
             const startTex = start === null ? "" : `  \\setcounter{enumi}{${parseInt(start) - 1}}\n`
-            return `\\begin{enumerate}\n${startTex}`
+            return `\\begin{enumerate}${enumerateOpt}\n${startTex}`
         },
 
         "ordered_list_close": (tokens, idx, env) => {
@@ -1271,7 +1274,7 @@ ${babel}
 \\svgsetup{inkscapeversion=1,inkscapearea=page}
 \\usepackage{wrapfig}
 
-\\usepackage{enumitem}
+\\usepackage[shortlabels]{enumitem}
 \\setlist{nosep,itemsep=.5ex}
 \\setlist{before=\\vspace{-\\parskip}}
 

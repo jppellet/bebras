@@ -20,6 +20,7 @@ import _ = require("lodash")
 
 import * as markdownItAnchor from "markdown-it-anchor"
 import { colorPlugin as markdownItColor } from "markdown-it-color"
+import { markdownItFancyListPlugin } from "markdown-it-fancy-lists"
 import * as markdownItTocDoneRight from "markdown-it-toc-done-right"
 import { lineStretchPattern } from "./patterns"
 
@@ -79,6 +80,12 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
       .use(markdownItColor, {
         defaultClassName: "bebras-color",
         inline: true,
+      })
+
+      // see https://www.npmjs.com/package/markdown-it-fancy-lists
+      .use(markdownItFancyListPlugin as any, {
+        allowOrdinal: false,
+        allowMultiLetter: true,
       })
 
       // see https://www.npmjs.com/package/markdown-it-multimd-table
@@ -837,6 +844,18 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
       return meta
     }
 
+    // inject ordered list markup into data-markup attribute so that we can use it in rendering
+    md.core.ruler.push('inject_ol_markup', state => {
+      for (const token of state.tokens) {
+        let type
+        if (token.type === 'ordered_list_open' && (type = token.attrGet("type"))) {
+          token.attrSet("data-listtype", type)
+          if (token.markup) {
+            token.attrSet('data-markup', token.markup)
+          }
+        }
+      }
+    })
 
     const defaultImageRenderer = md.renderer.rules.image!
     md.renderer.rules.image = (tokens: Token[], idx: number, options: MarkdownIt.Options, env: any, self: Renderer) => {
