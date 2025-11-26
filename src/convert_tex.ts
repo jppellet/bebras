@@ -1273,6 +1273,7 @@ ${babel}
 
 \\usepackage{enumitem}
 \\setlist{nosep,itemsep=.5ex}
+\\setlist{before=\\vspace{-\\parskip}}
 
 \\setlength{\\parindent}{0pt}
 \\newlength{\\BrochureParSkip}
