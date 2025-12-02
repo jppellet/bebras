@@ -69,7 +69,7 @@
     "markdown-it-container": "^3.0.0",
     "markdown-it-fancy-lists": "^1.3.2",
     "markdown-it-inline-comments": "^1.0.1",
-    "markdown-it-multimd-table-ext": "^4.2.32",
+    "markdown-it-multimd-table-ext": "^4.2.35",
     "markdown-it-sub": "^1.0.0",
     "markdown-it-sup": "^1.0.0",
     "markdown-it-texmath": "^0.9.1",

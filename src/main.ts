@@ -12,3 +12,4 @@ export * as markdownitPlugin from './convert_html_markdownit'
 export * as convert_pdf from './convert_pdf'
 export * as convert_tex from './convert_tex'
 
+export * as cli from './cli/cli'

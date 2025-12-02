@@ -66,15 +66,19 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         console.log(_currentToken)
     }
 
-    type CellType = "thead" | "makecell" | "plain"
     type TableHAlign = "" | "left" | "right" | "center"
     type TableVAlign = "" | "top" | "bottom"
     type TableMeta = {
         aligns: Array<TableHAlign>
         valigns: Array<TableVAlign>
         wraps: Array<boolean>
+        wrapscompact: Array<boolean>
         vlines: Array<boolean>
         map: [number, number]
+    }
+    type TableCellMeta = {
+        halign: TableHAlign
+        valign: TableVAlign
     }
     type RendererStateCell = { table: TableMeta, isHeader: boolean }
     type RendererStateMultirowMulticol = { colIndex: number, colspan: number, rowIndex: number, rowspan: number }
@@ -256,26 +260,62 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         return Math.round(x * 10) / 10
     }
 
+    function tableHasAdditionalRowSpace(tableMeta: TableMeta): boolean {
+        for (let i = 0; i < tableMeta.wraps.length; i++) {
+            if (tableMeta.wraps[i] && !tableMeta.wrapscompact[i]) {
+                return true
+            }
+        }
+        return false
+    }
+
     function closeLineIfNeeded(env: RendererEnv) {
         env.setState({ currentTableColumnIndex: -1 })
-        const { latestTableCellType, latestTableRowToken } = env.state()
+        const { latestTableCellType, latestTableRowToken, currentTable } = env.state()
         if (latestTableCellType) {
             env.setState({ latestTableCellType: undefined, latestTableRowToken: undefined })
             const lineBelow = latestTableRowToken?.meta.lineBelow
+            const additionalRowSpace = currentTable ? tableHasAdditionalRowSpace(currentTable) : false
             const needsLine = latestTableCellType === "header" || lineBelow
-            const lineIfNeeded = needsLine ? "\\specialrule{\\lightrulewidth}{0.5pt}{2pt}\n" : "" // \topstrut doesn't work if followed by \muticolumn...
+            const lineIfNeeded = needsLine ? `\\specialrule{\\lightrulewidth}${additionalRowSpace ? "{2pt}{3pt}" : "{0.5pt}{2pt}"}\n` : "" // \topstrut doesn't work if followed by \muticolumn...
             // const lineIfNeeded = needsLine ? "\\midrule\n" : "" // \topstrut doesn't work if followed by \muticolumn...
             return ` \\\\ \n${lineIfNeeded}`
         }
         return ""
     }
 
+    function horizontalAlignmentChar(halignStr: TableHAlign, hresize: boolean): string {
+        let halignChar =
+            halignStr === "" ? (hresize ? "j" : "l") : // default is left if narrow column, justified if expanding column
+                halignStr === "left" ? "l" :
+                    halignStr === "right" ? "r" :
+                        halignStr === "center" ? "c" : "?"
+
+        if (halignChar === "?") {
+            warn(`Unknown horizontal column alignment specifier: '${halignStr}'`)
+            halignChar = "l"
+        }
+        return halignChar
+    }
+    function vertcialAlignmentChar(valignStr: TableVAlign): string {
+        let valignChar =
+            valignStr === "" ? "m" :
+                valignStr === "top" ? "h" :
+                    valignStr === "bottom" ? "f" : "?"
+
+        if (valignChar === "?") {
+            warn(`Unknown vertical column alignment specifier: '${valignStr}'`)
+            valignChar = "m"
+        }
+        return valignChar
+    }
+
     function openCellPushingState(isHeader: boolean, token: Token, env: RendererEnv): string {
         let state = env.setState({ currentTableColumnIndex: env.state().currentTableColumnIndex + 1 })
         let colIndex = state.currentTableColumnIndex
-        const startColIndex = colIndex
         const rowIndex = state.currentTableRowIndex
         const table = state.currentTable!
+        const cellMeta: TableCellMeta = token.meta
 
         let sep = ""
         if (state.hasCellOnThisLine) {
@@ -325,6 +365,17 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             state.multirowsMulticols.push({ colIndex, colspan, rowIndex, rowspan })
         }
 
+        const defaultColHAlign = table.aligns[colIndex]
+        const overrideHAlign = cellMeta.halign
+        if (overrideHAlign && overrideHAlign !== defaultColHAlign) {
+            setCellArgs.push(horizontalAlignmentChar(overrideHAlign, table.wraps[colIndex]))
+        }
+        const defaultColVAlign = table.valigns[colIndex]
+        const overrideVAlign = cellMeta.valign
+        if (overrideVAlign && overrideVAlign !== defaultColVAlign) {
+            setCellArgs.push(vertcialAlignmentChar(overrideVAlign))
+        }
+
         env.pushState({ currentTableCell: { table: state.currentTable!, isHeader }, disableMathify, isInBold })
 
         const setCellOptArgsStr = setCellOptArgs.length === 0 ? "" : `[${setCellOptArgs.join(",")}]`
@@ -348,7 +399,6 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             return undefined
         }
 
-        let alignmentChar // we use || and not ?? in this, because we want to replace the empty string too
         const isExpanding = currentTableCell.table.wraps[currentTableColumnIndex]
 
         // we break on all hard breaks and on soft breaks in non-expanding columns and in headers
@@ -514,31 +564,38 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                 after = `}`
             }
 
+            function debugPlacement(msg: string) {
+                const DEBUG_IMAGE_PLACEMENT = false
+                if (DEBUG_IMAGE_PLACEMENT) {
+                    console.log(`For image '${meta.imgId}': ${msg}`)
+                }
+            }
+
             const isInTable = Boolean(state.currentTableCell)
             // console.log({ imgPath, placement, placementArgs })
-            if (meta.placement === undefined || meta.placement === "inline" || isInTable) {
+            if (meta.placement === undefined || meta.placement === "inline" || meta.placement === "nocenter" || isInTable) {
                 if (isSurrounded(tokens, idx, 1, "paragraph")) {
                     if (isSurrounded(tokens, idx, 2, "td")) {
-                        // console.log("use makecell1")
+                        debugPlacement("use makecell1")
                         useInCellMarkup(state.currentTableCell!)
-                    } else if (!isInTable) {
-                        // console.log("use center env")
+                    } else if (!isInTable && meta.placement !== "nocenter") {
+                        debugPlacement("use center env")
                         useCenterEnv()
                     } else {
                         // inline in table cell
-                        // console.log("use raisebox1")
+                        debugPlacement("use raisebox1")
                         useRaisebox(false, meta.voffset)
                     }
                 } else if (isSurrounded(tokens, idx, 1, "td")) {
-                    // console.log("use makecell2")
+                    debugPlacement("use makecell2")
                     useInCellMarkup(state.currentTableCell!)
                 } else if (meta.shouldInline) {
                     // inline in paragraph
                     const ignoreHeight = meta.heuristicSaysIgnoreHeightWhenInline && !meta.forceFullHeightWhenInline
-                    // console.log("use raisebox2, ignoreHeight=" + ignoreHeight + ", referenceWidth=" + referenceWidth)
+                    debugPlacement("use raisebox2, ignoreHeight=" + ignoreHeight + ", voffset=" + meta.voffset)
                     useRaisebox(ignoreHeight, meta.voffset)
                 } else {
-                    // console.log("use raw")
+                    debugPlacement("use raw")
                     // console.log(tokens.slice(idx - 5, idx + 5))
                 }
 
@@ -732,29 +789,9 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             const t = tokens[idx]
 
             function columnSpec(halignStr: TableHAlign, valignStr: TableVAlign, hresize: boolean): string {
-                let halignChar =
-                    halignStr === "" ? (hresize ? "j" : "l") : // default is left if narrow column, justified if expanding column
-                        halignStr === "left" ? "l" :
-                            halignStr === "right" ? "r" :
-                                halignStr === "center" ? "c" : "?"
-
-                if (halignChar === "?") {
-                    warn(`Unknown table horizontal column alignment: '${halignStr}'`)
-                    halignChar = "l"
-                }
-
-                let valignChar =
-                    valignStr === "" ? "m" :
-                        valignStr === "top" ? "h" :
-                            valignStr === "bottom" ? "f" : "?"
-
-                if (valignChar === "?") {
-                    warn(`Unknown table vertical column alignment: '${valignStr}'`)
-                    valignChar = "m"
-                }
-
+                const halignChar = horizontalAlignmentChar(halignStr, hresize)
+                const valignChar = vertcialAlignmentChar(valignStr)
                 const resizeSpec = hresize ? "co=1," : ""
-
                 return `Q[${resizeSpec}${halignChar},${valignChar}]`
             }
 
@@ -776,8 +813,13 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             }
 
             // @{} removes the padding around the table
-            const spec = "@{} " + specParts.join(" ") + " @{}"
+            const colspec = " @{} " + specParts.join(" ") + " @{} "
+            const additionalOpts: string[] = []
 
+            // inscrease rowsep if anything wraps
+            if (tableHasAdditionalRowSpace(meta)) {
+                additionalOpts.push("rowsep=0.5\\BrochureParSkip")
+            }
 
             env.pushState({
                 currentTableRowIndex: -1,
@@ -785,7 +827,10 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                 currentTable: meta,
             })
 
-            return `\\begin{tblr}{ ${spec} }\n`
+            const tableOptions = additionalOpts.length === 0 ? colspec
+                : `colspec={${colspec}}, ` + additionalOpts.join(", ")
+
+            return `\\begin{tblr}{${tableOptions}}\n`
         },
 
         "table_close": (tokens, idx, env) => {
@@ -878,12 +923,12 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
         "container_nobreak_open": (tokens, idx, env) => {
             env.pushState({ noPageBreak: true })
-            return `\\begin{samepage}\n`
+            return `\\begin{BrochureNoBreak}\n`
         },
 
         "container_nobreak_close": (tokens, idx, env) => {
             env.popState()
-            return `\n\\end{samepage}\n\n`
+            return `\n\\end{BrochureNoBreak}\n\n`
         },
 
 
@@ -1164,6 +1209,8 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 % task body
 ${sectionTexFor("Body")}
 
+\\begin{BrochureNoBreak}
+
 % question (as \\emph{})
 {\\em
 ${sectionTexFor("Question/Challenge", "Question/Challenge - for the brochures")}
@@ -1171,6 +1218,8 @@ ${sectionTexFor("Question/Challenge", "Question/Challenge - for the brochures")}
 
 % answer alternatives (as \\begin{enumerate}[A)]) or interactivity
 ${isInteractiveTask ? '' : sectionTexFor("Answer Options/Interactivity Description")}
+
+\\end{BrochureNoBreak}
 
 % from here on this is only included if solutions are processed
 \\ifthenelse{\\boolean{solutions}}{
@@ -1211,7 +1260,7 @@ ${babel}
 \\usepackage{etoolbox}
 \\usepackage{qrcode}
 
-\\usepackage[margin=2cm]{geometry}
+\\usepackage[margin=2.1cm]{geometry}
 \\usepackage{changepage}
 \\makeatletter
 \\renewenvironment{adjustwidth}[2]{%
@@ -1258,6 +1307,27 @@ ${babel}
   }}{}
 \\newcommand{\\BrochureInlineCode}[1]{{\\ttfamily #1}}
 
+% for forcing potentially multi-paragraph text on the same page
+\\newenvironment{BrochureNoBreak}
+  { % Save the surrounding spacing (minipage resets it)
+    \\edef\\PMparskip{\\the\\parskip}
+    \\edef\\PMparindent{\\the\\parindent}
+    \\edef\\PMbaselineskip{\\the\\baselineskip}
+    \\edef\\PMitemsep{\\the\\itemsep}
+    \\edef\\PMparsep{\\the\\parsep}
+    \\edef\\PMtopsep{\\the\\topsep}
+    \\edef\\PMpartopsep{\\the\\partopsep}
+    % Begin minipage and restore everything inside
+    \\begin{minipage}[t]{\\linewidth}
+      \\setlength{\\parskip}{\\PMparskip}
+      \\setlength{\\parindent}{\\PMparindent}
+      \\setlength{\\baselineskip}{\\PMbaselineskip}
+      \\setlength{\\itemsep}{\\PMitemsep}
+      \\setlength{\\parsep}{\\PMparsep}
+      \\setlength{\\topsep}{\\PMtopsep}
+      \\setlength{\\partopsep}{\\PMpartopsep}}
+  {\\end{minipage}\\vspace{\\parskip}}
+
 \\usepackage{amssymb}
 \\usepackage{amsmath}
 
@@ -1275,8 +1345,10 @@ ${babel}
 \\usepackage{wrapfig}
 
 \\usepackage[shortlabels]{enumitem}
-\\setlist{nosep,itemsep=.5ex}
-\\setlist{before=\\vspace{-\\parskip}}
+% have nicer lists closer to the previous paragraph, when nested
+\\setlist{nosep,before=\\vspace{0.3\\BrochureParSkip},after=\\vspace{0.2\\BrochureParSkip},itemsep=0.4ex}
+% similar list settings for top-level lists
+\\setlist[1]{nosep,before=\\vspace{-0.5\\BrochureParSkip},itemsep=0.5ex}
 
 \\setlength{\\parindent}{0pt}
 \\newlength{\\BrochureParSkip}

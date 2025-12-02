@@ -151,31 +151,7 @@ class ServerTaskContext {
 
 type TaskSpec = { taskFile: string, taskIdWithLang: string, serverTaskId: number }
 
-async function serverAction(subcommand: Subcommand, hasFields: boolean, ...varargs: any[]) {
-    varargs.pop() // remove command object
-    const options = varargs.pop()
-    const debug = Boolean(options.debug)
-    const isRecursive = Boolean(options.recursive)
-    const filter: string | undefined = options.filter
-
-    const source: string = varargs[hasFields ? 1 : 0]
-    const fields: string[] | undefined = !hasFields ? undefined
-        : (varargs[0] as string).split(",").map(s => s.trim())
-
-    if (debug) {
-        console.log(`command = ${subcommand} `)
-        console.log(`source = ${source} `)
-        if (fields !== undefined) {
-            console.log(`fields = ${JSON.stringify(fields)} `)
-        }
-        console.log(`options = ${JSON.stringify(options, null, 2)} `)
-    }
-
-    const taskFiles = await findTasksFilesOrEnsureIsTaskFile(source, isRecursive, filter)
-    if (taskFiles.length === 0) {
-        fatalError("No task file found in " + source)
-    }
-
+export function buildTaskSpecsFromFiles(taskFiles: string[], debug: boolean): [TaskSpec[], ServerTaskContext] {
     const tasksFolder = path.dirname(path.dirname(taskFiles[0]))
 
     const hostname = "wettbewerb.informatik-biber.ch"
@@ -204,16 +180,49 @@ async function serverAction(subcommand: Subcommand, hasFields: boolean, ...varar
         tasks.push({ taskFile, taskIdWithLang, serverTaskId })
     }
 
+    return [tasks, context]
+}
+
+async function serverAction(subcommand: Subcommand, hasFields: boolean, ...varargs: any[]): Promise<void> {
+    varargs.pop() // remove command object
+    const options = varargs.pop()
+    const debug = Boolean(options.debug)
+    const isRecursive = Boolean(options.recursive)
+    const filter: string | undefined = options.filter
+
+    const source: string = varargs[hasFields ? 1 : 0]
+    const fields: string[] | undefined = !hasFields ? undefined
+        : (varargs[0] as string).split(",").map(s => s.trim())
+
+    if (debug) {
+        console.log(`command = ${subcommand} `)
+        console.log(`source = ${source} `)
+        if (fields !== undefined) {
+            console.log(`fields = ${JSON.stringify(fields)} `)
+        }
+        console.log(`options = ${JSON.stringify(options, null, 2)} `)
+    }
+
+    const taskFiles = await findTasksFilesOrEnsureIsTaskFile(source, isRecursive, filter)
+    if (taskFiles.length === 0) {
+        fatalError("No task file found in " + source)
+    }
+
+    const [tasks, context] = buildTaskSpecsFromFiles(taskFiles, debug)
 
     switch (subcommand) {
         case "upload":
-            return runUploadTaskOn(tasks, fields!, context)
+            await runUploadTaskOn(tasks, fields!, context)
+            return
         case "download":
-            return runDownloadTaskOn(tasks, Boolean(options.overwrite), Boolean(options.overwriteAll), context)
+            await runDownloadTaskOn(tasks, Boolean(options.overwrite), Boolean(options.overwriteAll), context)
+            return
         case "insert":
-            return runInsertTaskOn(tasks, fields!, Boolean(options.overwrite), Boolean(options.overwriteAll), context)
+            await runInsertTaskOn(tasks, fields!, Boolean(options.overwrite), Boolean(options.overwriteAll), context)
+            return
         case "checkimages":
-            return runCheckImagesOn(tasks, Boolean(options.showPresent), Boolean(options.unique), context)
+            await runCheckImagesOn(tasks, Boolean(options.showPresent), Boolean(options.unique), context)
+            return
     }
 }
 
@@ -438,10 +447,10 @@ function validateFields(fields: string[]): asserts fields is (keyof typeof AllFi
     }
 }
 
-async function runInsertTaskOn(tasks: TaskSpec[], fields: string[], overwrite: boolean, overwriteAll: boolean, context: ServerTaskContext): Promise<void> {
+export async function runInsertTaskOn(tasks: TaskSpec[], fields: string[], overwrite: boolean, overwriteAll: boolean, context: ServerTaskContext): Promise<string[]> {
     validateFields(fields)
 
-    let numModified = 0
+    const modifiedFiles: string[] = []
     for (const { taskFile, taskIdWithLang, serverTaskId } of tasks) {
         const targetFile = serverFileForTaskFile(taskFile)
         if (!fs.existsSync(targetFile)) {
@@ -523,15 +532,16 @@ async function runInsertTaskOn(tasks: TaskSpec[], fields: string[], overwrite: b
 
         const modified = await writeOrMerge(targetFile, newContent, overwrite, overwriteAll, context)
         if (modified) {
-            numModified++
+            modifiedFiles.push(targetFile)
         }
     }
 
-    if (numModified === 0) {
+    if (modifiedFiles.length === 0) {
         console.log("No local task file modified.")
     } else {
-        console.log(`Modified local file for ${numModified} out of ${tasks.length} tasks.`)
+        console.log(`Modified local file for ${modifiedFiles.length} out of ${tasks.length} tasks.`)
     }
+    return modifiedFiles
 }
 
 async function runCheckImagesOn(tasks: TaskSpec[], showPresent: boolean, unique: boolean, context: ServerTaskContext): Promise<void> {
