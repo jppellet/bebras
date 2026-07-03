@@ -122,16 +122,17 @@ export function parseMarkdown(text: string, taskFile: string, basePath: string, 
    const metadata: TaskMetadata = env.taskMetadata ?? TaskMetadata.defaultValue(taskFile)
 
    if (parseOptions.dumpTokens) {
+      const dump = (t: unknown) => console.dir(t, { depth: null, maxArrayLength: null })
       for (const t of tokens) {
          if (t.type === "inline") {
             for (const tt of (t.children ?? [])) {
-               console.log(tt)
+               dump(tt)
             }
          } else {
-            console.log(t)
+            dump(t)
          }
       }
-      console.log(metadata)
+      dump(metadata)
    }
 
    return { md, options, tokens, metadata }
@@ -173,8 +174,7 @@ export function makeServerHTMLFile(parts: ServerHTMLParts): string {
 
 export function postprocessHtmlDecodingEntities(text: string,
    transformImagesFromTaskFile: string | false,
-   removeKatexHtml: boolean,
-   moveImgTitleToAlt: boolean,
+   postprocessFromMarkdown: boolean,
 ): string {
    const $: DOM = cheerio.load(text)
    if (isString(transformImagesFromTaskFile)) {
@@ -197,11 +197,14 @@ export function postprocessHtmlDecodingEntities(text: string,
          $(elem).attr('data-local-src', src)
       })
    }
-   if (removeKatexHtml) {
-      // $('.katex-html').remove()
+   if (postprocessFromMarkdown) {
+      // remove katex html
       $('.katex-mathml').remove()
-   }
-   if (moveImgTitleToAlt) {
+
+      // remove comment paragraphs
+      $('.comment').remove()
+
+      // move img data-title to alt and remove title
       $('img').each((_, elem) => {
          const title = $(elem).attr('data-title')
          if (title) {

@@ -432,6 +432,8 @@ export const supportFileStarCorrection = capturing<{
 )
 
 
+const imageOptionsContent = (prefix: string) => `(?:(?<${prefix}width_abs>${decimal.source}?)(?:px)?|(?<${prefix}width_rel>${decimal.source}%)(?: min (?<${prefix}width_min>${decimal.source})(?:px)?)?(?: max (?<${prefix}width_max>${decimal.source})(?:px)?)?)?(?: ?x ?(?<${prefix}height_abs>${decimal.source})(?:px)?)?(?: *(?:(?<${prefix}placement>left|right|inline|nocenter) *?(?:\\((?<${prefix}placement_args>.*?)\\))?))?`
+
 export const imageOptions = capturing<{
     width_abs: maybe,
     width_rel: maybe,
@@ -440,8 +442,16 @@ export const imageOptions = capturing<{
     height_abs: maybe,
     placement: maybe,
     placement_args: maybe,
+    tex_: maybe, // if any, then "tex"
+    tex_width_abs: maybe,
+    tex_width_rel: maybe,
+    tex_width_min: maybe,
+    tex_width_max: maybe,
+    tex_height_abs: maybe,
+    tex_placement: maybe,
+    tex_placement_args: maybe,
 }>(
-    "\\s*\\((?:(?<width_abs>" + decimal.source + "?)(?:px)?|(?<width_rel>" + decimal.source + "%)(?: min (?<width_min>" + decimal.source + ")(?:px)?)?(?: max (?<width_max>" + decimal.source + ")(?:px)?)?)?(?: ?x ?(?<height_abs>" + decimal.source + ")(?:px)?)?(?: *(?:(?<placement>left|right|inline|nocenter) *?(?:\\((?<placement_args>.*?)\\))?))?\\)"
+    `\\s*\\((${imageOptionsContent("")}|html:\\s?(default|${imageOptionsContent("")}),\\s?(?<tex_>tex):\\s?(default|${imageOptionsContent("tex_")}))\\)`
 )
 
 

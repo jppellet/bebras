@@ -13,7 +13,7 @@ import { isUndefined } from "lodash"
 import { normalizeRawMetadataToStandardYaml, postYamlLoadObjectCorrections } from "./check"
 import { defaultLanguageCode } from "./codes"
 import { CssStylesheet, defaultPluginOptions, PluginOptions } from "./convert_html"
-import { FallbackDefaultImageSize, getImageWidth } from "./img_cache"
+import { getImageWidth } from "./img_cache"
 import * as patterns from './patterns'
 import { isRecord, isString, parseLanguageCodeFromTaskPath, TaskMetadata } from "./util"
 import _ = require("lodash")
@@ -34,33 +34,46 @@ type FlexSize =
   | { type: "px", widthPx: number, heightPx: number | undefined }
   | { type: "%", widthPercent: number, minWidthPx: number | undefined, maxWidthPx: number | undefined, heightPx: number | undefined }
 
-function defaultImageTokenMeta(imgId: string) {
+
+export type ImageTokenMeta = {
+  /** Image identifier as used in Markdown. Don't use as HTML id, it could appear multiple times */
+  imgId: string
+  /** For the alt text -- title is never output */
+  imgTitle: string | undefined,
+  /** Pixel value read from the image file */
+  nativeWidth: number,
+} & ImagePlacementOptions & {
+  tex?: ImagePlacementOptions
+}
+
+type ImagePlacementOptions = {
+  /** If image scale or fixed pixel width is set, this is the resulting pixel width */
+  scaledSpecifiedSize: FlexSize | undefined,
+  /** If image was specified with "nocenter" option */
+  preventAutoCentering: boolean,
+  /** Placement indicator, if any */
+  placement: string | undefined,
+  /** Vertical offset value from image options, if any */
+  voffset: string | undefined,
+  /** Is true based on the surroundings if it should be inlined */
+  shouldInline: boolean,
+  /** If it can be inlined, should auto-ignore height by default */
+  heuristicSaysIgnoreHeightWhenInline: boolean,
+  /** Should we take it out of the line height calculation */
+  forceFullHeightWhenInline: boolean,
+}
+
+function defaultImagePlacementOptions(): ImagePlacementOptions {
   return {
-    /** Image identifier as used in Markdown. Don't use as HTML id, it could appear multiple times */
-    imgId,
-    /** For the alt text -- title is never output */
-    imgTitle: undefined as string | undefined,
-    /** Pixel value read from the image file */
-    nativeWidth: FallbackDefaultImageSize,
-    /** If image scale or fixed pixel width is set, this is the resulting pixel width */
-    scaledSpecifiedSize: undefined as FlexSize | undefined,
-    /** If image was specified with "nocenter" option */
+    scaledSpecifiedSize: undefined,
     preventAutoCentering: false,
-    /** Placement indicator, if any */
-    placement: undefined as string | undefined,
-    /** Vertical offset value from image options, if any */
-    voffset: undefined as string | undefined,
-    /** Is true based on the surroundings if it should be inlined */
+    placement: undefined,
+    voffset: undefined,
     shouldInline: false,
-    /** If it can be inlined, should auto-ignore height by default */
     heuristicSaysIgnoreHeightWhenInline: false,
-    /** Should we take it out of the line height calculation */
     forceFullHeightWhenInline: false,
   }
 }
-
-export type ImageTokenMeta = ReturnType<typeof defaultImageTokenMeta>
-
 
 export function plugin(getCurrentPluginContext: () => PluginContext) {
   return (md: MarkdownIt, _parseOptions: any) => {
@@ -773,72 +786,98 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
     function buildImageMeta(tokens: Token[], idx: number): ImageTokenMeta {
       const token = tokens[idx]
       const imageId = token.content
-      const meta = defaultImageTokenMeta(imageId)
-      token.meta = meta
 
       const imgScale = taskMetadata?.settings?.default_image_scale ?? 1
 
       const href = token.attrGet("src")!
       const imgPath = href.startsWith("/") ? href : path.join(basePath, href)
-      meta.nativeWidth = getImageWidth(imgPath)
+      const nativeWidth = getImageWidth(imgPath)
 
       const elemsConsideredSurroundingText = ["text", "paragraph_open", "paragraph_close", "image", "softbreak"]
-      meta.shouldInline =
+      const defaultShouldInline =
         (idx > 0 && elemsConsideredSurroundingText.includes(tokens[idx - 1].type))
         || idx < tokens.length - 1 && elemsConsideredSurroundingText.includes(tokens[idx + 1].type)
 
-      let title, match, value
-      if ((title = token.attrGet("title")) && (match = patterns.imageOptions.exec(title))) {
 
-        const newTitle = title.replace(patterns.imageOptions, "")
-        token.attrSet("title", newTitle)
+      type MatchGroups = NonNullable<ReturnType<typeof patterns.imageOptions.exec>>["groups"]
 
-        const heightPx = (value = match.groups.height_abs) ? parseFloat(value) : undefined
-
-        if (value = match.groups.width_abs) {
-          const widthPx = parseFloat(value) * 1
-          meta.scaledSpecifiedSize = { type: "px", widthPx, heightPx }
-        } else if (value = match.groups.width_rel) {
-          const widthPercent = parseFloat(value)
-          const maxWidthPx = (value = match.groups.width_max) ? parseFloat(value) : undefined
-          const minWidthPx = (value = match.groups.width_min) ? parseFloat(value) : undefined
-          meta.scaledSpecifiedSize = { type: "%", widthPercent, minWidthPx, maxWidthPx, heightPx }
+      const parseMatchGroupsWithPrefix = (prefix: "" | "tex_", groups: MatchGroups | undefined): ImagePlacementOptions | undefined => {
+        if (prefix !== "" && !groups?.[prefix]) {
+          return undefined
         }
 
-        if (value = match.groups.placement) {
-          meta.placement = value
-          if (value === "nocenter") {
-            meta.preventAutoCentering = true
-          } else if (value === "inline") {
-            meta.shouldInline = true
-            meta.heuristicSaysIgnoreHeightWhenInline = true
+        const plcmt = defaultImagePlacementOptions()
+        plcmt.shouldInline = defaultShouldInline
+
+        if (groups !== undefined) {
+          let value
+          const heightPx = (value = groups[`${prefix}height_abs`]) ? parseFloat(value) : undefined
+          if (value = groups[`${prefix}width_abs`]) {
+            const widthPx = parseFloat(value) * 1
+            plcmt.scaledSpecifiedSize = { type: "px", widthPx, heightPx }
+          } else if (value = groups[`${prefix}width_rel`]) {
+            const widthPercent = parseFloat(value)
+            const maxWidthPx = (value = groups[`${prefix}width_max`]) ? parseFloat(value) : undefined
+            const minWidthPx = (value = groups[`${prefix}width_min`]) ? parseFloat(value) : undefined
+            plcmt.scaledSpecifiedSize = { type: "%", widthPercent, minWidthPx, maxWidthPx, heightPx }
           }
 
-          if (value = match.groups.placement_args) {
-            value = value.split(",").map(s => s.trim())
-            meta.voffset = value[0]
-            if (value.length >= 2 && value[1] === "full") {
-              meta.forceFullHeightWhenInline = true
+          if (value = groups[`${prefix}placement`]) {
+            plcmt.placement = value
+            if (value === "nocenter") {
+              plcmt.preventAutoCentering = true
+            } else if (value === "inline") {
+              plcmt.shouldInline = true
+              plcmt.heuristicSaysIgnoreHeightWhenInline = true
+            }
+
+            if (value = groups[`${prefix}placement_args`]) {
+              value = value.split(",").map(s => s.trim())
+              plcmt.voffset = value[0]
+              if (value.length >= 2 && value[1] === "full") {
+                plcmt.forceFullHeightWhenInline = true
+              }
             }
           }
         }
+
+        if (imgScale !== 1 && plcmt.scaledSpecifiedSize === undefined) {
+          // if no width specified and we have an img scale, add its width
+          const widthPx = Math.floor(nativeWidth * imgScale)
+          plcmt.scaledSpecifiedSize = { type: "px", widthPx, heightPx: undefined }
+        }
+
+        if (plcmt.shouldInline && !plcmt.heuristicSaysIgnoreHeightWhenInline) {
+          const referenceWidth =
+            plcmt.scaledSpecifiedSize === undefined ? nativeWidth
+              : plcmt.scaledSpecifiedSize.type === "px" ? plcmt.scaledSpecifiedSize.widthPx
+                : NaN // relative widths never indicate inline usage
+
+          plcmt.heuristicSaysIgnoreHeightWhenInline = referenceWidth < 30
+        }
+
+        return plcmt
       }
 
-      meta.imgTitle = token.attrGet("title") ?? imageId
-
-      if (imgScale !== 1 && meta.scaledSpecifiedSize === undefined) {
-        // if no width specified and we have an img scale, add its width
-        const widthPx = Math.floor(meta.nativeWidth * imgScale)
-        meta.scaledSpecifiedSize = { type: "px", widthPx, heightPx: undefined }
+      let matchGroups: MatchGroups | undefined = undefined
+      let title, match
+      if ((title = token.attrGet("title")) && (match = patterns.imageOptions.exec(title))) {
+        title = title.replace(patterns.imageOptions, "")
+        token.attrSet("title", title)
+        matchGroups = match.groups
       }
 
-      if (meta.shouldInline && !meta.heuristicSaysIgnoreHeightWhenInline) {
-        const referenceWidth =
-          meta.scaledSpecifiedSize === undefined ? meta.nativeWidth
-            : meta.scaledSpecifiedSize.type === "px" ? meta.scaledSpecifiedSize.widthPx
-              : NaN // relative widths never indicate inline usage
+      const htmlGroups = parseMatchGroupsWithPrefix("", matchGroups)!
+      const texGroups = parseMatchGroupsWithPrefix("tex_", matchGroups)
 
-        meta.heuristicSaysIgnoreHeightWhenInline = referenceWidth < 30
+      const meta: ImageTokenMeta = {
+        imgId: imageId,
+        imgTitle: token.attrGet("title") ?? imageId,
+        nativeWidth,
+        ...htmlGroups,
+      }
+      if (texGroups) {
+        meta.tex = texGroups
       }
 
       return meta

@@ -80,7 +80,13 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         halign: TableHAlign
         valign: TableVAlign
     }
-    type RendererStateCell = { table: TableMeta, isHeader: boolean }
+    type RendererStateCell = {
+        isHeader: boolean
+        halign: TableHAlign
+        valign: TableVAlign
+        cell: TableCellMeta
+        table: TableMeta
+    }
     type RendererStateMultirowMulticol = { colIndex: number, colspan: number, rowIndex: number, rowspan: number }
     function defaultRendererState() {
         return {
@@ -370,13 +376,22 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         if (overrideHAlign && overrideHAlign !== defaultColHAlign) {
             setCellArgs.push(horizontalAlignmentChar(overrideHAlign, table.wraps[colIndex]))
         }
+        const effectiveHAlign = overrideHAlign ?? defaultColHAlign
         const defaultColVAlign = table.valigns[colIndex]
         const overrideVAlign = cellMeta.valign
         if (overrideVAlign && overrideVAlign !== defaultColVAlign) {
             setCellArgs.push(vertcialAlignmentChar(overrideVAlign))
         }
+        const effectiveVAlign = overrideVAlign ?? defaultColVAlign
 
-        env.pushState({ currentTableCell: { table: state.currentTable!, isHeader }, disableMathify, isInBold })
+        const currentTableCell: RendererStateCell = {
+            isHeader,
+            halign: effectiveHAlign,
+            valign: effectiveVAlign,
+            cell: cellMeta,
+            table: state.currentTable!,
+        }
+        env.pushState({ currentTableCell, disableMathify, isInBold })
 
         const setCellOptArgsStr = setCellOptArgs.length === 0 ? "" : `[${setCellOptArgs.join(",")}]`
         const open = setCellOptArgs.length === 0 && setCellArgs.length === 0
@@ -499,6 +514,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         "image": (tokens, idx, env) => {
             const t = tokens[idx]
             const meta: ImageTokenMeta = t.meta
+            const plcmt = meta.tex ?? meta
 
             const imgPathForHtml = t.attrGet("src")!
             let type = "graphics"
@@ -512,13 +528,13 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             const imgScale = metadata.settings?.default_image_scale ?? 1.0
             let includeOpts = ""
             let widthStr: string | undefined = undefined
-            if (meta.scaledSpecifiedSize) {
-                if (meta.scaledSpecifiedSize.type === "px") {
-                    const latexPixels = roundTenth(meta.scaledSpecifiedSize.widthPx * HtmlToTexPixelRatio)
+            if (plcmt.scaledSpecifiedSize) {
+                if (plcmt.scaledSpecifiedSize.type === "px") {
+                    const latexPixels = roundTenth(plcmt.scaledSpecifiedSize.widthPx * HtmlToTexPixelRatio)
                     widthStr = `${latexPixels}px`
                     includeOpts = `[width=${widthStr}]`
-                } else if (meta.scaledSpecifiedSize.type === "%") {
-                    const f = roundTenth(meta.scaledSpecifiedSize.widthPercent / 100)
+                } else if (plcmt.scaledSpecifiedSize.type === "%") {
+                    const f = roundTenth(plcmt.scaledSpecifiedSize.widthPercent / 100)
                     widthStr = `${f}\\linewidth`
                     includeOpts = `[width=${widthStr}]`
                 }
@@ -534,13 +550,16 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             let before = ""
             let after = ""
 
+            const DEBUG_IMAGE_PLACEMENT = false
+            const debugPlacement = !DEBUG_IMAGE_PLACEMENT ? () => { } : (msg: string) => {
+                console.log(`For image '${meta.imgId}': ${msg}`)
+            }
+
             // this is used when the image is alone in a table cell
             function useInCellMarkup(cell: RendererStateCell) {
-                const colIndex = state.currentTableColumnIndex
-                const valignString = cell.table.valigns[colIndex]
                 const raiseboxDim =
-                    valignString === "top" ? "-\\height+\\ht\\strutbox" :
-                        valignString === "bottom" ? "-\\dp\\strutbox" :
+                    cell.valign === "top" ? "-\\height+\\ht\\strutbox" :
+                        cell.valign === "bottom" ? "-\\dp\\strutbox" :
                 /* else, middle */ "-\\height/2+\\dp\\strutbox/2"
 
                 before = `\\raisebox{\\dimexpr ${raiseboxDim} \\relax}{`
@@ -564,44 +583,38 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                 after = `}`
             }
 
-            function debugPlacement(msg: string) {
-                const DEBUG_IMAGE_PLACEMENT = false
-                if (DEBUG_IMAGE_PLACEMENT) {
-                    console.log(`For image '${meta.imgId}': ${msg}`)
-                }
-            }
 
             const isInTable = Boolean(state.currentTableCell)
             // console.log({ imgPath, placement, placementArgs })
-            if (meta.placement === undefined || meta.placement === "inline" || meta.placement === "nocenter" || isInTable) {
+            if (plcmt.placement === undefined || plcmt.placement === "inline" || plcmt.placement === "nocenter" || isInTable) {
                 if (isSurrounded(tokens, idx, 1, "paragraph")) {
                     if (isSurrounded(tokens, idx, 2, "td")) {
-                        debugPlacement("use makecell1")
+                        debugPlacement("use in-cell markup")
                         useInCellMarkup(state.currentTableCell!)
-                    } else if (!isInTable && meta.placement !== "nocenter") {
+                    } else if (!isInTable && plcmt.placement !== "nocenter") {
                         debugPlacement("use center env")
                         useCenterEnv()
                     } else {
                         // inline in table cell
                         debugPlacement("use raisebox1")
-                        useRaisebox(false, meta.voffset)
+                        useRaisebox(false, plcmt.voffset)
                     }
                 } else if (isSurrounded(tokens, idx, 1, "td")) {
-                    debugPlacement("use makecell2")
+                    debugPlacement("use in-cell markup")
                     useInCellMarkup(state.currentTableCell!)
-                } else if (meta.shouldInline) {
+                } else if (plcmt.shouldInline) {
                     // inline in paragraph
-                    const ignoreHeight = meta.heuristicSaysIgnoreHeightWhenInline && !meta.forceFullHeightWhenInline
-                    debugPlacement("use raisebox2, ignoreHeight=" + ignoreHeight + ", voffset=" + meta.voffset)
-                    useRaisebox(ignoreHeight, meta.voffset)
+                    const ignoreHeight = plcmt.heuristicSaysIgnoreHeightWhenInline && !plcmt.forceFullHeightWhenInline
+                    debugPlacement("use raisebox2, ignoreHeight=" + ignoreHeight + ", voffset=" + plcmt.voffset)
+                    useRaisebox(ignoreHeight, plcmt.voffset)
                 } else {
                     debugPlacement("use raw")
                     // console.log(tokens.slice(idx - 5, idx + 5))
                 }
 
-            } else if (meta.placement === "left" || meta.placement === "right") {
+            } else if (plcmt.placement === "left" || plcmt.placement === "right") {
                 // left or right
-                const placementSpec = meta.placement[0].toUpperCase()
+                const placementSpec = plcmt.placement[0].toUpperCase()
                 if (!widthStr && imgScale !== 1.0) {
                     widthStr = (imgScale * meta.nativeWidth) + "px"
                 }

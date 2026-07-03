@@ -12,7 +12,7 @@ import { languageNameAndShortCodeByLongCode } from "../codes"
 import { emptyServerHTMLParts, makeServerHTMLFile, parseServerHTMLFile, parseTask, postprocessHtmlDecodingEntities, ServerHTMLParts, ServerHtmlTemplatePlaceholders, ServerHtmlTemplatePlaceholdersChecked, ServerHtmlTemplatePlaceholdersDirect } from "../convert_html"
 import { findTasksFilesOrEnsureIsTaskFile, siblingWithExtension, urlExists, writeData } from "../fsutil"
 import { answerTypesFor } from "../patterns"
-import { fatalError, md5, md5Matches } from "../util"
+import { BottomProgressBar, fatalError, md5, md5Matches } from "../util"
 import _ = require("lodash")
 import cheerio = require('cheerio')
 import Token = require("markdown-it/lib/token")
@@ -106,7 +106,6 @@ class ServerTaskContext {
     public readonly tasks = new ServerIDs("tasks", "ServerTaskIDs.csv")
     public readonly graders = new ServerIDs("graders", "ServerGraderIDs.csv")
 
-
     public constructor(
         hostname: string,
         public readonly apiKey: string,
@@ -183,6 +182,9 @@ export function buildTaskSpecsFromFiles(taskFiles: string[], debug: boolean): [T
     return [tasks, context]
 }
 
+
+
+
 async function serverAction(subcommand: Subcommand, hasFields: boolean, ...varargs: any[]): Promise<void> {
     varargs.pop() // remove command object
     const options = varargs.pop()
@@ -229,91 +231,96 @@ async function serverAction(subcommand: Subcommand, hasFields: boolean, ...varar
 async function runUploadTaskOn(tasks: TaskSpec[], fields: string[], context: ServerTaskContext): Promise<void> {
     validateFields(fields)
 
-    for (const { taskFile, taskIdWithLang, serverTaskId } of tasks) {
+    await BottomProgressBar.showWhile(tasks.length, async pbar => {
+        for (const { taskFile, taskIdWithLang, serverTaskId } of tasks) {
+            pbar.update(`${taskIdWithLang} (server ID: ${serverTaskId})`)
 
-        const targetFile = serverFileForTaskFile(taskFile)
-        if (!fs.existsSync(targetFile)) {
-            fatalError(`Target server HTML file does not exist for upload: ${targetFile} `)
+            const targetFile = serverFileForTaskFile(taskFile)
+            if (!fs.existsSync(targetFile)) {
+                fatalError(`Target server HTML file does not exist for upload: ${targetFile} `)
+            }
+            const content = parseServerHTMLFile(fs.readFileSync(targetFile, 'utf-8'))
+            const url = `${context.baseUrl}/admin/api/dbmanage/question/${serverTaskId}`
+
+
+            const payload: Record<string, string> = {}
+            for (const field of fields) {
+                const { placeholderTitlePrefix, cuttleJsonFieldName } = AllFields[field]
+                const sectionContent = String(content[`${placeholderTitlePrefix}Html`]).trim()
+                payload[cuttleJsonFieldName] = sectionContent
+            }
+
+            let response: Response | undefined = undefined
+
+            try {
+                response = await fetch(url, {
+                    method: "POST",
+                    headers: {
+                        "cuttle-api-key": context.apiKey,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(payload),
+                })
+            } catch (error) {
+                fatalError(`Failed to connect to server at ${url}: ${error}`)
+            }
+
+            if (!response.ok) {
+                fatalError(`Request failed: ${response.status} ${response.statusText}`)
+            }
+
+            await response.json()
         }
-        const content = parseServerHTMLFile(fs.readFileSync(targetFile, 'utf-8'))
-        const url = `${context.baseUrl}/admin/api/dbmanage/question/${serverTaskId}`
+    })
 
-
-        const payload: Record<string, string> = {}
-        for (const field of fields) {
-            const { placeholderTitlePrefix, cuttleJsonFieldName } = AllFields[field]
-            const sectionContent = String(content[`${placeholderTitlePrefix}Html`]).trim()
-            payload[cuttleJsonFieldName] = sectionContent
-        }
-
-        let response: Response | undefined = undefined
-
-        try {
-            response = await fetch(url, {
-                method: "POST",
-                headers: {
-                    "cuttle-api-key": context.apiKey,
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(payload),
-            })
-        } catch (error) {
-            fatalError(`Failed to connect to server at ${url}: ${error}`)
-        }
-
-        if (!response.ok) {
-            fatalError(`Request failed: ${response.status} ${response.statusText}`)
-        }
-
-        await response.json()
-
-        console.log(`Uploaded task ${taskIdWithLang} (server ID: ${serverTaskId}) successfully.`)
-    }
 }
 
 async function runDownloadTaskOn(tasks: TaskSpec[], overwrite: boolean, overwriteAll: boolean, context: ServerTaskContext): Promise<void> {
     let numModified = 0
 
-    for (const { taskFile, taskIdWithLang, serverTaskId } of tasks) {
+    await BottomProgressBar.showWhile(tasks.length, async pbar => {
+        for (const { taskFile, taskIdWithLang, serverTaskId } of tasks) {
+            pbar.update(`${taskIdWithLang} (server ID: ${serverTaskId})`)
 
-        const targetFile = serverFileForTaskFile(taskFile)
-        const url = `${context.baseUrl}/admin/api/dbmanage/question/${serverTaskId}`
+            const targetFile = serverFileForTaskFile(taskFile)
+            const url = `${context.baseUrl}/admin/api/dbmanage/question/${serverTaskId}`
 
-        let response: Response | undefined = undefined
-        try {
-            response = await fetch(url, {
-                method: "GET",
-                headers: {
-                    "cuttle-api-key": context.apiKey,
-                },
-            })
-        } catch (error) {
-            fatalError(`Failed to connect to server at ${url}: ${error}`)
+            let response: Response | undefined = undefined
+            try {
+                response = await fetch(url, {
+                    method: "GET",
+                    headers: {
+                        "cuttle-api-key": context.apiKey,
+                    },
+                })
+            } catch (error) {
+                fatalError(`Failed to connect to server at ${url}: ${error}`)
+            }
+
+            if (!response.ok) {
+                fatalError(`Request failed: ${response.status} ${response.statusText}`)
+            }
+
+            const data = await response.json()
+            if (!data) {
+                fatalError("No data received from server for task id " + serverTaskId)
+            }
+            if (context.debug) {
+                console.log("Received data:", JSON.stringify(data, null, 2))
+            }
+            const content = parseServerJson(data, taskIdWithLang, serverTaskId, context)
+            if (content === undefined) {
+                fatalError("Failed to convert server JSON to rich HTML for task id " + serverTaskId)
+            }
+
+            const written = await writeOrMerge(targetFile, content, overwrite, overwriteAll, context)
+
+            if (written) {
+                numModified++
+            }
+
         }
-
-        if (!response.ok) {
-            fatalError(`Request failed: ${response.status} ${response.statusText}`)
-        }
-
-        const data = await response.json()
-        if (!data) {
-            fatalError("No data received from server for task id " + serverTaskId)
-        }
-        if (context.debug) {
-            console.log("Received data:", JSON.stringify(data, null, 2))
-        }
-        const content = parseServerJson(data, taskIdWithLang, serverTaskId, context)
-        if (content === undefined) {
-            fatalError("Failed to convert server JSON to rich HTML for task id " + serverTaskId)
-        }
-
-        const written = await writeOrMerge(targetFile, content, overwrite, overwriteAll, context)
-
-        if (written) {
-            numModified++
-        }
-
-    }
+    })
 
     if (numModified === 0) {
         console.log("No local task file modified.")
@@ -451,90 +458,94 @@ export async function runInsertTaskOn(tasks: TaskSpec[], fields: string[], overw
     validateFields(fields)
 
     const modifiedFiles: string[] = []
-    for (const { taskFile, taskIdWithLang, serverTaskId } of tasks) {
-        const targetFile = serverFileForTaskFile(taskFile)
-        if (!fs.existsSync(targetFile)) {
-            fatalError(`Target server HTML file does not exist for insertion: ${targetFile} `)
-        }
+    await BottomProgressBar.showWhile(tasks.length, async pbar => {
+        for (const { taskFile, taskIdWithLang } of tasks) {
+            pbar.update(taskIdWithLang)
 
-        const { md, options, tokens, metadata, langCode } = await parseTask(taskFile, { makeImgSizeAbsoluteWithFullWidth: FixedOutputWidthPx })
-
-        type AnswerType = ReturnType<typeof answerTypesFor>[number]
-        const AnswerTypesWhereAnswerOptionsAreShown: Array<AnswerType> =
-            ["multiple choice", "multiple choice with images", "multiple select", "multiple select with images"]
-
-        function sectionHtmlFor(sectionTitle: string): string {
-            const sectionTokens = extractTokensForSection(sectionTitle, tokens)
-            const renderedHtml = md.renderer.render(sectionTokens, options as any, {})
-            return renderedHtml
-        }
-
-        const CuttleConversionStrings = {
-            PossibleAnswers: {
-                eng: "Possible Answers",
-                deu: "Antwortalternativen",
-                fra: "Réponses possibles",
-                ita: "Possibili risposte",
-            },
-            KeywordsAndWebsites: {
-                eng: "Keywords",
-                deu: "Stichwörter",
-                fra: "Mots clés",
-                ita: "Parole chiave",
-            },
-        }
-
-        type TranslationString = keyof typeof CuttleConversionStrings
-
-        function getString(key: TranslationString): string {
-            const s = CuttleConversionStrings[key]
-            if (langCode in s) {
-                return s[langCode as keyof typeof s]
-            }
-            return s.eng
-        }
-
-        const newContent: Partial<ServerHTMLParts> = {}
-        for (const field of fields) {
-            const { sectionTitle, placeholderTitlePrefix } = AllFields[field]
-
-            // base field html
-            let renderedHtml = sectionHtmlFor(sectionTitle)
-
-            // customized postprocessing for some fields
-            if (field as any === "question") {
-                // TODO
-                //  Generating the question body from Markdown:
-                // - skip "body"
-                // - skip "question/challenge"
-                // - skip whole section for brochures
-                // - make question strong
-                // - add interactivity instructions in em tags
-
-            } else if (field === "answer" && AnswerTypesWhereAnswerOptionsAreShown.includes(metadata.answer_type as AnswerType)) {
-                const answerOptionsHtml = sectionHtmlFor("Answer Options/Interactivity Description")
-                // console.log("--- " + metadata.id + " " + answerOptionsHtml.substring(0, 80).replace(/\s+/g, " ") + " ...")
-                const answersTitle = `<div class="subtitle">${getString("PossibleAnswers")}</div>`
-                renderedHtml = '<div class="answer-options">' + answersTitle + answerOptionsHtml + "</div>" + renderedHtml
-
-            } else if (field === "itsinformatics") {
-                const keywordsHtml = sectionHtmlFor("Informatics Keywords and Websites")
-                const keywordsTitle = `<div class="subtitle">${getString("KeywordsAndWebsites")}</div>`
-                renderedHtml = renderedHtml + '<div class="keywords">' + keywordsTitle + keywordsHtml + "</div>"
+            const targetFile = serverFileForTaskFile(taskFile)
+            if (!fs.existsSync(targetFile)) {
+                fatalError(`Target server HTML file does not exist for insertion: ${targetFile} `)
             }
 
-            // final prettification and storage
-            const htmlContent = prettifySectionHtml(renderedHtml, taskFile, true, true)
-            newContent[`${placeholderTitlePrefix}Html`] = htmlContent
-            newContent[`${placeholderTitlePrefix}Hash`] = md5(htmlContent)
-            newContent[`${placeholderTitlePrefix}Source`] = "markdown"
-        }
+            const { md, options, tokens, metadata, langCode } = await parseTask(taskFile, { makeImgSizeAbsoluteWithFullWidth: FixedOutputWidthPx })
 
-        const modified = await writeOrMerge(targetFile, newContent, overwrite, overwriteAll, context)
-        if (modified) {
-            modifiedFiles.push(targetFile)
+            type AnswerType = ReturnType<typeof answerTypesFor>[number]
+            const AnswerTypesWhereAnswerOptionsAreShown: Array<AnswerType> =
+                ["multiple choice", "multiple choice with images", "multiple select", "multiple select with images"]
+
+            function sectionHtmlFor(sectionTitle: string): string {
+                const sectionTokens = extractTokensForSection(sectionTitle, tokens)
+                const renderedHtml = md.renderer.render(sectionTokens, options as any, {})
+                return renderedHtml
+            }
+
+            const CuttleConversionStrings = {
+                PossibleAnswers: {
+                    eng: "Possible Answers",
+                    deu: "Antwortalternativen",
+                    fra: "Réponses possibles",
+                    ita: "Possibili risposte",
+                },
+                KeywordsAndWebsites: {
+                    eng: "Keywords",
+                    deu: "Stichwörter",
+                    fra: "Mots clés",
+                    ita: "Parole chiave",
+                },
+            }
+
+            type TranslationString = keyof typeof CuttleConversionStrings
+
+            function getString(key: TranslationString): string {
+                const s = CuttleConversionStrings[key]
+                if (langCode in s) {
+                    return s[langCode as keyof typeof s]
+                }
+                return s.eng
+            }
+
+            const newContent: Partial<ServerHTMLParts> = {}
+            for (const field of fields) {
+                const { sectionTitle, placeholderTitlePrefix } = AllFields[field]
+
+                // base field html
+                let renderedHtml = sectionHtmlFor(sectionTitle)
+
+                // customized postprocessing for some fields
+                if (field as any === "question") {
+                    // TODO
+                    //  Generating the question body from Markdown:
+                    // - skip "body"
+                    // - skip "question/challenge"
+                    // - skip whole section for brochures
+                    // - make question strong
+                    // - add interactivity instructions in em tags
+
+                } else if (field === "answer" && AnswerTypesWhereAnswerOptionsAreShown.includes(metadata.answer_type as AnswerType)) {
+                    const answerOptionsHtml = sectionHtmlFor("Answer Options/Interactivity Description")
+                    // console.log("--- " + metadata.id + " " + answerOptionsHtml.substring(0, 80).replace(/\s+/g, " ") + " ...")
+                    const answersTitle = `<div class="subtitle">${getString("PossibleAnswers")}</div>`
+                    renderedHtml = '<div class="answer-options">' + answersTitle + answerOptionsHtml + "</div>" + renderedHtml
+
+                } else if (field === "itsinformatics") {
+                    const keywordsHtml = sectionHtmlFor("Informatics Keywords and Websites")
+                    const keywordsTitle = `<div class="subtitle">${getString("KeywordsAndWebsites")}</div>`
+                    renderedHtml = renderedHtml + '<div class="keywords">' + keywordsTitle + keywordsHtml + "</div>"
+                }
+
+                // final prettification and storage
+                const htmlContent = prettifySectionHtml(renderedHtml, taskFile, true)
+                newContent[`${placeholderTitlePrefix}Html`] = htmlContent
+                newContent[`${placeholderTitlePrefix}Hash`] = md5(htmlContent)
+                newContent[`${placeholderTitlePrefix}Source`] = "markdown"
+            }
+
+            const modified = await writeOrMerge(targetFile, newContent, overwrite, overwriteAll, context)
+            if (modified) {
+                modifiedFiles.push(targetFile)
+            }
         }
-    }
+    })
 
     if (modifiedFiles.length === 0) {
         console.log("No local task file modified.")
@@ -543,6 +554,7 @@ export async function runInsertTaskOn(tasks: TaskSpec[], fields: string[], overw
     }
     return modifiedFiles
 }
+
 
 async function runCheckImagesOn(tasks: TaskSpec[], showPresent: boolean, unique: boolean, context: ServerTaskContext): Promise<void> {
 
@@ -558,59 +570,64 @@ async function runCheckImagesOn(tasks: TaskSpec[], showPresent: boolean, unique:
         return exists
     }
 
-    for (const { taskFile, taskIdWithLang, serverTaskId } of tasks) {
-        const targetFile = serverFileForTaskFile(taskFile)
-        if (!fs.existsSync(targetFile)) {
-            fatalError(`Target server HTML file does not exist for graphics check: ${targetFile} `)
-        }
+    await BottomProgressBar.showWhile(tasks.length, async pbar => {
+        for (const { taskFile, taskIdWithLang, serverTaskId } of tasks) {
+            pbar.update(taskIdWithLang)
 
-        const content = fs.readFileSync(targetFile, 'utf-8')
-        const $ = cheerio.load(content)
+            const targetFile = serverFileForTaskFile(taskFile)
+            if (!fs.existsSync(targetFile)) {
+                fatalError(`Target server HTML file does not exist for graphics check: ${targetFile} `)
+            }
 
-        const imgElements = $('img')
+            const content = fs.readFileSync(targetFile, 'utf-8')
+            const $ = cheerio.load(content)
 
-        const missing: [serverUrl: string, localPath: string | undefined, sectionId: string | undefined][] = []
-        const present: typeof missing = []
+            const imgElements = $('img')
 
-        for (const imgElem of imgElements.toArray()) {
-            const parent = $(imgElem).closest('div.task-section')
-            const parentId = parent.attr('id')
-            const src = $(imgElem).attr('src')
-            if (src) {
-                const fullUrl = `${context.baseUrl}${src}`
-                if (!unique || !(fullUrl in cachedResults)) {
-                    const localSrc = $(imgElem).attr('data-local-src');
-                    // console.log(`Checking image URL: ${fullUrl}`)
-                    (await urlExistsCached(fullUrl) ? present : missing).push([src, localSrc, parentId])
+            const missing: [serverUrl: string, localPath: string | undefined, sectionId: string | undefined][] = []
+            const present: typeof missing = []
+
+            for (const imgElem of imgElements.toArray()) {
+                const parent = $(imgElem).closest('div.task-section')
+                const parentId = parent.attr('id')
+                const src = $(imgElem).attr('src')
+                if (src) {
+                    const fullUrl = `${context.baseUrl}${src}`
+                    if (!unique || !(fullUrl in cachedResults)) {
+                        const localSrc = $(imgElem).attr('data-local-src')
+                        const urlExists = await urlExistsCached(fullUrl)
+                        const targetList = urlExists ? present : missing
+                        targetList.push([src, localSrc, parentId])
+                    }
                 }
             }
-        }
 
-        // anything to show?
-        const doShowMissing = missing.length > 0
-        const doShowPresent = showPresent && present.length > 0
-        if (doShowMissing || doShowPresent) {
-            const prefix = showPresent ? "For" : "Missing images for"
-            console.log(`${prefix} task ${taskIdWithLang} (server ID: ${serverTaskId}):`)
-            if (doShowPresent) {
-                console.log(`  Present images:`)
-                present.forEach(logImage)
-            }
-            if (doShowMissing) {
-                if (showPresent) {
-                    console.log(`  Missing images:`)
+            // anything to show?
+            const doShowMissing = missing.length > 0
+            const doShowPresent = showPresent && present.length > 0
+            if (doShowMissing || doShowPresent) {
+                const prefix = showPresent ? "For" : "Missing images for"
+                console.log(`${prefix} task ${taskIdWithLang} (server ID: ${serverTaskId}):`)
+                if (doShowPresent) {
+                    console.log(`  Present images:`)
+                    present.forEach(logImage)
                 }
-                missing.forEach(logImage)
+                if (doShowMissing) {
+                    if (showPresent) {
+                        console.log(`  Missing images:`)
+                    }
+                    missing.forEach(logImage)
+                }
+
+                function logImage([img, localSrc, parentId]: [string, string | undefined, string | undefined]) {
+                    console.log(`    ${localSrc ? localSrc + "  -->  " : ""}${img}` + (parentId ? ` (in ${parentId})` : ''))
+                }
             }
 
-            function logImage([img, localSrc, parentId]: [string, string | undefined, string | undefined]) {
-                console.log(`    ${localSrc ? localSrc + "  -->  " : ""}${img}` + (parentId ? ` (in ${parentId})` : ''))
-            }
+            numMissing += missing.length
+            numPresent += present.length
         }
-
-        numMissing += missing.length
-        numPresent += present.length
-    }
+    })
 
     const dupesExpl = unique ? "each image mentioned only in the first task where it appears" : "images may be mentioned multiple times if they appear in multiple tasks"
     console.log(`Total missing: ${numMissing}; total present: ${numPresent} (checked ${numMissing + numPresent} images in ${tasks.length} tasks; ${dupesExpl})`)
@@ -719,7 +736,7 @@ function parseServerJson(json: unknown, taskId: string, serverTaskId: number, co
     }
 
     function getHtmlField(fieldName: string): [html: string, hash: string] {
-        const html = prettifySectionHtml((json as any)[fieldName], false, false, false)
+        const html = prettifySectionHtml((json as any)[fieldName], false, false)
         const hash = html.length === 0 ? "-" : md5(html)
         return [html, hash]
     }
@@ -746,13 +763,12 @@ function parseServerJson(json: unknown, taskId: string, serverTaskId: number, co
 
 function prettifySectionHtml(rawHtml: string | undefined,
     transformImagesFromTaskFile: string | false,
-    removeKatexHtml: boolean,
-    moveImgTitleToAlt: boolean,
+    postprocessFromMarkdown: boolean,
 ): string {
     if (!rawHtml?.trim()) {
         return ""
     }
-    const withDecodedEntities = postprocessHtmlDecodingEntities(rawHtml, transformImagesFromTaskFile, removeKatexHtml, moveImgTitleToAlt)
+    const withDecodedEntities = postprocessHtmlDecodingEntities(rawHtml, transformImagesFromTaskFile, postprocessFromMarkdown)
     const prettified = beautify.html(withDecodedEntities, {
         indent_size: 4,
         indent_level: 2,

@@ -120,35 +120,74 @@ export function fatalError(msg: string): never {
     process.exit(1)
 }
 
-export class ProgressBar {
-
-    private _current = 0
-
-    constructor(
-        public readonly max: number,
-        public opname: string | undefined = undefined,
-        public width: number = 30
-    ) {
-    }
-
-    public step(num_steps: number = 1) {
-        this._current += num_steps
-        this.render()
-    }
-
-    public render() {
-        const ratio = Math.min(this._current / this.max, 1)
-        const filled = Math.round(ratio * this.width)
-        const bar = "█".repeat(filled) + " ".repeat(this.width - filled)
-        process.stdout.write(`\r[${bar}] ${Math.floor(ratio * 100)}%${this.opname ? " " + this.opname + "... " : ""}`)
-    }
-
-    public done() {
-        this.step(this.max - this._current)
-        process.stdout.write("Done.\n")
-    }
+type LogFunction = (...args: unknown[]) => void
+type BottomProgressBarInterface = {
+    update(description?: string, by?: number): void
 }
 
+export class BottomProgressBar implements BottomProgressBarInterface {
+
+    private _current = 0
+    private _msg: string = ""
+    private _rendered = false
+
+    private readonly originalConsoleLog: LogFunction
+
+    public static showWhile<R>(numSteps: number, action: (pbar: BottomProgressBarInterface) => Promise<R>): Promise<R> {
+        if (numSteps <= 1) {
+            return action({ update: () => { } })
+        }
+        const pbar = new BottomProgressBar(numSteps)
+        return action(pbar).then(result => {
+            pbar._finish()
+            return result
+        })
+    }
+
+    private constructor(
+        public readonly numSteps: number,
+        public readonly charWidth = 40
+    ) {
+        // Patch console.log
+        this.originalConsoleLog = console.log
+        console.log = (...args: unknown[]) => {
+            this._clearLine()
+            this.originalConsoleLog.call(console, ...args)
+            this._render()
+        }
+    }
+
+    public update(description: string = "", by: number = 1): void {
+        this._current = Math.min(this._current + by, this.numSteps)
+        this._msg = description
+        this._render()
+    }
+
+    private _finish(description?: string): void {
+        this.update(description ?? "", this.numSteps - this._current)
+        process.stdout.write("\n")
+        this._rendered = false
+        console.log = this.originalConsoleLog
+    }
+
+    private _clearLine(): void {
+        if (!this._rendered) { return }
+        process.stdout.write("\x1b[2K\r") // clear whole line
+    }
+
+    private _render(): void {
+        const ratio = this._current / this.numSteps
+        const isFinished = this._current >= this.numSteps
+        const filled = Math.min(Math.round(ratio * this.charWidth), isFinished ? this.charWidth : this.charWidth - 1)
+        const bar =
+            "[" + "◼".repeat(filled) + "_".repeat(this.charWidth - filled) + "]"
+        const pct = (ratio * 100).toFixed(0) + `%`
+
+        this._clearLine()
+        process.stdout.write(`${bar}  ${pct}  (${this._current}/${this.numSteps})  ${this._msg}\r`)
+        this._rendered = true
+    }
+}
 
 interface CheckBase<A> {
     fold<B>(f: (a: A) => B, g: (err: string) => B): B
