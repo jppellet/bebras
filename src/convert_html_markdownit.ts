@@ -391,7 +391,8 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
             taskMetadata = TaskMetadata.defaultValue(ctx.taskFile)
           }
           // Replace the front matter with the same number of blank lines,
-          // instead of removing it, so line numbers below it don't shift.
+          // instead of removing it, so line numbers below it don't shift,
+          // which is useful e.g. for the VS Code plugin
           const consumedLength = fmEnd + fmEndMarker.length
           const consumedLineCount = state.src.slice(0, consumedLength).split(newline).length - 1
           state.src = newline.repeat(consumedLineCount) + state.src.slice(consumedLength)
