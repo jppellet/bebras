@@ -390,7 +390,11 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
             console.log("Error parsing metadata: " + JSON.stringify(parsedMetadataFields))
             taskMetadata = TaskMetadata.defaultValue(ctx.taskFile)
           }
-          state.src = state.src.slice(fmEnd + fmEndMarker.length)
+          // Replace the front matter with the same number of blank lines,
+          // instead of removing it, so line numbers below it don't shift.
+          const consumedLength = fmEnd + fmEndMarker.length
+          const consumedLineCount = state.src.slice(0, consumedLength).split(newline).length - 1
+          state.src = newline.repeat(consumedLineCount) + state.src.slice(consumedLength)
         }
       } else {
         console.log("No front matter found for file " + ctx.taskFile)
