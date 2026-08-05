@@ -140,7 +140,13 @@ async function renderPdf(mdFilePath: string, options: Partial<PluginOptions>): P
     const fileUrl = toFileUrl(mdFilePath)
     await page.goto(fileUrl, { waitUntil: 'domcontentloaded' })
 
-    await page.setContent(textHtml, { waitUntil: 'networkidle0' })
+    await page.setContent(textHtml, { waitUntil: 'load' })
+    // 'networkidle0' was removed from setContent in puppeteer 25; wait for
+    // web fonts (e.g. KaTeX) to finish loading before measuring/rendering.
+    await page.evaluate(() => {
+        // @ts-ignore
+        return document.fonts.ready
+    })
 
     const sectionTitles = await page.evaluate(() => {
         // @ts-ignore
