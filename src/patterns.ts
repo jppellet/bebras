@@ -2,7 +2,7 @@
 // the groups property of the RegExpExecArray object
 
 import { isString } from "markdown-it/lib/common/utils"
-import { TaskMetadata } from "./util"
+import { RenderingOptions, TaskMetadata } from "./util"
 
 // @ts-ignore
 interface RichRegExpExecArray<T> extends globalThis.RegExpExecArray {
@@ -42,6 +42,7 @@ export class LicenceInfo {
         public titleShort: string,
         public url: string,
         public imageUrl: string,
+        public copyrightString: string,
     ) { }
 
     shortCopyright(): string {
@@ -49,17 +50,18 @@ export class LicenceInfo {
     }
 
     fullCopyright(): string {
-        return `Copyright © ${this.year} Bebras – International Contest on Informatics and Computer Fluency. This work is licensed under a ${this.title}.`
+        return `Copyright © ${this.year} Bebras – ${this.copyrightString}. This work is licensed under a ${this.title}.`
     }
 }
 
-export function genLicense(metadata: TaskMetadata): LicenceInfo {
+export function genLicense(metadata: TaskMetadata, renderingOptions: RenderingOptions): LicenceInfo {
     return new LicenceInfo(
         /* year:       */ metadata.id.slice(0, 4),
         /* title:      */ "Creative Commons Attribution – ShareAlike 4.0 International License",
         /* titleShort: */ "CC BY-SA 4.0",
         /* url:        */ "https://creativecommons.org/licenses/by-sa/4.0/",
         /* imageUrl:   */ "https://mirrors.creativecommons.org/presskit/buttons/88x31/svg/by-sa.svg",
+        /* copyrightString: */ renderingOptions.copyrightString,
     )
 }
 

@@ -9,7 +9,7 @@ import codes = require("./codes")
 import { isString, isUndefined } from 'lodash'
 import { parseTask, PluginOptions } from './convert_html'
 import { ImageTokenMeta, linearizeTokens } from './convert_html_markdownit'
-import { siblingWithExtension, writeData } from './fsutil'
+import { loadRenderingOptions, siblingWithExtension, writeData } from './fsutil'
 import { lineStretchPattern } from './patterns'
 
 
@@ -51,8 +51,9 @@ type TexRender = {
 
 export function renderTex(linealizedTokens: Token[], langCode: string, metadata: TaskMetadata, taskFile: string, standalone: boolean): TexRender {
 
+    const renderingOptions = loadRenderingOptions(path.dirname(taskFile))
     const year = TaskMetadata.formatYear(metadata)
-    const license = patterns.genLicense(metadata)
+    const license = patterns.genLicense(metadata, renderingOptions)
     const verbatims = [] as Array<{ name: string, content: string }>
 
     const skip = () => ""
@@ -151,7 +152,6 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         "Body": { skip: false, pre: "", post: "", disableMathify: false },
         "Question/Challenge": { skip: false, pre: "{\\em\n", post: "}", disableMathify: true },
         "Question/Challenge - for the brochures": { skip: false, pre: "{\\em\n\n", post: "}\n\n", disableMathify: true },
-        // "Question/Challenge - for the online challenge": { skip: false, pre: "{\\em\n", post: "}", disableMathify: true },
         "Question/Challenge - for the online challenge": { skip: FormatBrochure, pre: "{\\em\n\n", post: "}\n\n", disableMathify: true },
         "Answer Options/Interactivity Description": { skip: false, pre: "\\begingroup\n\\renewcommand{\\arraystretch}{1.5}", post: "\\endgroup\n", disableMathify: false },
         "Answer Explanation": { skip: false, pre: "", post: "", disableMathify: false },
@@ -1198,8 +1198,11 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
     const isInteractiveTask = metadata.answer_type.toLowerCase().includes("interact")
 
+
     let tex: string
     if (!standalone) {
+
+        // brochure
         tex = `% Definition of the meta information: task difficulties, task ID, task title, task country; definition of the variables as well as their scope is in commands.tex
 \\setcounter{taskAgeDifficulty3to4}{${difficultyIndex("8-10")}}
 \\setcounter{taskAgeDifficulty5to6}{${difficultyIndex("10-12")}}
@@ -1247,10 +1250,19 @@ ${sectionTexFor("Answer Explanation")}
 ${sectionTexFor("It's Informatics", "This is Informatics")}
 
 % keywords and websites (as \\begin{itemize})
-\\section*{\\BrochureWebsitesAndKeywords}
+${renderingOptions.brochure.skipKeywordHeading ? '' : '\\section*{\\BrochureWebsitesAndKeywords}'}
 {\\raggedright
 ${sectionTexFor("Keywords and Websites", "Informatics Keywords and Websites")}
-}
+}${!renderingOptions.brochure.includeThisIsComputationalThinking ? '' : `
+
+% it's computational thinking
+\\section*{\\BrochureItsComputationalThinking}
+${sectionTexFor("This is Computational Thinking")}
+
+% keywords and websites (as \\begin{itemize})
+${renderingOptions.brochure.skipKeywordHeading ? '' : '\\section*{\\BrochureWebsitesAndKeywords}'}
+{\\raggedright
+${sectionTexFor("Computational Thinking Keywords and Websites")}`}
 
 % end of ifthen for excluding the solutions
 }{}
@@ -1261,9 +1273,13 @@ ${authorDefs()}
 
 \\newpage}{}
 `
+
+
+
     } else {
-        tex = '' +
-            `\\documentclass[a4paper,11pt]{report}
+
+        // standalone document
+        tex = `\\documentclass[a4paper,11pt]{report}
 \\usepackage[T1]{fontenc}
 \\usepackage[utf8]{inputenc}
 

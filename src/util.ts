@@ -307,6 +307,18 @@ export type TaskMetadata = {
     preview?: string | undefined
 }
 
+export function defaultRenderingOptions() {
+    return {
+        copyrightString: "International Contest on Informatics and Computer Fluency",
+        brochure: {
+            includeThisIsComputationalThinking: false,
+            skipKeywordHeading: false,
+        },
+    }
+}
+
+export type RenderingOptions = ReturnType<typeof defaultRenderingOptions>
+
 
 export namespace TaskMetadata {
 

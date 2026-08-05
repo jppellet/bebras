@@ -14,7 +14,7 @@ import patterns = require('./patterns')
 
 import { exec } from 'child_process'
 import { PluginOptions } from './convert_html'
-import { readFileStrippingBom, siblingWithExtension, toFileUrl, writeData } from './fsutil'
+import { loadRenderingOptions, readFileStrippingBom, siblingWithExtension, toFileUrl, writeData } from './fsutil'
 import { PdfBookmarkMetadata } from './json_schemas'
 import templates from './templates'
 import { TaskMetadata } from './util'
@@ -161,7 +161,8 @@ async function renderPdf(mdFilePath: string, options: Partial<PluginOptions>): P
         return sectionTitles
     })
 
-    const licence = patterns.genLicense(metadata)
+    const renderingOptions = loadRenderingOptions(path.dirname(mdFilePath))
+    const licence = patterns.genLicense(metadata, renderingOptions)
 
     // TODO load that from CSS file?
     const baseHeaderFooterStyleParts: Array<[string, string]> = [

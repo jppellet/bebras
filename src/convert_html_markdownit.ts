@@ -15,13 +15,14 @@ import { defaultLanguageCode } from "./codes"
 import { CssStylesheet, defaultPluginOptions, PluginOptions } from "./convert_html"
 import { getImageWidth } from "./img_cache"
 import * as patterns from './patterns'
-import { isRecord, isString, parseLanguageCodeFromTaskPath, TaskMetadata } from "./util"
+import { isRecord, isString, parseLanguageCodeFromTaskPath, RenderingOptions, TaskMetadata } from "./util"
 import _ = require("lodash")
 
 import * as markdownItAnchor from "markdown-it-anchor"
 import { colorPlugin as markdownItColor } from "markdown-it-color"
 import { markdownItFancyListPlugin } from "markdown-it-fancy-lists"
 import * as markdownItTocDoneRight from "markdown-it-toc-done-right"
+import { loadRenderingOptions } from "./fsutil"
 import { lineStretchPattern } from "./patterns"
 
 export type PluginContext = {
@@ -173,8 +174,8 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
     })
 
 
-    type MdGeneratorFunction = (metadata: TaskMetadata) => string
-    type HtmlGeneratorFunction = (metadata: TaskMetadata) => string
+    type MdGeneratorFunction = (metadata: TaskMetadata, renderingOptions: RenderingOptions) => string
+    type HtmlGeneratorFunction = (metadata: TaskMetadata, renderingOptions: RenderingOptions) => string
 
 
     const MdGeneratorTemplates: Record<string, MdGeneratorFunction> = {
@@ -223,8 +224,8 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
 
     const HtmlGeneratorTemplates: Record<string, HtmlGeneratorFunction> = {
 
-      "license_body": (metadata: TaskMetadata) => {
-        const license = patterns.genLicense(metadata)
+      "license_body": (metadata: TaskMetadata, renderingOptions: RenderingOptions) => {
+        const license = patterns.genLicense(metadata, renderingOptions)
         return "" +
           `<p>
             <div class="bebras-license">
@@ -238,7 +239,7 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
           </p>`
       },
 
-      "header": (metadata: TaskMetadata) => {
+      "header": (metadata: TaskMetadata, renderingOptions: RenderingOptions) => {
 
         const ageCategories = patterns.ageCategories
 
@@ -410,6 +411,7 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
       }
       state.env.taskMetadata = taskMetadata
       state.env.basePath = basePath
+      state.env.renderingOptions = loadRenderingOptions(basePath)
 
       return true
     })
@@ -471,7 +473,8 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
         lastMatchEnd = match.index + match[0].length
         templateRegExp.lastIndex = lastMatchEnd + 1
 
-        newSrcParts.push(MdGeneratorTemplates[templateName](taskMetadata))
+        const renderingOptions = state.env.renderingOptions as RenderingOptions
+        newSrcParts.push(MdGeneratorTemplates[templateName](taskMetadata, renderingOptions))
       }
       flushPartTo(state.src.length)
 
@@ -977,9 +980,10 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
       return wrapperStart + defaultImageRenderer(tokens, idx, options, env, self) + wrapperEnd
     }
 
-    md.renderer.rules.bebras_html_expand = (tokens, idx) => {
+    md.renderer.rules.bebras_html_expand = (tokens, idx, opts, env) => {
+      const renderingOptions = env.renderingOptions as RenderingOptions
       const templateName = tokens[idx].meta as HtmlTemplateName
-      return HtmlGeneratorTemplates[templateName](taskMetadata)
+      return HtmlGeneratorTemplates[templateName](taskMetadata, renderingOptions)
     }
 
     md.renderer.rules.main_open = (tokens, idx) => {

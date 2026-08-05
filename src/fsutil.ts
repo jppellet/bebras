@@ -1,9 +1,10 @@
 import { AbortController } from 'abort-controller'
 import * as fs from "fs"
+import * as json5 from "json5"
 import fetch from "node-fetch"
 import * as path from "path"
 import { taskFileExtension } from "./patterns"
-import { fatalError, isString } from "./util"
+import { defaultRenderingOptions, fatalError, isRecord, isString, RenderingOptions } from "./util"
 import hasbin = require("hasbin")
 
 export function isTaskFile(path: string, ensureExistenceToo: boolean): boolean {
@@ -133,4 +134,52 @@ export async function urlExists(url: string, timeoutMs: number): Promise<boolean
     } finally {
         clearTimeout(timer)
     }
+}
+
+export function loadRenderingOptions(basePath: string): RenderingOptions {
+    basePath = path.resolve(basePath)
+    const loadedOptionsFiles: string[] = []
+    const verbose = false
+
+    function doLoad() {
+        // walk up the directory tree to find rendering_options.json and merge them
+        let currentOptions: Partial<RenderingOptions> = {}
+        for (let dir = basePath; dir !== path.dirname(dir); dir = path.dirname(dir)) {
+            const optionsFilePath = path.join(dir, "rendering_options.json")
+            if (verbose) {
+                console.log("looking for rendering options in " + optionsFilePath)
+            }
+            if (fs.existsSync(optionsFilePath)) {
+                try {
+                    const optionsJson = json5.parse(fs.readFileSync(optionsFilePath, "utf8"))
+                    if (isRecord(optionsJson)) {
+                        loadedOptionsFiles.push(optionsFilePath)
+                        // merge options, with the closest to the task file taking precedence
+                        currentOptions = { ...optionsJson, ...currentOptions }
+                    }
+                } catch (e) {
+                    // ignore errors, use default options
+                    console.error("Error loading rendering options from " + optionsFilePath + ":\n  " + e)
+                }
+            }
+        }
+
+        return { ...defaultRenderingOptions(), ...currentOptions }
+    }
+
+    const renderingOptions = doLoad()
+    if (verbose) {
+        if (loadedOptionsFiles.length === 1) {
+            console.log("rendering options loaded from " + loadedOptionsFiles[0] + ":")
+        } else if (loadedOptionsFiles.length > 0) {
+            console.log("rendering options merged and loaded from: ")
+            for (const f of loadedOptionsFiles) {
+                console.log("  " + f)
+            }
+        } else {
+            console.log("no rendering options found, using defaults: ")
+        }
+        console.log(JSON.stringify(renderingOptions, null, 2))
+    }
+    return renderingOptions
 }
