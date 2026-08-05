@@ -350,6 +350,14 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
     let ctx: PluginContext
     let taskMetadata: TaskMetadata
 
+    function renderingOptionsFrom(env: any): RenderingOptions {
+      let renderingOptions = env.renderingOptions as RenderingOptions
+      if (renderingOptions === undefined) {
+        renderingOptions = env.renderingOptions = loadRenderingOptions(basePath)
+      }
+      return renderingOptions
+    }
+
     md.core.ruler.before('block', 'bebras_metadata', (state: StateCore) => {
       // check front matter
       const fmStartMarkerLF = "---\n"
@@ -411,7 +419,6 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
       }
       state.env.taskMetadata = taskMetadata
       state.env.basePath = basePath
-      state.env.renderingOptions = loadRenderingOptions(basePath)
 
       return true
     })
@@ -473,7 +480,7 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
         lastMatchEnd = match.index + match[0].length
         templateRegExp.lastIndex = lastMatchEnd + 1
 
-        const renderingOptions = state.env.renderingOptions as RenderingOptions
+        const renderingOptions = renderingOptionsFrom(state.env)
         newSrcParts.push(MdGeneratorTemplates[templateName](taskMetadata, renderingOptions))
       }
       flushPartTo(state.src.length)
@@ -981,7 +988,7 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
     }
 
     md.renderer.rules.bebras_html_expand = (tokens, idx, opts, env) => {
-      const renderingOptions = env.renderingOptions as RenderingOptions
+      const renderingOptions = renderingOptionsFrom(env)
       const templateName = tokens[idx].meta as HtmlTemplateName
       return HtmlGeneratorTemplates[templateName](taskMetadata, renderingOptions)
     }
