@@ -1262,7 +1262,8 @@ ${sectionTexFor("This is Computational Thinking")}
 % keywords and websites (as \\begin{itemize})
 ${renderingOptions.brochure.skipKeywordHeading ? '' : '\\section*{\\BrochureWebsitesAndKeywords}'}
 {\\raggedright
-${sectionTexFor("Computational Thinking Keywords and Websites")}`}
+${sectionTexFor("Computational Thinking Keywords and Websites")}
+}`}
 
 % end of ifthen for excluding the solutions
 }{}
