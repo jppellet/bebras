@@ -15,14 +15,14 @@ import { defaultLanguageCode } from "./codes"
 import { CssStylesheet, defaultPluginOptions, PluginOptions } from "./convert_html"
 import { getImageWidth } from "./img_cache"
 import * as patterns from './patterns'
-import { isRecord, isString, parseLanguageCodeFromTaskPath, RenderingOptions, TaskMetadata } from "./util"
+import { BebrasConfig, isRecord, isString, parseLanguageCodeFromTaskPath, TaskMetadata } from "./util"
 import _ = require("lodash")
 
 import * as markdownItAnchor from "markdown-it-anchor"
 import { colorPlugin as markdownItColor } from "markdown-it-color"
 import { markdownItFancyListPlugin } from "markdown-it-fancy-lists"
 import * as markdownItTocDoneRight from "markdown-it-toc-done-right"
-import { loadRenderingOptions } from "./fsutil"
+import { loadBebrasConfig } from "./fsutil"
 import { lineStretchPattern } from "./patterns"
 
 export type PluginContext = {
@@ -174,8 +174,8 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
     })
 
 
-    type MdGeneratorFunction = (metadata: TaskMetadata, renderingOptions: RenderingOptions) => string
-    type HtmlGeneratorFunction = (metadata: TaskMetadata, renderingOptions: RenderingOptions) => string
+    type MdGeneratorFunction = (metadata: TaskMetadata, config: BebrasConfig) => string
+    type HtmlGeneratorFunction = (metadata: TaskMetadata, config: BebrasConfig) => string
 
 
     const MdGeneratorTemplates: Record<string, MdGeneratorFunction> = {
@@ -224,8 +224,8 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
 
     const HtmlGeneratorTemplates: Record<string, HtmlGeneratorFunction> = {
 
-      "license_body": (metadata: TaskMetadata, renderingOptions: RenderingOptions) => {
-        const license = patterns.genLicense(metadata, renderingOptions)
+      "license_body": (metadata: TaskMetadata, config: BebrasConfig) => {
+        const license = patterns.genLicense(metadata, config)
         return "" +
           `<p>
             <div class="bebras-license">
@@ -239,7 +239,7 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
           </p>`
       },
 
-      "header": (metadata: TaskMetadata, renderingOptions: RenderingOptions) => {
+      "header": (metadata: TaskMetadata, config: BebrasConfig) => {
 
         const ageCategories = patterns.ageCategories
 
@@ -350,12 +350,12 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
     let ctx: PluginContext
     let taskMetadata: TaskMetadata
 
-    function renderingOptionsFrom(env: any): RenderingOptions {
-      let renderingOptions = env.renderingOptions as RenderingOptions
-      if (renderingOptions === undefined) {
-        renderingOptions = env.renderingOptions = loadRenderingOptions(basePath)
+    function bebrasConfigFrom(env: any): BebrasConfig {
+      let config = env.bebrasConfig as BebrasConfig
+      if (config === undefined) {
+        config = env.bebrasConfig = loadBebrasConfig(basePath)
       }
-      return renderingOptions
+      return config
     }
 
     md.core.ruler.before('block', 'bebras_metadata', (state: StateCore) => {
@@ -480,8 +480,8 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
         lastMatchEnd = match.index + match[0].length
         templateRegExp.lastIndex = lastMatchEnd + 1
 
-        const renderingOptions = renderingOptionsFrom(state.env)
-        newSrcParts.push(MdGeneratorTemplates[templateName](taskMetadata, renderingOptions))
+        const config = bebrasConfigFrom(state.env)
+        newSrcParts.push(MdGeneratorTemplates[templateName](taskMetadata, config))
       }
       flushPartTo(state.src.length)
 
@@ -988,9 +988,9 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
     }
 
     md.renderer.rules.bebras_html_expand = (tokens, idx, opts, env) => {
-      const renderingOptions = renderingOptionsFrom(env)
+      const config = bebrasConfigFrom(env)
       const templateName = tokens[idx].meta as HtmlTemplateName
-      return HtmlGeneratorTemplates[templateName](taskMetadata, renderingOptions)
+      return HtmlGeneratorTemplates[templateName](taskMetadata, config)
     }
 
     md.renderer.rules.main_open = (tokens, idx) => {

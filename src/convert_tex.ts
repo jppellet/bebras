@@ -9,7 +9,7 @@ import codes = require("./codes")
 import { isString, isUndefined } from 'lodash'
 import { parseTask, PluginOptions } from './convert_html'
 import { ImageTokenMeta, linearizeTokens } from './convert_html_markdownit'
-import { loadRenderingOptions, siblingWithExtension, writeData } from './fsutil'
+import { loadBebrasConfig, siblingWithExtension, writeData } from './fsutil'
 import { lineStretchPattern } from './patterns'
 
 
@@ -51,9 +51,9 @@ type TexRender = {
 
 export function renderTex(linealizedTokens: Token[], langCode: string, metadata: TaskMetadata, taskFile: string, standalone: boolean): TexRender {
 
-    const renderingOptions = loadRenderingOptions(path.dirname(taskFile))
+    const config = loadBebrasConfig(path.dirname(taskFile))
     const year = TaskMetadata.formatYear(metadata)
-    const license = patterns.genLicense(metadata, renderingOptions)
+    const license = patterns.genLicense(metadata, config)
     const verbatims = [] as Array<{ name: string, content: string }>
 
     const skip = () => ""
@@ -1250,17 +1250,17 @@ ${sectionTexFor("Answer Explanation")}
 ${sectionTexFor("It's Informatics", "This is Informatics")}
 
 % keywords and websites (as \\begin{itemize})
-${renderingOptions.brochure.skipKeywordHeading ? '' : '\\section*{\\BrochureWebsitesAndKeywords}'}
+${config.brochure.skipKeywordHeading ? '' : '\\section*{\\BrochureWebsitesAndKeywords}'}
 {\\raggedright
 ${sectionTexFor("Keywords and Websites", "Informatics Keywords and Websites")}
-}${!renderingOptions.brochure.includeThisIsComputationalThinking ? '' : `
+}${!config.brochure.includeThisIsComputationalThinking ? '' : `
 
 % it's computational thinking
 \\section*{\\BrochureItsComputationalThinking}
 ${sectionTexFor("This is Computational Thinking")}
 
 % keywords and websites (as \\begin{itemize})
-${renderingOptions.brochure.skipKeywordHeading ? '' : '\\section*{\\BrochureWebsitesAndKeywords}'}
+${config.brochure.skipKeywordHeading ? '' : '\\section*{\\BrochureWebsitesAndKeywords}'}
 {\\raggedright
 ${sectionTexFor("Computational Thinking Keywords and Websites")}
 }`}

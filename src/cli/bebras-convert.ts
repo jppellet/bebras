@@ -34,7 +34,7 @@ async function convert(format: string, source: string, options: any): Promise<vo
         fatalError("unknown format: " + format + ". Valid formats are " + mkStringCommaAnd(OutputFormats.values))
     }
 
-    const taskFiles = await findTasksFilesOrEnsureIsTaskFile(source, isRecursive, filter)
+    const { taskFiles } = await findTasksFilesOrEnsureIsTaskFile(source, isRecursive, filter)
     if (taskFiles.length === 0) {
         fatalError("No task file found in " + source)
     }

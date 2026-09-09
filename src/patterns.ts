@@ -2,7 +2,7 @@
 // the groups property of the RegExpExecArray object
 
 import { isString } from "markdown-it/lib/common/utils"
-import { RenderingOptions, TaskMetadata } from "./util"
+import { BebrasConfig, TaskMetadata } from "./util"
 
 // @ts-ignore
 interface RichRegExpExecArray<T> extends globalThis.RegExpExecArray {
@@ -54,14 +54,14 @@ export class LicenceInfo {
     }
 }
 
-export function genLicense(metadata: TaskMetadata, renderingOptions: RenderingOptions): LicenceInfo {
+export function genLicense(metadata: TaskMetadata, config: BebrasConfig): LicenceInfo {
     return new LicenceInfo(
         /* year:       */ metadata.id.slice(0, 4),
         /* title:      */ "Creative Commons Attribution – ShareAlike 4.0 International License",
         /* titleShort: */ "CC BY-SA 4.0",
         /* url:        */ "https://creativecommons.org/licenses/by-sa/4.0/",
         /* imageUrl:   */ "https://mirrors.creativecommons.org/presskit/buttons/88x31/svg/by-sa.svg",
-        /* copyrightString: */ renderingOptions.copyrightString,
+        /* copyrightString: */ config.copyrightString,
     )
 }
 
@@ -352,6 +352,16 @@ export const idWithOtherYear = capturing<{
     usage_year: maybe,
 }>(
     `^(?<id_plain>${idPatternWithoutStartEndMarkers})(?: +\\(for (?<usage_year>[0-9]{4})\\))?$`
+)
+
+export const idWithLang = capturing<{
+    year: always,
+    country_code: always,
+    num: always,
+    variant: maybe,
+    lang_code: always,
+}>(
+    `^(?<id_plain>${idPatternWithoutStartEndMarkers})\\-(?<lang_code>[a-z]{3})?$`
 )
 
 export const taskFileName = capturing<{

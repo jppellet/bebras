@@ -4,7 +4,7 @@ import * as json5 from "json5"
 import fetch from "node-fetch"
 import * as path from "path"
 import { taskFileExtension } from "./patterns"
-import { defaultRenderingOptions, fatalError, isRecord, isString, RenderingOptions } from "./util"
+import { BebrasConfig, deepMerge, defaultBebrasConfig, isRecord, isString } from "./util"
 import hasbin = require("hasbin")
 
 export function isTaskFile(path: string, ensureExistenceToo: boolean): boolean {
@@ -16,25 +16,26 @@ export function isTaskFile(path: string, ensureExistenceToo: boolean): boolean {
 
 export function ensureIsTaskFile(path: string, ensureExistenceToo: boolean): string | never {
     if (!isTaskFile(path, ensureExistenceToo)) {
-        fatalError(`not a${ensureExistenceToo ? "n existing" : ""} task file: ${path}`)
+        throw new Error(`not a${ensureExistenceToo ? "n existing" : ""} task file: ${path}`)
     }
     return path
 }
 
 
-export async function findTasksFilesOrEnsureIsTaskFile(source: string, recursive: boolean, pattern: string | undefined): Promise<string[]> {
+export async function findTasksFilesOrEnsureIsTaskFile(source: string, recursive: boolean, pattern: string | undefined): Promise<{ taskFiles: string[], commonFolder: string }> {
     // returns an error or a list of task files
     if (recursive) {
         if (!fs.existsSync(source)) {
-            fatalError("source folder does not exist: " + source)
+            throw new Error("source folder does not exist: " + source)
         }
         if (!fs.lstatSync(source).isDirectory()) {
-            fatalError("source folder is not a directory: " + source)
+            throw new Error("source folder is not a directory: " + source)
         }
-        return findTaskFilesRecursively(source, pattern)
+        const taskFiles = await findTaskFilesRecursively(source, pattern)
+        return { taskFiles, commonFolder: source }
     } else {
         ensureIsTaskFile(source, true)
-        return [source]
+        return { taskFiles: [source], commonFolder: path.dirname(source) }
     }
 }
 
@@ -136,50 +137,52 @@ export async function urlExists(url: string, timeoutMs: number): Promise<boolean
     }
 }
 
-export function loadRenderingOptions(basePath: string): RenderingOptions {
-    basePath = path.resolve(basePath)
+export function loadBebrasConfig(containingFolder: string): BebrasConfig {
+    containingFolder = path.resolve(containingFolder)
     const loadedOptionsFiles: string[] = []
     const verbose = false
 
     function doLoad() {
-        // walk up the directory tree to find rendering_options.json and merge them
-        let currentOptions: Partial<RenderingOptions> = {}
-        for (let dir = basePath; dir !== path.dirname(dir); dir = path.dirname(dir)) {
-            const optionsFilePath = path.join(dir, "rendering_options.json")
-            if (verbose) {
-                console.log("looking for rendering options in " + optionsFilePath)
-            }
-            if (fs.existsSync(optionsFilePath)) {
-                try {
-                    const optionsJson = json5.parse(fs.readFileSync(optionsFilePath, "utf8"))
-                    if (isRecord(optionsJson)) {
-                        loadedOptionsFiles.push(optionsFilePath)
-                        // merge options, with the closest to the task file taking precedence
-                        currentOptions = { ...optionsJson, ...currentOptions }
+        // walk up the directory tree to find config files and merge them
+        let currentOptions: Partial<BebrasConfig> = {}
+        for (let dir = containingFolder; dir !== path.dirname(dir); dir = path.dirname(dir)) {
+            for (const filename of ["bebras_config.json", "rendering_options.json"]) {
+                const optionsFilePath = path.join(dir, filename)
+                if (verbose) {
+                    console.log("looking for Bebras config in " + optionsFilePath)
+                }
+                if (fs.existsSync(optionsFilePath)) {
+                    try {
+                        const optionsJson = json5.parse(fs.readFileSync(optionsFilePath, "utf8"))
+                        if (isRecord(optionsJson)) {
+                            loadedOptionsFiles.push(optionsFilePath)
+                            // merge options, with the closest to the task file taking precedence
+                            currentOptions = deepMerge(optionsJson, currentOptions)
+                        }
+                    } catch (e) {
+                        // ignore errors, use default options
+                        console.error("Error loading config from " + optionsFilePath + ":\n  " + e)
                     }
-                } catch (e) {
-                    // ignore errors, use default options
-                    console.error("Error loading rendering options from " + optionsFilePath + ":\n  " + e)
                 }
             }
         }
 
-        return { ...defaultRenderingOptions(), ...currentOptions }
+        return deepMerge(defaultBebrasConfig(), currentOptions)
     }
 
-    const renderingOptions = doLoad()
+    const config = doLoad()
     if (verbose) {
         if (loadedOptionsFiles.length === 1) {
-            console.log("rendering options loaded from " + loadedOptionsFiles[0] + ":")
+            console.log("config loaded from " + loadedOptionsFiles[0] + ":")
         } else if (loadedOptionsFiles.length > 0) {
-            console.log("rendering options merged and loaded from: ")
+            console.log("config merged and loaded from: ")
             for (const f of loadedOptionsFiles) {
                 console.log("  " + f)
             }
         } else {
-            console.log("no rendering options found, using defaults: ")
+            console.log("no config found, using defaults: ")
         }
-        console.log(JSON.stringify(renderingOptions, null, 2))
+        console.log(JSON.stringify(config, null, 2))
     }
-    return renderingOptions
+    return config as BebrasConfig
 }

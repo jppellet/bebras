@@ -3,6 +3,7 @@ import patterns = require('./patterns')
 import codes = require("./codes")
 import hasbin = require('hasbin')
 import { BinaryLike, createHash } from 'crypto'
+import { ServerSyncField } from './convert_html'
 
 
 export function keysOf<K extends keyof any>(d: Record<K, any>): K[]
@@ -10,6 +11,50 @@ export function keysOf<K extends {}>(o: K): (keyof K)[]
 
 export function keysOf(o: any) {
     return Object.keys(o)
+}
+
+type DeepMerge<A, B> = {
+    [K in keyof A | keyof B]:
+    K extends keyof B
+    ? K extends keyof A
+    ? A[K] extends object
+    ? B[K] extends object
+    ? DeepMerge<A[K], B[K]>
+    : B[K]
+    : B[K]
+    : B[K]
+    : K extends keyof A
+    ? A[K]
+    : never
+}
+
+export function deepMerge<A extends Record<string, unknown>, B extends Record<string, unknown>>(
+    a: A,
+    b: B
+): DeepMerge<A, B> {
+    const result: Record<PropertyKey, unknown> = { ...a }
+
+    for (const [key, value] of Object.entries(b)) {
+        const existing = result[key]
+
+        if (
+            value !== null &&
+            typeof value === "object" &&
+            !Array.isArray(value) &&
+            existing !== null &&
+            typeof existing === "object" &&
+            !Array.isArray(existing)
+        ) {
+            result[key] = deepMerge(
+                existing as Record<string, unknown>,
+                value as Record<string, unknown>
+            )
+        } else {
+            result[key] = value
+        }
+    }
+
+    return result as DeepMerge<A, B>
 }
 
 export class RichStringEnum<K extends keyof any, P> {
@@ -307,17 +352,30 @@ export type TaskMetadata = {
     preview?: string | undefined
 }
 
-export function defaultRenderingOptions() {
+export function defaultBebrasConfig() {
     return {
         copyrightString: "International Contest on Informatics and Computer Fluency",
         brochure: {
             includeThisIsComputationalThinking: false,
             skipKeywordHeading: false,
         },
+        server: {
+            host: "wettbewerb.informatik-biber.ch",
+            cssPaths: [
+                "/shared/style/style_common_stripped.css",
+                "/shared/style/style_ch.css",
+            ],
+            defaultGraderId: 4, // open question
+            defaultFolderId: 1, // (root) xxx
+        },
+        vscode: {
+            autoExport: ["answer", "itsinformatics"] as Array<ServerSyncField>,
+            autoUpload: ["answer", "itsinformatics"] as Array<ServerSyncField>,
+        },
     }
 }
 
-export type RenderingOptions = ReturnType<typeof defaultRenderingOptions>
+export type BebrasConfig = ReturnType<typeof defaultBebrasConfig>
 
 
 export namespace TaskMetadata {

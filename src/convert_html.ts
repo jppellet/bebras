@@ -9,7 +9,7 @@ import { isString, isUndefined } from 'lodash'
 import { defaultLanguageCode, languageNameAndShortCodeByLongCode } from './codes'
 import { plugin, PluginContext } from './convert_html_markdownit'
 import { readFileStrippingBom, writeData } from './fsutil'
-import { ExtractPlaceholders, md5, parseLanguageCodeFromTaskPath, TaskMetadata } from './util'
+import { BebrasConfig, ExtractPlaceholders, md5, parseLanguageCodeFromTaskPath, TaskMetadata } from './util'
 
 export async function convertTask_html(taskFile: string, outputFile: string, options: Partial<PluginOptions> = {}): Promise<string | true> {
    return convertTask_html_impl(taskFile, outputFile, true, options)
@@ -138,23 +138,23 @@ export function parseMarkdown(text: string, taskFile: string, basePath: string, 
    return { md, options, tokens, metadata }
 }
 
-export type ServerHtmlTemplatePlaceholders = ExtractPlaceholders<typeof ServerHtmlTemplate>
+export type ServerHtmlTemplatePlaceholders = ExtractPlaceholders<ReturnType<typeof makeServerHtmlTemplate>>
 export type ServerHTMLParts = Record<ServerHtmlTemplatePlaceholders, string | number | boolean>
 export const ServerHtmlTemplatePlaceholdersDirect = [
-   "htmlTitle", "baseUrl", "yamlMetadata", "graderSpec", "taskTitle", "taskId",
+   "htmlTitle", "yamlMetadata", "graderSpec", "taskTitle", "taskId",
 ] as const satisfies ServerHtmlTemplatePlaceholders[]
+export type ServerSyncField = "question" | "answer" | "itsinformatics"
 export const ServerHtmlTemplatePlaceholdersChecked = [
    "question", "answer", "itsinformatics",
-] as const satisfies BaseHtmlPlaceholdersOf<ServerHtmlTemplatePlaceholders>[]
+] as const satisfies BaseHtmlPlaceholdersOf<ServerHtmlTemplatePlaceholders>[] & ServerSyncField[]
 
 type BaseHtmlPlaceholdersOf<T extends string> = T extends `${infer Prefix}${"Html"}` ? Prefix : never
 
-export function emptyServerHTMLParts(baseUrl: string): ServerHTMLParts {
+export function emptyServerHTMLParts(): ServerHTMLParts {
    const hash = "-"
    const source = "empty"
    const empty = ""
    return {
-      baseUrl,
       htmlTitle: empty,
       taskTitle: empty,
       taskId: "1900-AA-00",
@@ -166,8 +166,8 @@ export function emptyServerHTMLParts(baseUrl: string): ServerHTMLParts {
    }
 }
 
-export function makeServerHTMLFile(parts: ServerHTMLParts): string {
-   return ServerHtmlTemplate.replace(/\{(?<key>[a-zA-Z_]+)\}/g, (_, key) => {
+export function makeServerHTMLFile(config: BebrasConfig, parts: ServerHTMLParts): string {
+   return makeServerHtmlTemplate(config).replace(/\{(?<key>[a-zA-Z_]+)\}/g, (_, key) => {
       return String(parts[key as keyof typeof parts])
    })
 }
@@ -223,7 +223,6 @@ type DOM = cheerio.CheerioAPI
 export function parseServerHTMLFile(htmlText: string): ServerHTMLParts {
    const $: DOM = cheerio.load(htmlText)
 
-   const baseUrl = $('base').attr('href') ?? ""
    const htmlTitle = $('title').text()
    const taskTitle = $('#taskTitle').text()
    const taskId = $('#taskId').text()
@@ -256,7 +255,6 @@ export function parseServerHTMLFile(htmlText: string): ServerHTMLParts {
    const [itsinformaticsHtml, itsinformaticsHash, itsinformaticsSource] = getContentsOfDiv("itsinformatics", $)
 
    return {
-      baseUrl,
       htmlTitle,
       taskTitle,
       taskId,
@@ -301,16 +299,15 @@ function getNamedHtmlComments(commentNodes: Comment[]): Record<string, string> {
 }
 
 
-const ServerHtmlTemplate = `<!DOCTYPE html>
+const makeServerHtmlTemplate = (config: BebrasConfig) => `<!DOCTYPE html>
 <html>
 
 <head>
     <meta charset="UTF-8">
     <title>{htmlTitle}</title>
-    <base href="{baseUrl}">
+    <base href="https://${config.server.host}/">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.25/dist/katex.min.css">
-    <link rel="stylesheet" href="/shared/style/style_common_stripped.css">
-    <link rel="stylesheet" href="/shared/style/style_ch.css">
+${config.server.cssPaths.map(path => `    <link rel="stylesheet" href="${path}">`).join("\n")}
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jppellet/bebras/static/bebrasserverhtmlstyle.css" />
 </head>
 
@@ -363,7 +360,7 @@ const ServerHtmlTemplate = `<!DOCTYPE html>
 
 </body>
 
-</html>`
+</html>` as const
 
 
 // TODO load from file!

@@ -1,4 +1,5 @@
 export * as codes from './codes'
+export * as fsutil from './fsutil'
 export * as json_schemas from './json_schemas'
 export * as patterns from './patterns'
 export * as templates from './templates'
