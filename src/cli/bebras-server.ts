@@ -181,8 +181,7 @@ export function buildTaskSpecsFromFiles(taskFiles: string[], config: BebrasConfi
     const firstTaskFile = path.resolve(taskFiles[0]) // absolute path
     const tasksFolder = path.dirname(path.dirname(firstTaskFile))
 
-    const hostname = config.server.host
-    const apiKey = getCuttleApiKey(hostname)
+    const apiKey = getCuttleApiKey(config)
 
     const context = new ServerTaskContext(config, tasksFolder, apiKey, debug)
     context.loadServerIDs()
@@ -972,7 +971,13 @@ function prettifySectionHtml(rawHtml: string | undefined,
     return prettified
 }
 
-function getCuttleApiKey(hostname: string): string {
+function getCuttleApiKey(config: BebrasConfig): string {
+    const apiKeyFromConfig = config.server.apiKey
+    if (apiKeyFromConfig && apiKeyFromConfig.length > 0) {
+        return apiKeyFromConfig
+    }
+
+    const hostname = config.server.host
     // Get the CUTTLEAPIKEY from macOS Keychain
     try {
         const key = execSync(

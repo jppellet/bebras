@@ -361,6 +361,7 @@ export function defaultBebrasConfig() {
         },
         server: {
             host: "wettbewerb.informatik-biber.ch",
+            apiKey: undefined as string | undefined,
             cssPaths: [
                 "/shared/style/style_common_stripped.css",
                 "/shared/style/style_ch.css",
