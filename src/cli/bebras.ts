@@ -1,13 +1,13 @@
 #!/usr/bin/env node --no-deprecation
 
 import { Command } from 'commander'
+import { BebrasCommandError } from '../util'
 import { makeCommand_check } from './bebras-check'
 import { makeCommand_convert } from './bebras-convert'
 import { makeCommand_find } from './bebras-find'
 import { makeCommand_server } from './bebras-server'
 
-(() => {
-
+async function main(): Promise<void> {
     const VERSION = require('../../package.json').version
 
     const program = new Command()
@@ -22,6 +22,16 @@ import { makeCommand_server } from './bebras-server'
         .addHelpCommand(false)
         .showHelpAfterError()
 
-    program.parse(process.argv)
+    await program.parseAsync(process.argv)
+}
 
-})()
+main().catch((err: unknown) => {
+    if (err instanceof BebrasCommandError) {
+        console.log(`error: ${err.message}`)
+        process.exitCode = 1
+    } else {
+        // Unexpected programming/system error
+        console.error(err)
+        process.exitCode = 2
+    }
+})

@@ -13,7 +13,7 @@ import { emptyServerHTMLParts, makeServerHTMLFile, parseServerHTMLFile, parseTas
 import { findTasksFilesOrEnsureIsTaskFile, loadBebrasConfig, siblingWithExtension, urlExists, writeData } from "../fsutil"
 import { patterns } from "../main"
 import { answerTypesFor } from "../patterns"
-import { BebrasConfig, BottomProgressBar, fatalError, md5, md5Matches } from "../util"
+import { BebrasConfig, BottomProgressBar, fatalError, isRecord, isString, md5, md5Matches } from "../util"
 import _ = require("lodash")
 import cheerio = require('cheerio')
 import Token = require("markdown-it/lib/token")
@@ -57,7 +57,9 @@ export function makeCommand_server() {
         .option("-F, --folder <id>", "specify the folder ID to use for new tasks", "")
     )
 
-    addCommand("upload", "Uploads tasks to the Cuttle server", true, cmd)
+    addCommand("upload", "Uploads tasks to the Cuttle server", true, cmd, cmd => cmd
+        .option('--skip-images', 'skip uploading of images', false)
+    )
 
     addCommand("download", "Downloads tasks from the Cuttle server", false, cmd, overwrite)
 
@@ -129,7 +131,7 @@ class ServerTaskContext {
         const load = (serverIDs: ServerIDs) => {
             const serverIDsFile = path.join(this.tasksFolder, serverIDs.dataFilename)
             if (!fs.existsSync(serverIDsFile)) {
-                throw new Error(`Server IDs file not found to load ${serverIDs.name}: '${serverIDsFile}'`)
+                fatalError(`Server IDs file not found to load ${serverIDs.name}: '${serverIDsFile}'`)
             }
 
             const rawContent = fs.readFileSync(serverIDsFile, 'utf-8')
@@ -177,7 +179,7 @@ class ServerTaskContext {
 
 type TaskSpec = { taskFile: string, taskIdWithLang: string, getServerTaskId: () => number | undefined }
 
-export function buildTaskSpecsFromFiles(taskFiles: string[], config: BebrasConfig, debug: boolean): [TaskSpec[], ServerTaskContext] {
+export async function buildTaskSpecsFromFiles(taskFiles: string[], config: BebrasConfig, debug: boolean): Promise<[TaskSpec[], ServerTaskContext]> {
     const firstTaskFile = path.resolve(taskFiles[0]) // absolute path
     const tasksFolder = path.dirname(path.dirname(firstTaskFile))
 
@@ -198,7 +200,13 @@ export function buildTaskSpecsFromFiles(taskFiles: string[], config: BebrasConfi
     const tasks: Array<TaskSpec> = []
 
     for (const taskFile of taskFiles) {
-        const taskIdWithLang = taskFile.split('/').pop()!.split('.')[0]
+        const taskIdWithLang = path.basename(taskFile).split('.')[0]
+        if (context.debug) {
+            console.log(`  taskFile = ${taskFile}, taskIdWithLang = ${taskIdWithLang}`)
+            const parsedTask = await parseTask(taskFile, { makeImgSizeAbsoluteWithFullWidth: FixedOutputWidthPx })
+            console.log(`    parsedTask.metadata = ${JSON.stringify(parsedTask.metadata, null, 2)}`)
+        }
+
         tasks.push({
             taskFile, taskIdWithLang, getServerTaskId: () => {
                 const serverTaskId = context.tasks.getServerID(taskIdWithLang)
@@ -209,6 +217,7 @@ export function buildTaskSpecsFromFiles(taskFiles: string[], config: BebrasConfi
             },
         })
     }
+
 
     return [tasks, context]
 }
@@ -236,36 +245,34 @@ async function serverAction(subcommand: Subcommand, hasFields: boolean, ...varar
         console.log(`options = ${JSON.stringify(options, null, 2)} `)
     }
 
-    try {
+    const { taskFiles, commonFolder } = await findTasksFilesOrEnsureIsTaskFile(source, isRecursive, filter)
 
-        const { taskFiles, commonFolder } = await findTasksFilesOrEnsureIsTaskFile(source, isRecursive, filter)
+    if (taskFiles.length === 0) {
+        fatalError("No task file found in " + source)
+    }
 
-        if (taskFiles.length === 0) {
-            fatalError("No task file found in " + source)
-        }
+    const config = await loadBebrasConfig(commonFolder)
+    if (debug) {
+        console.log(`config = ${JSON.stringify(config, null, 2)} `)
+    }
+    const [tasks, context] = await buildTaskSpecsFromFiles(taskFiles, config, debug)
 
-        const config = await loadBebrasConfig(commonFolder)
-        const [tasks, context] = buildTaskSpecsFromFiles(taskFiles, config, debug)
-
-        switch (subcommand) {
-            case "new":
-                await runCreateTaskOn(tasks, Boolean(options.force), Boolean(options.upload), String(options.grader ?? ""), String(options.folder ?? ""), context)
-                return
-            case "upload":
-                await runUploadTaskOn(tasks, fields!, context)
-                return
-            case "download":
-                await runDownloadTaskOn(tasks, Boolean(options.overwrite), Boolean(options.overwriteAll), context)
-                return
-            case "insert":
-                await runInsertTaskOn(tasks, fields!, Boolean(options.overwrite), Boolean(options.overwriteAll), context)
-                return
-            case "checkimages":
-                await runCheckImagesOn(tasks, Boolean(options.showPresent), Boolean(options.unique), context)
-                return
-        }
-    } catch (error) {
-        fatalError(String((error as any).message ?? error))
+    switch (subcommand) {
+        case "new":
+            await runCreateTaskOn(tasks, Boolean(options.force), Boolean(options.upload), String(options.grader ?? ""), String(options.folder ?? ""), context)
+            return
+        case "upload":
+            await runUploadTaskOn(tasks, fields!, Boolean(options.skipImages), context)
+            return
+        case "download":
+            await runDownloadTaskOn(tasks, Boolean(options.overwrite), Boolean(options.overwriteAll), context)
+            return
+        case "insert":
+            await runInsertTaskOn(tasks, fields!, Boolean(options.overwrite), Boolean(options.overwriteAll), context)
+            return
+        case "checkimages":
+            await runCheckImagesOn(tasks, Boolean(options.showPresent), Boolean(options.unique), context)
+            return
     }
 }
 
@@ -302,7 +309,6 @@ async function runCreateTaskOn(tasks: TaskSpec[], force: boolean, upload: boolea
 
             const { md, options, tokens, metadata, langCode } = await parseTask(taskFile, { makeImgSizeAbsoluteWithFullWidth: FixedOutputWidthPx })
 
-            const url = `${context.baseUrl}/admin/api/dbmanage/question/new`
             const parsedIdMatch = patterns.idWithLang.exec(taskIdWithLang)
             let year
             if (parsedIdMatch === null) {
@@ -321,27 +327,7 @@ async function runCreateTaskOn(tasks: TaskSpec[], force: boolean, upload: boolea
                 "que_quf_id": defaultFolderId,
             }
 
-            let response: Response | undefined = undefined
-
-            try {
-                response = await fetch(url, {
-                    method: "POST",
-                    headers: {
-                        "cuttle-api-key": context.apiKey,
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify(payload),
-                })
-            } catch (error) {
-                fatalError(`Failed to connect to server at ${url}: ${error}`)
-            }
-
-            if (!response.ok) {
-                warn(`Request failed: ${response.status} ${response.statusText}`)
-                continue
-            }
-
-            const data = await response.json()
+            const data = await apiCall("POST", `question/new`, context, payload)
 
             const content = parseServerJson(data, taskIdWithLang, undefined, context)
             if (content === undefined) {
@@ -354,11 +340,11 @@ async function runCreateTaskOn(tasks: TaskSpec[], force: boolean, upload: boolea
     })
 
     if (upload) {
-        await runUploadTaskOn(tasks, Object.keys(AllFields), context)
+        await runUploadTaskOn(tasks, Object.keys(AllFields), false, context)
     }
 }
 
-export async function runUploadTaskOn(tasks: TaskSpec[], fields: string[], context: ServerTaskContext): Promise<void> {
+export async function runUploadTaskOn(tasks: TaskSpec[], fields: string[], skipImages: boolean, context: ServerTaskContext): Promise<void> {
     validateFields(fields)
 
     await BottomProgressBar.showWhile(tasks.length, async pbar => {
@@ -375,7 +361,6 @@ export async function runUploadTaskOn(tasks: TaskSpec[], fields: string[], conte
             }
             const content = parseServerHTMLFile(fs.readFileSync(targetFile, 'utf-8'))
             // console.log(`Parsed content for upload: ${JSON.stringify(content, null, 2)}`)
-            const url = `${context.baseUrl}/admin/api/dbmanage/question/${serverTaskId}`
 
 
             const payload: Record<string, string> = {}
@@ -385,30 +370,94 @@ export async function runUploadTaskOn(tasks: TaskSpec[], fields: string[], conte
                 payload[cuttleJsonFieldName] = sectionContent
             }
 
-            let response: Response | undefined = undefined
+            const data = await apiCall("POST", `question/${serverTaskId}`, context, payload)
+            // console.log(`Uploaded task ${taskIdWithLang} (server ID: ${serverTaskId}), server response: ${JSON.stringify(data, null, 2)}`)
 
-            try {
-                response = await fetch(url, {
-                    method: "POST",
-                    headers: {
-                        "cuttle-api-key": context.apiKey,
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify(payload),
-                })
-            } catch (error) {
-                fatalError(`Failed to connect to server at ${url}: ${error}`)
+            if (skipImages) {
+                continue
             }
 
-            if (!response.ok) {
-                fatalError(`Request failed: ${response.status} ${response.statusText}`)
+            const newQuestionData = parseServerJson(data, taskIdWithLang, serverTaskId, context)
+            if (newQuestionData === undefined) {
+                warn("Failed to convert server JSON to rich HTML for task id after upload: " + serverTaskId)
+                warn("Skipping image upload for this task")
+                continue
             }
 
-            const resp = await response.json()
-            // console.log(`Uploaded task ${taskIdWithLang} (server ID: ${serverTaskId}), server response: ${JSON.stringify(resp, null, 2)}`)
+            // console.log(`Uploading images for task ${taskIdWithLang} (server ID: ${serverTaskId})`)
+
+
+
         }
     })
 
+}
+
+async function apiCall(method: "GET" | "POST", path: string, context: ServerTaskContext, payload?: Record<string, unknown>): Promise<unknown> {
+    const url = `${context.baseUrl}admin/api/dbmanage/${path}`
+
+    if (context.debug) {
+        console.log(`Making API call: ${method} ${url}`)
+        if (payload) {
+            console.log(`Payload: ${JSON.stringify(payload, null, 2)}`)
+        }
+    }
+
+    let response: Response | undefined = undefined
+    try {
+        response = await fetch(url, {
+            method,
+            headers: {
+                "cuttle-api-key": context.apiKey,
+                ...(payload ? {
+                    "Content-Type": "application/json",
+                } : {}),
+            },
+            body: payload ? JSON.stringify(payload) : undefined,
+        })
+    } catch (error) {
+        fatalError(`Failed to connect to server at ${url}: ${error}`)
+    }
+
+    const responseBody = await response.text()
+
+    if (context.debug) {
+        console.log(`Response status: ${response.status} ${response.statusText}`)
+        // body
+        console.log(`Response body: ${responseBody}`)
+    }
+
+    if (!response.ok) {
+        // any json response in the body?
+        let details: string = responseBody
+        try {
+            const json = JSON.parse(details)
+            if (isString(json)) {
+                details = json
+            } else if (isRecord(json) && "message" in json) {
+                details = String(json.message)
+            }
+        } catch {
+            // ignore, use raw text
+        }
+        details = details.trim()
+        if (details.length > 0) {
+            details = "; details: " + details
+        }
+        fatalError(`Request failed: ${response.status} ${response.statusText}${details}`)
+    }
+
+    const responseData = JSON.parse(responseBody)
+
+    if (responseData === undefined || responseData === null) {
+        fatalError(`No data received from server for call to '${path}'`)
+    }
+
+    if (context.debug) {
+        console.log(`Call to '${path}' got response: ${JSON.stringify(responseData, null, 2)}`)
+    }
+
+    return responseData
 }
 
 async function runDownloadTaskOn(tasks: TaskSpec[], overwrite: boolean, overwriteAll: boolean, context: ServerTaskContext): Promise<void> {
@@ -423,31 +472,9 @@ async function runDownloadTaskOn(tasks: TaskSpec[], overwrite: boolean, overwrit
             pbar.update(`${taskIdWithLang} (server ID: ${serverTaskId})`)
 
             const targetFile = serverFileForTaskFile(taskFile)
-            const url = `${context.baseUrl}/admin/api/dbmanage/question/${serverTaskId}`
 
-            let response: Response | undefined = undefined
-            try {
-                response = await fetch(url, {
-                    method: "GET",
-                    headers: {
-                        "cuttle-api-key": context.apiKey,
-                    },
-                })
-            } catch (error) {
-                fatalError(`Failed to connect to server at ${url}: ${error}`)
-            }
+            const data = await apiCall("GET", `question/${serverTaskId}`, context)
 
-            if (!response.ok) {
-                fatalError(`Request failed: ${response.status} ${response.statusText}`)
-            }
-
-            const data = await response.json()
-            if (!data) {
-                fatalError("No data received from server for task id " + serverTaskId)
-            }
-            if (context.debug) {
-                console.log("Received data:", JSON.stringify(data, null, 2))
-            }
             const parsed = parseServerJson(data, taskIdWithLang, serverTaskId, context)
             if (parsed === undefined) {
                 fatalError("Failed to convert server JSON to rich HTML for task id " + serverTaskId)
@@ -712,20 +739,41 @@ export async function runInsertTaskOn(tasks: TaskSpec[], fields: string[], overw
     return modifiedFiles
 }
 
+type CheerioElementAPI = ReturnType<ReturnType<typeof cheerio.load>>
+
+function extractImageUrlsFromHtml(html: string): Array<[string, CheerioElementAPI]> {
+    const $ = cheerio.load(html)
+    const imgElements = $('img')
+    const urls: Array<[string, CheerioElementAPI]> = []
+    for (const imgElem of imgElements.toArray()) {
+        const $imgElem = $(imgElem)
+        const src = $imgElem.attr('src')
+        if (src) {
+            urls.push([src, $imgElem])
+        }
+    }
+    return urls
+}
+
+
+let _urlExistsCache: Record<string, boolean> = {}
+const urlExistsCached = async (url: string): Promise<boolean> => {
+    if (url in _urlExistsCache) {
+        return _urlExistsCache[url]
+    }
+    const exists = await urlExists(url, 3000)
+    _urlExistsCache[url] = exists
+    return exists
+}
+const urlExistsClearCache = () => {
+    _urlExistsCache = {}
+}
 
 async function runCheckImagesOn(tasks: TaskSpec[], showPresent: boolean, unique: boolean, context: ServerTaskContext): Promise<void> {
 
     let numMissing = 0
     let numPresent = 0
-    const cachedResults: Record<string, boolean> = {}
-    const urlExistsCached = async (url: string): Promise<boolean> => {
-        if (url in cachedResults) {
-            return cachedResults[url]
-        }
-        const exists = await urlExists(url, 3000)
-        cachedResults[url] = exists
-        return exists
-    }
+    urlExistsClearCache()
 
     await BottomProgressBar.showWhile(tasks.length, async pbar => {
         for (const { taskFile, taskIdWithLang, getServerTaskId } of tasks) {
@@ -741,25 +789,19 @@ async function runCheckImagesOn(tasks: TaskSpec[], showPresent: boolean, unique:
             }
 
             const content = fs.readFileSync(targetFile, 'utf-8')
-            const $ = cheerio.load(content)
-
-            const imgElements = $('img')
 
             const missing: [serverUrl: string, localPath: string | undefined, sectionId: string | undefined][] = []
             const present: typeof missing = []
 
-            for (const imgElem of imgElements.toArray()) {
-                const parent = $(imgElem).closest('div.task-section')
-                const parentId = parent.attr('id')
-                const src = $(imgElem).attr('src')
-                if (src) {
-                    const fullUrl = `${context.baseUrl}${src}`
-                    if (!unique || !(fullUrl in cachedResults)) {
-                        const localSrc = $(imgElem).attr('data-local-src')
-                        const urlExists = await urlExistsCached(fullUrl)
-                        const targetList = urlExists ? present : missing
-                        targetList.push([src, localSrc, parentId])
-                    }
+            for (const [src, $imgElem] of extractImageUrlsFromHtml(content)) {
+                const fullUrl = `${context.baseUrl}${src}`
+                if (!unique || !(fullUrl in _urlExistsCache)) {
+                    const localSrc = $imgElem.attr('data-local-src')
+                    const urlExists = await urlExistsCached(fullUrl)
+                    const targetList = urlExists ? present : missing
+                    const parent = $imgElem.closest('div.task-section')
+                    const parentId = parent.attr('id')
+                    targetList.push([src, localSrc, parentId])
                 }
             }
 
@@ -789,6 +831,8 @@ async function runCheckImagesOn(tasks: TaskSpec[], showPresent: boolean, unique:
             numPresent += present.length
         }
     })
+
+    urlExistsClearCache()
 
     const dupesExpl = unique ? "each image mentioned only in the first task where it appears" : "images may be mentioned multiple times if they appear in multiple tasks"
     console.log(`Total missing: ${numMissing}; total present: ${numPresent} (checked ${numMissing + numPresent} images in ${tasks.length} tasks; ${dupesExpl})`)
@@ -985,7 +1029,7 @@ function getCuttleApiKey(config: BebrasConfig): string {
             { encoding: "utf8" }
         ).trim()
         if (key.length === 0) {
-            throw new Error("Empty key")
+            fatalError("Empty API key")
         }
         return key
     } catch (err) {

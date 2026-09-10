@@ -161,8 +161,17 @@ export function mkStringCommaAnd(items: ReadonlyArray<any>, conn: string = "and"
 }
 
 export function fatalError(msg: string): never {
-    console.log("error: " + msg)
-    process.exit(1)
+    throw new BebrasCommandError(msg)
+}
+
+export class BebrasCommandError extends Error {
+    constructor(message: string) {
+        super(message)
+        this.name = "BebrasCommandError"
+
+        // legacy compat
+        Object.setPrototypeOf(this, new.target.prototype)
+    }
 }
 
 type LogFunction = (...args: unknown[]) => void

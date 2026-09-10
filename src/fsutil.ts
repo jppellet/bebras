@@ -4,7 +4,7 @@ import * as json5 from "json5"
 import fetch from "node-fetch"
 import * as path from "path"
 import { taskFileExtension } from "./patterns"
-import { BebrasConfig, deepMerge, defaultBebrasConfig, isRecord, isString } from "./util"
+import { BebrasConfig, deepMerge, defaultBebrasConfig, fatalError, isRecord, isString } from "./util"
 import hasbin = require("hasbin")
 
 export function isTaskFile(path: string, ensureExistenceToo: boolean): boolean {
@@ -16,7 +16,7 @@ export function isTaskFile(path: string, ensureExistenceToo: boolean): boolean {
 
 export function ensureIsTaskFile(path: string, ensureExistenceToo: boolean): string | never {
     if (!isTaskFile(path, ensureExistenceToo)) {
-        throw new Error(`not a${ensureExistenceToo ? "n existing" : ""} task file: ${path}`)
+        fatalError(`not a${ensureExistenceToo ? "n existing" : ""} task file: ${path}`)
     }
     return path
 }
@@ -26,10 +26,10 @@ export async function findTasksFilesOrEnsureIsTaskFile(source: string, recursive
     // returns an error or a list of task files
     if (recursive) {
         if (!fs.existsSync(source)) {
-            throw new Error("source folder does not exist: " + source)
+            fatalError("source folder does not exist: " + source)
         }
         if (!fs.lstatSync(source).isDirectory()) {
-            throw new Error("source folder is not a directory: " + source)
+            fatalError("source folder is not a directory: " + source)
         }
         const taskFiles = await findTaskFilesRecursively(source, pattern)
         return { taskFiles, commonFolder: source }
