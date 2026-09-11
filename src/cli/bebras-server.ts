@@ -3,17 +3,17 @@ import { Command } from "commander"
 import * as fs from 'fs'
 import beautify from 'js-beautify'
 import * as yaml from "js-yaml"
-import fetch, { Response } from 'node-fetch'
+import fetch, { fileFrom, FormData, Response } from 'node-fetch'
 import * as path from "path"
 
 
 import { warn } from "console"
 import { languageNameAndShortCodeByLongCode } from "../codes"
-import { emptyServerHTMLParts, makeServerHTMLFile, parseServerHTMLFile, parseTask, postprocessHtmlDecodingEntities, ServerHTMLParts, ServerHtmlTemplatePlaceholders, ServerHtmlTemplatePlaceholdersChecked, ServerHtmlTemplatePlaceholdersDirect } from "../convert_html"
+import { convertImageFilename, cuttleImagePathForImage, emptyServerHTMLParts, makeServerHTMLFile, ParseResult, parseServerHTMLFile, parseTask, postprocessHtmlDecodingEntities, ServerHTMLParts, ServerHtmlTemplatePlaceholders, ServerHtmlTemplatePlaceholdersChecked, ServerHtmlTemplatePlaceholdersDirect } from "../convert_html"
 import { findTasksFilesOrEnsureIsTaskFile, loadBebrasConfig, siblingWithExtension, urlExists, writeData } from "../fsutil"
 import { patterns } from "../main"
 import { answerTypesFor } from "../patterns"
-import { BebrasConfig, BottomProgressBar, fatalError, isRecord, isString, md5, md5Matches } from "../util"
+import { BebrasConfig, BottomProgressBar, fatalError, isRecord, isString, md5, md5Matches, TaskMetadata } from "../util"
 import _ = require("lodash")
 import cheerio = require('cheerio')
 import Token = require("markdown-it/lib/token")
@@ -137,22 +137,35 @@ class ServerTaskContext {
             const rawContent = fs.readFileSync(serverIDsFile, 'utf-8')
             serverIDs.needsNewlineBeforeNextContent = !rawContent.endsWith("\n")
             const lines = rawContent.split(/\r?\n/)
-            for (const line of lines) {
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i]
                 const trimmed = line.trim()
                 if (trimmed === "" || trimmed.startsWith("#")) {
                     continue
                 }
-                const parts = trimmed.split(",").map(s => s.trim())
-                if (parts.length !== 2) {
+                const commaIndex = trimmed.indexOf(",")
+                if (commaIndex === -1) {
                     warn(`Invalid line in file '${serverIDsFile}': ${line} `)
                     continue
                 }
-                const localName = parts[1]
-                const serverId = Number(parts[0])
+                const serverId = parseInt(trimmed.substring(0, commaIndex))
                 if (isNaN(serverId)) {
-                    warn(`Invalid line in file '${serverIDsFile}': ${line} `)
+                    if (i !== 0) {
+                        // warn unless it's the first line, which may be a header
+                        warn(`Invalid line in file '${serverIDsFile}': ${line} `)
+                    }
                     continue
                 }
+                let localName = trimmed.substring(commaIndex + 1).trim()
+                try {
+                    const parsed = JSON.parse(localName)
+                    if (isString(parsed)) {
+                        localName = parsed
+                    }
+                } catch (error) {
+                    // ignore, use raw string
+                }
+
                 serverIDs.put(serverId, localName)
             }
 
@@ -164,12 +177,12 @@ class ServerTaskContext {
     }
 
     public async saveNewServerTaskId(taskIdWithLang: string, serverTaskId: number): Promise<void> {
-        console.log(`New server task ID mapping: ${taskIdWithLang} -> ${serverTaskId}`)
         this.tasks.put(serverTaskId, taskIdWithLang)
         const serverIDsFile = path.join(this.tasksFolder, this.tasks.dataFilename)
         const newDataLine = `${this.tasks.needsNewlineBeforeNextContent ? '\n' : ''}${serverTaskId},${taskIdWithLang}\n`
         try {
             await fs.promises.appendFile(serverIDsFile, newDataLine, { encoding: 'utf-8' })
+            console.log(`New server task ID mapping written to ${this.tasks.dataFilename}: ${taskIdWithLang} -> ${serverTaskId}`)
         } catch (error) {
             fatalError(`Failed to write new server task ID to file '${serverIDsFile}': ${error}`)
         }
@@ -177,7 +190,36 @@ class ServerTaskContext {
 
 }
 
-type TaskSpec = { taskFile: string, taskIdWithLang: string, getServerTaskId: () => number | undefined }
+class TaskSpec {
+
+    public constructor(
+        public readonly file: string,
+        public readonly idWithLang: string,
+        private readonly context: ServerTaskContext,
+    ) { }
+
+    private _parsed: ParseResult | undefined = undefined
+
+    public async getParsed(): Promise<ParseResult> {
+        if (this._parsed === undefined) {
+            this._parsed = await parseTask(this.file, { makeImgSizeAbsoluteWithFullWidth: FixedOutputWidthPx })
+            if (this.context.debug) {
+                console.log(`Parsed task ${this.idWithLang} from file ${this.file}, metadata: ${JSON.stringify(this._parsed.metadata, null, 2)}`)
+            }
+        }
+        return this._parsed
+    }
+
+    public getServerId(expectUndefined: boolean): number | undefined {
+        const serverTaskId = this.context.tasks.getServerID(this.idWithLang)
+        if (serverTaskId === undefined && !expectUndefined) {
+            warn(`No server task id mapping found for task id with lang: ${this.idWithLang}, skipping file: ${this.file} `)
+        }
+        return serverTaskId
+    }
+
+}
+
 
 export async function buildTaskSpecsFromFiles(taskFiles: string[], config: BebrasConfig, debug: boolean): Promise<[TaskSpec[], ServerTaskContext]> {
     const firstTaskFile = path.resolve(taskFiles[0]) // absolute path
@@ -198,26 +240,10 @@ export async function buildTaskSpecsFromFiles(taskFiles: string[], config: Bebra
 
     // prepare tasks to run
     const tasks: Array<TaskSpec> = []
-
     for (const taskFile of taskFiles) {
         const taskIdWithLang = path.basename(taskFile).split('.')[0]
-        if (context.debug) {
-            console.log(`  taskFile = ${taskFile}, taskIdWithLang = ${taskIdWithLang}`)
-            const parsedTask = await parseTask(taskFile, { makeImgSizeAbsoluteWithFullWidth: FixedOutputWidthPx })
-            console.log(`    parsedTask.metadata = ${JSON.stringify(parsedTask.metadata, null, 2)}`)
-        }
-
-        tasks.push({
-            taskFile, taskIdWithLang, getServerTaskId: () => {
-                const serverTaskId = context.tasks.getServerID(taskIdWithLang)
-                if (serverTaskId === undefined) {
-                    warn(`No server task id mapping found for task id with lang: ${taskIdWithLang}, skipping file: ${taskFile} `)
-                }
-                return serverTaskId
-            },
-        })
+        tasks.push(new TaskSpec(taskFile, taskIdWithLang, context))
     }
-
 
     return [tasks, context]
 }
@@ -277,6 +303,12 @@ async function serverAction(subcommand: Subcommand, hasFields: boolean, ...varar
 }
 
 async function runCreateTaskOn(tasks: TaskSpec[], force: boolean, upload: boolean, defaultGraderSpec: string, defaultFolderSpec: string, context: ServerTaskContext): Promise<void> {
+    if (context.debug) {
+        console.log(`runCreateTaskOn(tasks.length=${tasks.length}, force=${force}, upload=${upload})`)
+    }
+
+    const createdTasks: TaskSpec[] = []
+
     await BottomProgressBar.showWhile(tasks.length, async pbar => {
         const resolveSpec = (spec: string, serverIDs: ServerIDs, defaultId: number): number => {
             if (spec.length > 0) {
@@ -291,35 +323,38 @@ async function runCreateTaskOn(tasks: TaskSpec[], force: boolean, upload: boolea
                     }
                 }
             }
-            warn(`Using default ${serverIDs.name} ID ${defaultId} (${serverIDs.getName(defaultId) ?? "<unknown>"})`)
+            if (context.debug) {
+                console.log(`Using default ${serverIDs.name} ID ${defaultId} (${serverIDs.getName(defaultId) ?? "<unknown>"})`)
+            }
             return defaultId
         }
         const defaultGraderId = resolveSpec(defaultGraderSpec, context.graders, context.config.server.defaultGraderId)
         const defaultFolderId = resolveSpec(defaultFolderSpec, context.folders, context.config.server.defaultFolderId)
 
-        for (const { taskFile, taskIdWithLang, getServerTaskId } of tasks) {
-            if (getServerTaskId() !== undefined) {
-                const suffix = force ? ", will create a new one" : ", skipping"
-                warn(`Task ${taskIdWithLang} already exists on the server with ID ${getServerTaskId()}${suffix}`)
+        for (const task of tasks) {
+            const oldServerId = task.getServerId(true)
+            if (oldServerId !== undefined) {
+                const suffix = force ? ", will create a new one" : ", skipping (use --force to create a new one)"
+                warn(`Task ${task.idWithLang} already exists on the server with ID ${oldServerId}${suffix}`)
                 if (!force) {
                     continue
                 }
             }
-            pbar.update(`${taskIdWithLang}`)
+            pbar.update(`${task.idWithLang}`)
 
-            const { md, options, tokens, metadata, langCode } = await parseTask(taskFile, { makeImgSizeAbsoluteWithFullWidth: FixedOutputWidthPx })
+            const { md, options, tokens, metadata, langCode } = await task.getParsed()
 
-            const parsedIdMatch = patterns.idWithLang.exec(taskIdWithLang)
+            const parsedIdMatch = patterns.idWithLang.exec(task.idWithLang)
             let year
             if (parsedIdMatch === null) {
-                warn(`Task ID ${taskIdWithLang} does not match expected pattern for year extraction '${patterns.idPlain.source}', using default year 1900`)
+                warn(`Task ID ${task.idWithLang} does not match expected pattern for year extraction '${patterns.idPlain.source}', using default year 1900`)
                 year = 1900
             } else {
                 year = Number(parsedIdMatch.groups.year)
             }
 
             const payload = {
-                "que_identifier": taskIdWithLang,
+                "que_identifier": task.idWithLang,
                 "que_name": metadata.title,
                 "que_version": langCode,
                 "que_year": year,
@@ -329,33 +364,46 @@ async function runCreateTaskOn(tasks: TaskSpec[], force: boolean, upload: boolea
 
             const data = await apiCall("POST", `question/new`, context, payload)
 
-            const content = parseServerJson(data, taskIdWithLang, undefined, context)
+            const content = parseServerJson(data, task.idWithLang, undefined, context)
             if (content === undefined) {
-                warn("Failed to convert server JSON to rich HTML for task id " + taskIdWithLang)
+                warn("Failed to convert server JSON to rich HTML for task id " + task.idWithLang)
                 continue
             }
 
-            await context.saveNewServerTaskId(taskIdWithLang, content.serverTaskId)
+            await context.saveNewServerTaskId(task.idWithLang, content.serverTaskId)
+            createdTasks.push(task)
         }
     })
 
+    await runDownloadTaskOn(createdTasks, true, false, context)
+    await runInsertTaskOn(createdTasks, context.config.vscode.autoExport, true, false, context)
+
     if (upload) {
-        await runUploadTaskOn(tasks, Object.keys(AllFields), false, context)
+        await runUploadTaskOn(createdTasks, context.config.vscode.autoUpload, false, context)
     }
 }
 
-export async function runUploadTaskOn(tasks: TaskSpec[], fields: string[], skipImages: boolean, context: ServerTaskContext): Promise<void> {
+export type UploadActionResult = {
+    fields: string[]
+    numSyncedTasks: number
+    numUploadedImages: number
+}
+
+export async function runUploadTaskOn(tasks: TaskSpec[], fields: string[], skipImages: boolean, context: ServerTaskContext): Promise<UploadActionResult> {
     validateFields(fields)
 
+    let numSyncedTasks = 0
+    let numUploadedImages = 0
+
     await BottomProgressBar.showWhile(tasks.length, async pbar => {
-        for (const { taskFile, taskIdWithLang, getServerTaskId } of tasks) {
-            const serverTaskId = getServerTaskId()
+        for (const task of tasks) {
+            const serverTaskId = task.getServerId(false)
             if (serverTaskId === undefined) {
                 continue
             }
-            pbar.update(`${taskIdWithLang} (server ID: ${serverTaskId})`)
+            pbar.update(`${task.idWithLang} (server ID: ${serverTaskId})`)
 
-            const targetFile = serverFileForTaskFile(taskFile)
+            const targetFile = serverFileForTaskFile(task.file)
             if (!fs.existsSync(targetFile)) {
                 fatalError(`Target server HTML file does not exist for upload: ${targetFile} `)
             }
@@ -372,28 +420,136 @@ export async function runUploadTaskOn(tasks: TaskSpec[], fields: string[], skipI
 
             const data = await apiCall("POST", `question/${serverTaskId}`, context, payload)
             // console.log(`Uploaded task ${taskIdWithLang} (server ID: ${serverTaskId}), server response: ${JSON.stringify(data, null, 2)}`)
+            numSyncedTasks++
 
             if (skipImages) {
                 continue
             }
 
-            const newQuestionData = parseServerJson(data, taskIdWithLang, serverTaskId, context)
+            const newQuestionData = parseServerJson(data, task.idWithLang, serverTaskId, context)
             if (newQuestionData === undefined) {
                 warn("Failed to convert server JSON to rich HTML for task id after upload: " + serverTaskId)
                 warn("Skipping image upload for this task")
                 continue
             }
 
-            // console.log(`Uploading images for task ${taskIdWithLang} (server ID: ${serverTaskId})`)
+            // console.log(`Uploading images for task ${task.idWithLang} (server ID: ${serverTaskId})`)
 
+            // get all the images from the fields that we just uploaded
+            const fieldImages = []
+            for (const field of fields) {
+                const fieldHtml = String(newQuestionData.htmlParts[`${AllFields[field].placeholderTitlePrefix}Html`])
+                fieldImages.push(...extractImageUrlsFromHtml(fieldHtml))
+            }
 
+            if (context.debug) {
+                console.log(`Found ${fieldImages.length} images in fields ${fields.join(", ")} for task ${task.idWithLang} (server ID: ${serverTaskId}):`)
+                for (const [url, $imgElem] of fieldImages) {
+                    console.log(`  ${url}`)
+                }
+            }
+
+            const currentImages = await apiCall("GET", `question/${serverTaskId}/image`, context)
+            const currentImagePaths: string[] = []
+            if (Array.isArray(currentImages)) {
+                for (const image of currentImages) {
+                    if (isRecord(image) && "url" in image && isString(image.url)) {
+                        currentImagePaths.push(image.url)
+                    }
+                }
+            }
+
+            if (context.debug) {
+                console.log(`Currently on server for task ${task.idWithLang} (server ID: ${serverTaskId}), ${currentImagePaths.length} images:`)
+                for (const url of currentImagePaths) {
+                    console.log(`  ${url}`)
+                }
+            }
+
+            const taskFolder = path.dirname(task.file)
+            let numUploadedTaskImages = 0
+
+            for (const [imgHtmlPath, __] of fieldImages) {
+                if (currentImagePaths.includes(imgHtmlPath)) {
+                    if (context.debug) {
+                        console.log(`Image ${imgHtmlPath} is already on the server, skipping upload`)
+                    }
+                    continue
+                }
+                const imgHtmlName = path.basename(imgHtmlPath)
+
+                const imgFile = findDescendantsMatching(taskFolder, (candidatePath, candidateName) => {
+                    // first, quick match on name
+                    const candidateHtmlName = convertImageFilename(candidateName)
+                    if (candidateHtmlName !== imgHtmlName) {
+                        return false
+                    }
+                    // then, check if the path matches the image URL
+                    const candidateHtmlPath = cuttleImagePathForImage(candidatePath)
+                    if (candidateHtmlPath !== imgHtmlPath) {
+                        return false
+                    }
+                    return true
+                })
+
+                if (imgFile === undefined) {
+                    console.warn(`No local image file found for ${imgHtmlPath} in task folder ${taskFolder}, skipping upload`)
+                    continue
+                }
+
+                const resp = await apiCall("POST", `question/${serverTaskId}/image`, context, ['image', imgFile])
+
+                const ok = isRecord(resp) && "url" in resp && resp.url === imgHtmlPath
+
+                if (!ok) {
+                    console.error(`Failed to upload image ${imgHtmlPath} from local file ${imgFile} for task ${task.idWithLang}: server response: ${JSON.stringify(resp, null, 2)}`)
+                    continue
+                }
+
+                numUploadedTaskImages++
+
+            }
+
+            if (numUploadedTaskImages > 0) {
+                console.log(`Uploaded ${numUploadedTaskImages} images for task ${task.idWithLang} (${fieldImages.length - numUploadedTaskImages} already on server) `)
+            } else if (context.debug) {
+                console.log(`No new images to upload for task ${task.idWithLang}`)
+            }
+
+            numUploadedImages += numUploadedTaskImages
 
         }
     })
 
+    return { fields, numSyncedTasks, numUploadedImages }
 }
 
-async function apiCall(method: "GET" | "POST", path: string, context: ServerTaskContext, payload?: Record<string, unknown>): Promise<unknown> {
+function findDescendantsMatching(folder: string, isMatch: (path: string, name: string) => boolean): string | undefined {
+    return visit(folder)
+
+    function visit(dir: string): string | undefined {
+        const entries = fs.readdirSync(dir, { withFileTypes: true })
+
+        for (const entry of entries) {
+            const fullPath = path.join(dir, entry.name)
+
+            if (entry.isDirectory()) {
+                const result = visit(fullPath)
+                if (result !== undefined) {
+                    return result
+                }
+            } else if (entry.isFile()) {
+                if (isMatch(fullPath, entry.name)) {
+                    return fullPath
+                }
+            }
+        }
+
+        return undefined
+    }
+}
+
+async function apiCall(method: "GET" | "POST", path: string, context: ServerTaskContext, payload?: Record<string, unknown> | [fieldName: string, file: string]): Promise<unknown> {
     const url = `${context.baseUrl}admin/api/dbmanage/${path}`
 
     if (context.debug) {
@@ -405,15 +561,28 @@ async function apiCall(method: "GET" | "POST", path: string, context: ServerTask
 
     let response: Response | undefined = undefined
     try {
+        let body = undefined
+        let additionalHeaders: Record<string, string> = {}
+        if (Array.isArray(payload)) {
+            // file name
+            const [fieldName, file] = payload
+            const formData = new FormData()
+            formData.append(fieldName, await fileFrom(file))
+            body = formData
+
+        } else if (isRecord(payload)) {
+            // If payload is a record, we'll treat it as JSON
+            body = JSON.stringify(payload)
+            additionalHeaders["Content-Type"] = "application/json"
+        }
+
         response = await fetch(url, {
             method,
             headers: {
                 "cuttle-api-key": context.apiKey,
-                ...(payload ? {
-                    "Content-Type": "application/json",
-                } : {}),
+                ...additionalHeaders,
             },
-            body: payload ? JSON.stringify(payload) : undefined,
+            body,
         })
     } catch (error) {
         fatalError(`Failed to connect to server at ${url}: ${error}`)
@@ -461,26 +630,31 @@ async function apiCall(method: "GET" | "POST", path: string, context: ServerTask
 }
 
 async function runDownloadTaskOn(tasks: TaskSpec[], overwrite: boolean, overwriteAll: boolean, context: ServerTaskContext): Promise<void> {
+    if (context.debug) {
+        console.log(`runDownloadTaskOn(tasks.length=${tasks.length}, overwrite=${overwrite}, overwriteAll=${overwriteAll})`)
+    }
+
     let numModified = 0
 
     await BottomProgressBar.showWhile(tasks.length, async pbar => {
-        for (const { taskFile, taskIdWithLang, getServerTaskId } of tasks) {
-            const serverTaskId = getServerTaskId()
+        for (const task of tasks) {
+            const serverTaskId = task.getServerId(false)
             if (serverTaskId === undefined) {
                 continue
             }
-            pbar.update(`${taskIdWithLang} (server ID: ${serverTaskId})`)
+            pbar.update(`${task.idWithLang} (server ID: ${serverTaskId})`)
 
-            const targetFile = serverFileForTaskFile(taskFile)
+            const targetFile = serverFileForTaskFile(task.file)
 
             const data = await apiCall("GET", `question/${serverTaskId}`, context)
 
-            const parsed = parseServerJson(data, taskIdWithLang, serverTaskId, context)
+            const parsed = parseServerJson(data, task.idWithLang, serverTaskId, context)
             if (parsed === undefined) {
                 fatalError("Failed to convert server JSON to rich HTML for task id " + serverTaskId)
             }
 
-            const written = await writeOrMerge(targetFile, parsed.htmlParts, overwrite, overwriteAll, context)
+            const taskMetadata = (await task.getParsed()).metadata
+            const written = await writeOrMerge(targetFile, taskMetadata, parsed.htmlParts, overwrite, overwriteAll, context)
 
             if (written) {
                 numModified++
@@ -501,9 +675,9 @@ async function runDownloadTaskOn(tasks: TaskSpec[], overwrite: boolean, overwrit
  * 
  * If existing non-trivial content is found in targetFile, and overwrite is false, the function
  * will do nothing return false. This is also the case if locally modified content is found
- * (i.e., content * whose hash does not match the stored generated hash) and overwriteAll is false.
+ * (i.e., content whose hash does not match the stored generated hash) and overwriteAll is false.
  */
-async function writeOrMerge(targetFile: string, newContent: Partial<ServerHTMLParts>, overwrite: boolean, overwriteAll: boolean, context: ServerTaskContext): Promise<boolean> {
+async function writeOrMerge(targetFile: string, taskMetadata: TaskMetadata, newContent: Partial<ServerHTMLParts>, overwrite: boolean, overwriteAll: boolean, context: ServerTaskContext): Promise<boolean> {
 
     if (overwriteAll) {
         overwrite = true
@@ -527,7 +701,7 @@ async function writeOrMerge(targetFile: string, newContent: Partial<ServerHTMLPa
 
     // do we just write a new file?
     if (!fileExists) {
-        await writeAndCheck({ ...emptyServerHTMLParts(), ...newContent })
+        await writeAndCheck({ ...emptyServerHTMLParts(taskMetadata), ...newContent })
         return true
     }
 
@@ -639,28 +813,39 @@ function validateFields(fields: string[]): asserts fields is (keyof typeof AllFi
 }
 
 export async function runInsertTaskOn(tasks: TaskSpec[], fields: string[], overwrite: boolean, overwriteAll: boolean, context: ServerTaskContext): Promise<string[]> {
+    if (context.debug) {
+        console.log(`runInsertTaskOn(tasks.length=${tasks.length}, fields=${fields.join(", ")}, overwrite=${overwrite}, overwriteAll=${overwriteAll})`)
+    }
+
     validateFields(fields)
 
     const modifiedFiles: string[] = []
     await BottomProgressBar.showWhile(tasks.length, async pbar => {
-        for (const { taskFile, taskIdWithLang } of tasks) {
-            pbar.update(taskIdWithLang)
+        for (const task of tasks) {
+            pbar.update(task.idWithLang)
 
-            const targetFile = serverFileForTaskFile(taskFile)
-            if (!fs.existsSync(targetFile)) {
-                fatalError(`Target server HTML file does not exist for insertion: ${targetFile} `)
-            }
+            const targetFile = serverFileForTaskFile(task.file)
 
-            const { md, options, tokens, metadata, langCode } = await parseTask(taskFile, { makeImgSizeAbsoluteWithFullWidth: FixedOutputWidthPx })
+            const { md, options, tokens, metadata, langCode } = await task.getParsed()
 
             type AnswerType = ReturnType<typeof answerTypesFor>[number]
             const AnswerTypesWhereAnswerOptionsAreShown: Array<AnswerType> =
                 ["multiple choice", "multiple choice with images", "multiple select", "multiple select with images"]
 
-            function sectionHtmlFor(sectionTitle: string): string {
-                const sectionTokens = extractTokensForSection(sectionTitle, tokens)
-                const renderedHtml = md.renderer.render(sectionTokens, options as any, {})
-                return renderedHtml
+            function sectionHtmlFor(sectionTitle: string, ...fallbackTitles: string[]): string {
+                let sectionTokens = extractTokensForSection(sectionTitle, tokens)
+                if (sectionTokens.length === 0) {
+                    for (const fallbackTitle of fallbackTitles) {
+                        sectionTokens = extractTokensForSection(fallbackTitle, tokens)
+                        if (sectionTokens.length > 0) {
+                            break
+                        }
+                    }
+                }
+                if (sectionTokens.length === 0) {
+                    return ""
+                }
+                return md.renderer.render(sectionTokens, options as any, {})
             }
 
             const CuttleConversionStrings = {
@@ -696,14 +881,16 @@ export async function runInsertTaskOn(tasks: TaskSpec[], fields: string[], overw
                 let renderedHtml = sectionHtmlFor(sectionTitle)
 
                 // customized postprocessing for some fields
-                if (field as any === "question") {
-                    // TODO
-                    //  Generating the question body from Markdown:
-                    // - skip "body"
-                    // - skip "question/challenge"
-                    // - skip whole section for brochures
-                    // - make question strong
-                    // - add interactivity instructions in em tags
+                if (field === "question") {
+                    const question = sectionHtmlFor("Question/Challenge", "Question/Challenge - for the online challenge")
+                    renderedHtml += `<div class="question-prompt">${question}</div>`
+                    const isInteractive = metadata.answer_type.includes("interactive")
+                    if (isInteractive) {
+                        renderedHtml += `<center><div id="task-container">&nbsp;</div></center>`
+
+                        const interactivityInstr = sectionHtmlFor("Interactivity Instructions", "Interactivity Instructions - for the online challenge", "Interactivity instruction - for the online challenge")
+                        renderedHtml += `<div class="interactivity-instructions">${interactivityInstr}</div>`
+                    }
 
                 } else if (field === "answer" && AnswerTypesWhereAnswerOptionsAreShown.includes(metadata.answer_type as AnswerType)) {
                     const answerOptionsHtml = sectionHtmlFor("Answer Options/Interactivity Description")
@@ -718,13 +905,12 @@ export async function runInsertTaskOn(tasks: TaskSpec[], fields: string[], overw
                 }
 
                 // final prettification and storage
-                const htmlContent = prettifySectionHtml(renderedHtml, taskFile, true)
+                const htmlContent = prettifySectionHtml(renderedHtml, task.file, true)
                 newContent[`${placeholderTitlePrefix}Html`] = htmlContent
                 newContent[`${placeholderTitlePrefix}Hash`] = md5(htmlContent)
                 newContent[`${placeholderTitlePrefix}Source`] = "markdown"
             }
-
-            const modified = await writeOrMerge(targetFile, newContent, overwrite, overwriteAll, context)
+            const modified = await writeOrMerge(targetFile, metadata, newContent, overwrite, overwriteAll, context)
             if (modified) {
                 modifiedFiles.push(targetFile)
             }
@@ -770,20 +956,23 @@ const urlExistsClearCache = () => {
 }
 
 async function runCheckImagesOn(tasks: TaskSpec[], showPresent: boolean, unique: boolean, context: ServerTaskContext): Promise<void> {
+    if (context.debug) {
+        console.log(`runCheckImagesOn(tasks.length=${tasks.length}, showPresent=${showPresent}, unique=${unique})`)
+    }
 
     let numMissing = 0
     let numPresent = 0
     urlExistsClearCache()
 
     await BottomProgressBar.showWhile(tasks.length, async pbar => {
-        for (const { taskFile, taskIdWithLang, getServerTaskId } of tasks) {
-            const serverTaskId = getServerTaskId()
+        for (const task of tasks) {
+            const serverTaskId = task.getServerId(false)
             if (serverTaskId === undefined) {
                 continue
             }
-            pbar.update(taskIdWithLang)
+            pbar.update(task.idWithLang)
 
-            const targetFile = serverFileForTaskFile(taskFile)
+            const targetFile = serverFileForTaskFile(task.file)
             if (!fs.existsSync(targetFile)) {
                 fatalError(`Target server HTML file does not exist for graphics check: ${targetFile} `)
             }
@@ -810,7 +999,7 @@ async function runCheckImagesOn(tasks: TaskSpec[], showPresent: boolean, unique:
             const doShowPresent = showPresent && present.length > 0
             if (doShowMissing || doShowPresent) {
                 const prefix = showPresent ? "For" : "Missing images for"
-                console.log(`${prefix} task ${taskIdWithLang} (server ID: ${serverTaskId}):`)
+                console.log(`${prefix} task ${task.idWithLang} (server ID: ${serverTaskId}):`)
                 if (doShowPresent) {
                     console.log(`  Present images:`)
                     present.forEach(logImage)

@@ -150,14 +150,18 @@ export const ServerHtmlTemplatePlaceholdersChecked = [
 
 type BaseHtmlPlaceholdersOf<T extends string> = T extends `${infer Prefix}${"Html"}` ? Prefix : never
 
-export function emptyServerHTMLParts(): ServerHTMLParts {
+export function emptyServerHTMLParts(metadata: TaskMetadata): ServerHTMLParts {
    const hash = "-"
    const source = "empty"
    const empty = ""
+
+   const taskId = metadata.id
+   const taskTitle = metadata.title
+   const htmlTitle = `${taskTitle} — ${taskId}`
    return {
-      htmlTitle: empty,
-      taskTitle: empty,
-      taskId: "1900-AA-00",
+      htmlTitle,
+      taskTitle,
+      taskId,
       yamlMetadata: empty,
       graderSpec: empty,
       questionHtml: empty, questionHash: hash, questionSource: source,
@@ -170,6 +174,17 @@ export function makeServerHTMLFile(config: BebrasConfig, parts: ServerHTMLParts)
    return makeServerHtmlTemplate(config).replace(/\{(?<key>[a-zA-Z_]+)\}/g, (_, key) => {
       return String(parts[key as keyof typeof parts])
    })
+}
+
+export function convertImageFilename(filename: string): string {
+   return filename.toLowerCase().replace(/-/g, '_')
+}
+
+export function cuttleImagePathForImage(imgPath: string): string {
+   const filename = path.basename(imgPath)
+   const cuttleFilename = convertImageFilename(filename)
+   const hash = md5(fs.readFileSync(imgPath))
+   return `/question_files/${hash[0]}/${hash[1]}/${hash[2]}/${cuttleFilename}`
 }
 
 export function postprocessHtmlDecodingEntities(text: string,
@@ -189,11 +204,7 @@ export function postprocessHtmlDecodingEntities(text: string,
             console.warn(`Image file ${src} does not exist locally`)
             return
          }
-         const hash = md5(fs.readFileSync(imgPath))
-         const filename = path.basename(src)
-         const cuttleFilename = filename.toLowerCase().replace(/-/g, '_')
-         const newPath = `/question_files/${hash[0]}/${hash[1]}/${hash[2]}/${cuttleFilename}`
-         $(elem).attr('src', newPath)
+         $(elem).attr('src', cuttleImagePathForImage(imgPath))
          $(elem).attr('data-local-src', src)
       })
    }

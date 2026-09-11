@@ -124,7 +124,7 @@ export function isArray(a: any): a is Array<any> {
     return Array.isArray(a)
 }
 
-export function isRecord(a: any): a is Record<string, any> {
+export function isRecord(a: any): a is Record<string, unknown> {
     return typeof a === 'object' && a !== null && !isArray(a)
 }
 
