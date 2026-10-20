@@ -23,11 +23,174 @@ type Subcommand = "new" | "upload" | "download" | "insert" | "checkimages"
 
 const FixedOutputWidthPx = 700
 
+const HtmlFieldDefs = {
+    "question": {
+        sectionTitle: "Body",
+        placeholderTitlePrefix: "question",
+        cuttleJsonFieldName: "que_content",
+    },
+    "answer": {
+        sectionTitle: "Answer Explanation",
+        placeholderTitlePrefix: "answer",
+        cuttleJsonFieldName: "que_explanation",
+    },
+    "itsinformatics": {
+        sectionTitle: "This is Informatics",
+        placeholderTitlePrefix: "itsinformatics",
+        cuttleJsonFieldName: "que_background_info",
+    },
+} as const satisfies Record<string, {
+    sectionTitle: string,
+    placeholderTitlePrefix: string,
+    cuttleJsonFieldName: string
+}>
+
+type MetadataFieldDef<T> = {
+    yamlKey: string,
+    defaultValue: T
+    cuttleJsonFieldName: string
+} & ({
+    readonly: true
+} | {
+    fromLocalTask: (parsed: ParseResult) => T | undefined,
+}) & (T extends string ? {}
+    // no idea why we need this special case
+    : T extends boolean ? {
+        fromCuttle: (s: string) => boolean
+    }
+    : {
+        fromCuttle: (s: string) => T
+    })
+
+const toBool = (s: string) => s.toLowerCase() === "true"
+
+
+// the ones that start with an underscore are read-only and cannot be set from the YAML file
+const MetadataFieldDefs = {
+    "id": {
+        yamlKey: "id",
+        readonly: true,
+        defaultValue: "0000-AA-00",
+        cuttleJsonFieldName: "que_identifier",
+    },
+    "lang": {
+        yamlKey: "lang",
+        readonly: true,
+        defaultValue: "n/a",
+        cuttleJsonFieldName: "que_version",
+    },
+    "year": {
+        yamlKey: "year",
+        defaultValue: 1900,
+        cuttleJsonFieldName: "que_year",
+        fromCuttle: Number,
+        fromLocalTask: parsed => {
+            try {
+                return parseInt(parsed.metadata.id.substring(0, 4))
+            } catch {
+                return undefined
+            }
+        },
+    },
+    "_id": {
+        yamlKey: "serverId",
+        readonly: true,
+        defaultValue: 0,
+        cuttleJsonFieldName: "que_id",
+        fromCuttle: Number,
+    },
+    "title": {
+        yamlKey: "title",
+        defaultValue: "n/a",
+        cuttleJsonFieldName: "que_name",
+        fromLocalTask: parsed => parsed.metadata.title,
+    },
+    "grader": {
+        yamlKey: "grader",
+        readonly: true,
+        defaultValue: 0,
+        cuttleJsonFieldName: "que_grd_id",
+    },
+    "folder": {
+        yamlKey: "folder",
+        readonly: true,
+        defaultValue: 0,
+        cuttleJsonFieldName: "que_quf_id",
+    },
+    "allowSchoolUsage": {
+        yamlKey: "allowSchoolUsage",
+        readonly: true,
+        defaultValue: false as boolean,
+        cuttleJsonFieldName: "que_allow_school_usage",
+        fromCuttle: toBool,
+    },
+} as const satisfies Record<string, MetadataFieldDef<string | number | boolean>>
+
+type YamlKey = typeof MetadataFieldDefs[keyof typeof MetadataFieldDefs]["yamlKey"]
+
+export const ServerFieldSpecAll = "all"
+export const ServerFieldSpecMetadata = "metadata"
+
+export const ServerFieldsHtml = Object.keys(HtmlFieldDefs) as (keyof typeof HtmlFieldDefs)[]
+
+export const ServerFieldsMetadata = Object.keys(MetadataFieldDefs).filter(f =>
+    !("readonly" in MetadataFieldDefs[f as keyof typeof MetadataFieldDefs]
+    )) as (keyof typeof MetadataFieldDefs)[]
+
+
+function getFields(fieldSpec: readonly string[]): { htmlFields: (keyof typeof HtmlFieldDefs)[], metadataFields: (keyof typeof MetadataFieldDefs)[] } {
+
+    if (fieldSpec.length === 1 && fieldSpec[0] === ServerFieldSpecAll) {
+        return {
+            htmlFields: ServerFieldsHtml,
+            metadataFields: ServerFieldsMetadata,
+        }
+    }
+
+    const htmlFields: (keyof typeof HtmlFieldDefs)[] = []
+    const metadataFields: (keyof typeof MetadataFieldDefs)[] = []
+    let allMetadataFields = false
+    for (let i = 0; i < fieldSpec.length; i++) {
+        const field = fieldSpec[i].toLowerCase()
+        let matched = false
+        for (const validField of ServerFieldsHtml) {
+            if (validField.startsWith(field)) {
+                htmlFields.push(validField as keyof typeof HtmlFieldDefs)
+                matched = true
+                break
+            }
+        }
+        if (!matched && ServerFieldSpecMetadata.startsWith(field)) {
+            metadataFields.push(...ServerFieldsMetadata)
+            allMetadataFields = true
+            matched = true
+        }
+        if (!matched && !allMetadataFields) {
+            for (const validField of ServerFieldsMetadata) {
+                if (validField.startsWith(field)) {
+                    metadataFields.push(validField as keyof typeof MetadataFieldDefs)
+                    matched = true
+                    break
+                }
+            }
+        }
+        if (!matched) {
+            fatalError(`Invalid field: ${fieldSpec[i]}. Valid fields are: ${[ServerFieldSpecAll, ...ServerFieldsHtml, ServerFieldSpecMetadata, ...ServerFieldsMetadata].join(", ")}; prefix matching is allowed.`)
+        }
+    }
+    console.log(`Fields to process: ${htmlFields.join(", ")} (HTML), ${metadataFields.join(", ")} (metadata)`)
+    return { htmlFields, metadataFields }
+}
+
 export function makeCommand_server() {
     let cmd = new Command()
         .name("server")
         .alias("s")
         .description('Communicates with a Cuttle server')
+
+    const filterOption = '-F, --filter <pattern>'
+    const longestOption = filterOption
+    const indent = " ".repeat(longestOption.length + 4)
 
     function addCommand(name: Subcommand, description: string, hasFields: boolean, cmd: Command, custom: (cmd: Command) => Command = cmd => cmd) {
         cmd = cmd
@@ -35,10 +198,10 @@ export function makeCommand_server() {
             .alias(name.charAt(0))
             .description(description)
             .option('-r, --recursive', 'batch converts all tasks file in the source folder', false)
-            .option('-F, --filter <pattern>', 'when in recursive mode, only consider files matching this pattern', false)
+            .option(filterOption, 'when in recursive mode, only consider files matching this pattern', false)
             .option('--debug', 'prints additional debug information')
         if (hasFields) {
-            cmd = cmd.argument("<fields>", 'A comma-separated list of fields to process (e.g. "question,explanation")')
+            cmd = cmd.argument("<fields>", `a comma-separated list of fields to process:\n${indent}\'${ServerFieldSpecAll}\' for all writable fields — or, individually for the HTML fields:${ServerFieldsHtml.map(f => `\n${indent}  '${f}'`).join(", ")}, or \n${indent}  \'${ServerFieldSpecMetadata}\' for all metadata fields, or, individually, ${ServerFieldsMetadata.map(f => `\n${indent}    '${f}'`).join(", ")}\n${indent}Prefix matching is allowed`)
         }
         cmd = custom(cmd)
         cmd = cmd
@@ -384,13 +547,14 @@ async function runCreateTaskOn(tasks: TaskSpec[], force: boolean, upload: boolea
 }
 
 export type UploadActionResult = {
-    fields: string[]
+    htmlFields: (keyof typeof HtmlFieldDefs)[]
+    metadataFields: (keyof typeof MetadataFieldDefs)[]
     numSyncedTasks: number
     numUploadedImages: number
 }
 
-export async function runUploadTaskOn(tasks: TaskSpec[], fields: string[], skipImages: boolean, context: ServerTaskContext): Promise<UploadActionResult> {
-    validateFields(fields)
+export async function runUploadTaskOn(tasks: TaskSpec[], fieldSpec: string[], skipImages: boolean, context: ServerTaskContext): Promise<UploadActionResult> {
+    const { htmlFields, metadataFields } = getFields(fieldSpec)
 
     let numSyncedTasks = 0
     let numUploadedImages = 0
@@ -412,11 +576,25 @@ export async function runUploadTaskOn(tasks: TaskSpec[], fields: string[], skipI
 
 
             const payload: Record<string, string> = {}
-            for (const field of fields) {
-                const { placeholderTitlePrefix, cuttleJsonFieldName } = AllFields[field]
+            for (const field of htmlFields) {
+                const { placeholderTitlePrefix, cuttleJsonFieldName } = HtmlFieldDefs[field]
                 const sectionContent = String(content[`${placeholderTitlePrefix}Html`]).trim()
                 payload[cuttleJsonFieldName] = sectionContent
             }
+            if (metadataFields.length > 0) {
+                const metadata = yaml.load(String(content.yamlMetadata))
+                if (!isRecord(metadata)) {
+                    fatalError("Failed to parse YAML metadata for upload")
+                }
+                for (const field of metadataFields) {
+                    const { yamlKey, cuttleJsonFieldName } = MetadataFieldDefs[field]
+                    if (!(yamlKey in metadata)) {
+                        fatalError(`YAML metadata field ${yamlKey} is missing for upload`)
+                    }
+                    payload[cuttleJsonFieldName] = String(metadata[yamlKey])
+                }
+            }
+
 
             const data = await apiCall("POST", `question/${serverTaskId}`, context, payload)
             // console.log(`Uploaded task ${taskIdWithLang} (server ID: ${serverTaskId}), server response: ${JSON.stringify(data, null, 2)}`)
@@ -437,13 +615,13 @@ export async function runUploadTaskOn(tasks: TaskSpec[], fields: string[], skipI
 
             // get all the images from the fields that we just uploaded
             const fieldImages = []
-            for (const field of fields) {
-                const fieldHtml = String(newQuestionData.htmlParts[`${AllFields[field].placeholderTitlePrefix}Html`])
+            for (const field of htmlFields) {
+                const fieldHtml = String(newQuestionData.htmlParts[`${HtmlFieldDefs[field].placeholderTitlePrefix}Html`])
                 fieldImages.push(...extractImageUrlsFromHtml(fieldHtml))
             }
 
             if (context.debug) {
-                console.log(`Found ${fieldImages.length} images in fields ${fields.join(", ")} for task ${task.idWithLang} (server ID: ${serverTaskId}):`)
+                console.log(`Found ${fieldImages.length} images in fields ${htmlFields.join(", ")} for task ${task.idWithLang} (server ID: ${serverTaskId}):`)
                 for (const [url, $imgElem] of fieldImages) {
                     console.log(`  ${url}`)
                 }
@@ -521,7 +699,7 @@ export async function runUploadTaskOn(tasks: TaskSpec[], fields: string[], skipI
         }
     })
 
-    return { fields, numSyncedTasks, numUploadedImages }
+    return { htmlFields, metadataFields, numSyncedTasks, numUploadedImages }
 }
 
 function findDescendantsMatching(folder: string, isMatch: (path: string, name: string) => boolean): string | undefined {
@@ -593,7 +771,30 @@ async function apiCall(method: "GET" | "POST", path: string, context: ServerTask
     if (context.debug) {
         console.log(`Response status: ${response.status} ${response.statusText}`)
         // body
-        console.log(`Response body: ${responseBody}`)
+        let debugBody = responseBody
+        try {
+            const json = JSON.parse(debugBody) as unknown
+            const stringLengthLimit = 80
+            const shortenLongStrings = (obj: unknown): unknown => {
+                if (isString(obj) && obj.length > stringLengthLimit) {
+                    return obj.substring(0, stringLengthLimit) + "[...]"
+                } else if (isRecord(obj)) {
+                    const newObj: Record<string, unknown> = {}
+                    for (const key of Object.keys(obj)) {
+                        newObj[key] = shortenLongStrings(obj[key])
+                    }
+                    return newObj
+                } else if (Array.isArray(obj)) {
+                    return obj.map(shortenLongStrings)
+                } else {
+                    return obj
+                }
+            }
+            debugBody = JSON.stringify(shortenLongStrings(json), null, 2)
+        } catch {
+            // ignore, use raw text
+        }
+        console.log(`Response body: ${debugBody}`)
     }
 
     if (!response.ok) {
@@ -620,10 +821,6 @@ async function apiCall(method: "GET" | "POST", path: string, context: ServerTask
 
     if (responseData === undefined || responseData === null) {
         fatalError(`No data received from server for call to '${path}'`)
-    }
-
-    if (context.debug) {
-        console.log(`Call to '${path}' got response: ${JSON.stringify(responseData, null, 2)}`)
     }
 
     return responseData
@@ -654,7 +851,7 @@ async function runDownloadTaskOn(tasks: TaskSpec[], overwrite: boolean, overwrit
             }
 
             const taskMetadata = (await task.getParsed()).metadata
-            const written = await writeOrMerge(targetFile, taskMetadata, parsed.htmlParts, overwrite, overwriteAll, context)
+            const written = await writeOrMerge(targetFile, taskMetadata, parsed.htmlParts, {}, overwrite, overwriteAll, context)
 
             if (written) {
                 numModified++
@@ -677,7 +874,7 @@ async function runDownloadTaskOn(tasks: TaskSpec[], overwrite: boolean, overwrit
  * will do nothing return false. This is also the case if locally modified content is found
  * (i.e., content whose hash does not match the stored generated hash) and overwriteAll is false.
  */
-async function writeOrMerge(targetFile: string, taskMetadata: TaskMetadata, newContent: Partial<ServerHTMLParts>, overwrite: boolean, overwriteAll: boolean, context: ServerTaskContext): Promise<boolean> {
+async function writeOrMerge(targetFile: string, taskMetadata: TaskMetadata, newContent: Partial<ServerHTMLParts>, newMetadata: Partial<Record<YamlKey, string | number | boolean>>, overwrite: boolean, overwriteAll: boolean, context: ServerTaskContext): Promise<boolean> {
 
     if (overwriteAll) {
         overwrite = true
@@ -701,6 +898,9 @@ async function writeOrMerge(targetFile: string, taskMetadata: TaskMetadata, newC
 
     // do we just write a new file?
     if (!fileExists) {
+        if (Object.keys(newMetadata).length !== 0) {
+            newContent.yamlMetadata = toYamlString(newMetadata)
+        }
         await writeAndCheck({ ...emptyServerHTMLParts(taskMetadata), ...newContent })
         return true
     }
@@ -738,14 +938,35 @@ async function writeOrMerge(targetFile: string, taskMetadata: TaskMetadata, newC
         }
     }
 
-    // loop though all simple fields and then all checksummed fields
+    // loop though all simple fields 
     for (const key of ServerHtmlTemplatePlaceholdersDirect) {
         checkFieldCanBeInserted(key)
     }
+    // ... and then all checksummed fields
     for (const key of ServerHtmlTemplatePlaceholdersChecked) {
         const existingHash = String(existingContent[`${key}Hash`]).trim()
         const existingSource = String(existingContent[`${key}Source`]).trim()
         checkFieldCanBeInserted(`${key}Html`, existingHash, existingSource)
+    }
+
+    // ... then metadata, handled specially
+    let existingMetadata
+    if (Object.keys(newMetadata).length !== 0 && isString(existingContent.yamlMetadata) && isRecord(existingMetadata = yaml.load(existingContent.yamlMetadata))) {
+
+        const mergedMetadata: Partial<Record<YamlKey, string | number | boolean>> = {}
+        let hasNewMetadataContent = false
+        for (const { yamlKey } of Object.values(MetadataFieldDefs)) {
+            if (yamlKey in newMetadata) {
+                mergedMetadata[yamlKey] = newMetadata[yamlKey]
+                hasNewMetadataContent = true
+            } else if (yamlKey in existingMetadata) {
+                mergedMetadata[yamlKey] = existingMetadata[yamlKey] as string | number | boolean
+            }
+        }
+        if (hasNewMetadataContent) {
+            hasNewContent = true
+            newContent.yamlMetadata = toYamlString(mergedMetadata)
+        }
     }
 
     // is there anything to report?
@@ -773,51 +994,12 @@ async function writeOrMerge(targetFile: string, taskMetadata: TaskMetadata, newC
 }
 
 
-const AllFields = {
-    "question": {
-        sectionTitle: "Body",
-        placeholderTitlePrefix: "question",
-        cuttleJsonFieldName: "que_content",
-    },
-    "answer": {
-        sectionTitle: "Answer Explanation",
-        placeholderTitlePrefix: "answer",
-        cuttleJsonFieldName: "que_explanation",
-    },
-    "itsinformatics": {
-        sectionTitle: "This is Informatics",
-        placeholderTitlePrefix: "itsinformatics",
-        cuttleJsonFieldName: "que_background_info",
-    },
-} as const satisfies Record<string, {
-    sectionTitle: string,
-    placeholderTitlePrefix: string,
-    cuttleJsonFieldName: string
-}>
-
-function validateFields(fields: string[]): asserts fields is (keyof typeof AllFields)[] {
-    for (let i = 0; i < fields.length; i++) {
-        const field = fields[i].toLowerCase()
-        let matched = false
-        for (const validField of Object.keys(AllFields)) {
-            if (validField.startsWith(field)) {
-                fields[i] = validField
-                matched = true
-                break
-            }
-        }
-        if (!matched) {
-            fatalError(`Invalid field: ${fields[i]}. Valid fields are: ${Object.keys(AllFields).join(", ")}; prefix matching is allowed.`)
-        }
-    }
-}
-
-export async function runInsertTaskOn(tasks: TaskSpec[], fields: string[], overwrite: boolean, overwriteAll: boolean, context: ServerTaskContext): Promise<string[]> {
+export async function runInsertTaskOn(tasks: TaskSpec[], fieldSpec: string[], overwrite: boolean, overwriteAll: boolean, context: ServerTaskContext): Promise<string[]> {
     if (context.debug) {
-        console.log(`runInsertTaskOn(tasks.length=${tasks.length}, fields=${fields.join(", ")}, overwrite=${overwrite}, overwriteAll=${overwriteAll})`)
+        console.log(`runInsertTaskOn(tasks.length=${tasks.length}, fields=${fieldSpec.join(", ")}, overwrite=${overwrite}, overwriteAll=${overwriteAll})`)
     }
 
-    validateFields(fields)
+    const { htmlFields, metadataFields } = getFields(fieldSpec)
 
     const modifiedFiles: string[] = []
     await BottomProgressBar.showWhile(tasks.length, async pbar => {
@@ -826,7 +1008,8 @@ export async function runInsertTaskOn(tasks: TaskSpec[], fields: string[], overw
 
             const targetFile = serverFileForTaskFile(task.file)
 
-            const { md, options, tokens, metadata, langCode } = await task.getParsed()
+            const parseResult = await task.getParsed()
+            const { md, options, tokens, metadata, langCode } = parseResult
 
             type AnswerType = ReturnType<typeof answerTypesFor>[number]
             const AnswerTypesWhereAnswerOptionsAreShown: Array<AnswerType> =
@@ -874,8 +1057,8 @@ export async function runInsertTaskOn(tasks: TaskSpec[], fields: string[], overw
             }
 
             const newContent: Partial<ServerHTMLParts> = {}
-            for (const field of fields) {
-                const { sectionTitle, placeholderTitlePrefix } = AllFields[field]
+            for (const field of htmlFields) {
+                const { sectionTitle, placeholderTitlePrefix } = HtmlFieldDefs[field]
 
                 // base field html
                 let renderedHtml = sectionHtmlFor(sectionTitle)
@@ -910,7 +1093,17 @@ export async function runInsertTaskOn(tasks: TaskSpec[], fields: string[], overw
                 newContent[`${placeholderTitlePrefix}Hash`] = md5(htmlContent)
                 newContent[`${placeholderTitlePrefix}Source`] = "markdown"
             }
-            const modified = await writeOrMerge(targetFile, metadata, newContent, overwrite, overwriteAll, context)
+
+            const newMetadata: Partial<Record<YamlKey, string | number | boolean>> = {}
+            for (const field of metadataFields) {
+                const fieldDef = MetadataFieldDefs[field]
+                if ("fromLocalTask" in fieldDef) {
+                    const value = fieldDef.fromLocalTask(parseResult) ?? fieldDef.defaultValue
+                    newMetadata[fieldDef.yamlKey] = value
+                }
+            }
+
+            const modified = await writeOrMerge(targetFile, metadata, newContent, newMetadata, overwrite, overwriteAll, context)
             if (modified) {
                 modifiedFiles.push(targetFile)
             }
@@ -1070,29 +1263,11 @@ function parseServerJson(json: unknown, taskId: string, serverTaskIdExpected: nu
         return undefined
     }
 
-    type FieldDef<T> = T extends string
-        ? [serverName: string, localName: string, defaultValue: string]
-        : T extends boolean // not sure why we need this special case, but OK
-        ? [serverName: string, localName: string, defaultValue: boolean, parser: (s: string) => boolean]
-        : [serverName: string, localName: string, defaultValue: T, parser: (s: string) => T]
+    const yamlData: Partial<Record<YamlKey, string | number | boolean>> = {}
+    for (const field of Object.values(MetadataFieldDefs)) {
+        const serverField = field.cuttleJsonFieldName
+        const parser = "fromCuttle" in field ? field.fromCuttle : undefined
 
-    const toBool = (s: string) => s.toLowerCase() === "true"
-
-    const fieldsForYaml = [
-        ["que_identifier", "id", "0000-AA-00-eng"],
-        ["que_version", "lang", "n/a"],
-        ["que_year", "year", 1900, Number],
-        ["que_id", "serverId", 0, Number],
-        ["que_name", "title", "n/a"],
-        ["que_grd_id", "grader", 0, Number],
-        ["que_quf_id", "folder", 0, Number],
-        ["que_allow_school_usage", "allowSchoolUsage", false, toBool],
-    ] as const satisfies FieldDef<string | number | boolean>[]
-
-    type YamlField = typeof fieldsForYaml[number][1]
-
-    const yamlData: Record<YamlField, string | number | boolean> = {} as any
-    for (const [serverField, localField, defaultValue, parser] of fieldsForYaml) {
         let value: string | number | boolean | undefined = undefined
         if (!(serverField in json)) {
             warn(`Field ${serverField} not found in server JSON`)
@@ -1111,7 +1286,7 @@ function parseServerJson(json: unknown, taskId: string, serverTaskIdExpected: nu
                 }
             }
         }
-        yamlData[localField] = value ?? defaultValue
+        yamlData[field.yamlKey] = value ?? field.defaultValue
     }
 
     // Data consistency checks
@@ -1169,9 +1344,9 @@ function parseServerJson(json: unknown, taskId: string, serverTaskIdExpected: nu
 
     const content: ServerHTMLParts = {
         htmlTitle: `${yamlData.id} — ${yamlData.title}-${yamlData.lang}`,
-        taskTitle: yamlData.title,
-        taskId: yamlData.id,
-        yamlMetadata: yaml.dump(yamlData, { indent: 4 }).trim(),
+        taskTitle: yamlData.title as string,
+        taskId: yamlData.id as string,
+        yamlMetadata: toYamlString(yamlData),
         graderSpec: (json as any)['que_answers']?.trim() ?? "",
         questionHtml, questionHash, questionSource: source,
         answerHtml, answerHash, answerSource: source,
@@ -1179,6 +1354,10 @@ function parseServerJson(json: unknown, taskId: string, serverTaskIdExpected: nu
     }
 
     return { htmlParts: content, serverTaskId: serverTaskIdActual }
+}
+
+function toYamlString(data: Partial<Record<YamlKey, string | number | boolean>>): string {
+    return yaml.dump(data, { indent: 4 }).trimEnd()
 }
 
 function prettifySectionHtml(rawHtml: string | undefined,

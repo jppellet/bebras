@@ -140,8 +140,9 @@ export function parseMarkdown(text: string, taskFile: string, basePath: string, 
 
 export type ServerHtmlTemplatePlaceholders = ExtractPlaceholders<ReturnType<typeof makeServerHtmlTemplate>>
 export type ServerHTMLParts = Record<ServerHtmlTemplatePlaceholders, string | number | boolean>
+export const ServerHtmlTemplatePlaceholderMetadata = "yamlMetadata"
 export const ServerHtmlTemplatePlaceholdersDirect = [
-   "htmlTitle", "yamlMetadata", "graderSpec", "taskTitle", "taskId",
+   "htmlTitle", "graderSpec", "taskTitle", "taskId",
 ] as const satisfies ServerHtmlTemplatePlaceholders[]
 export type ServerSyncField = "question" | "answer" | "itsinformatics"
 export const ServerHtmlTemplatePlaceholdersChecked = [
