@@ -939,7 +939,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
 
         "container_clear_open": (tokens, idx, env) => {
-            return `` // TODO: try to clear all figures
+            return `\\wrapfill\n`
         },
 
         "container_clear_close": (tokens, idx, env) => {
@@ -1150,33 +1150,40 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         return name
             .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
             .replace(/ł/g, "l")
+            .replace(/ð/g, "d")
             .replace(/[\-]/g, "")
     }
 
     function normalizeAuthorName(fullName: string): string[] {
-        const parts = fullName.split(/ +/)
-        if (parts.length === 1) {
-            console.log(`WARNING: Cannot split full name '${fullName}'`)
-            return [asciify(parts[0]), "A"]
-        } else {
-            if (year === 'latest' || year <= 2023) {
-                // just one letter for first name
-                if (parts.length === 2) {
-                    return [asciify(parts[1]), asciify(parts[0][0]).toUpperCase()]
-                } else {
-                    const split: [string, string] = [asciify(parts[parts.length - 1]), asciify(parts[0][0]).toUpperCase()]
-                    // console.log(`WARNING: Check split for full name '${fullName}': ${split}`)
-                    return split
-                }
+        try {
+            const parts = fullName.split(/ +/).filter((p) => p.length > 0)
+            if (parts.length === 1) {
+                console.log(`WARNING: In file ${taskFile}, cannot split full name '${fullName}'`)
+                return [asciify(parts[0]), "A"]
             } else {
-                // complete first name
-                const normalizedParts = []
-                for (let i = parts.length - 1; i >= 0; i--) {
-                    const asciified = asciify(parts[i]).replace(/\./g, "")
-                    normalizedParts.push(asciified[0].toUpperCase() + asciified.slice(1))
+                if (year === 'latest' || year <= 2023) {
+                    // just one letter for first name
+                    if (parts.length === 2) {
+                        return [asciify(parts[1]), asciify(parts[0][0]).toUpperCase()]
+                    } else {
+                        const split: [string, string] = [asciify(parts[parts.length - 1]), asciify(parts[0][0]).toUpperCase()]
+                        // console.log(`WARNING: In file ${taskFile}, check split for full name '${fullName}': ${split}`)
+                        return split
+                    }
+                } else {
+                    // complete first name
+                    const normalizedParts = []
+                    for (let i = parts.length - 1; i >= 0; i--) {
+                        const asciified = asciify(parts[i]).replace(/\./g, "")
+                        normalizedParts.push(asciified[0].toUpperCase() + asciified.slice(1))
+                    }
+                    return normalizedParts
                 }
-                return normalizedParts
             }
+        } catch (e) {
+            console.log(`ERROR: In file ${taskFile}, cannot normalize full name '${fullName}': ${e}`)
+            throw e
+            // return [asciify(fullName), "A"]
         }
     }
 
@@ -1187,15 +1194,14 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             if (match) {
                 const name = match.groups.name
                 const nameParts = normalizeAuthorName(name)
-                const authorCmd = "\\Author" + nameParts.join("")
+                const authorKey = nameParts.join("")
+                const authorCmd = "\\Author" + authorKey
                 const lowercaseCountryCode = codes.countryCodeByCountryName[match.groups.country]?.toLowerCase() ?? "aa"
                 if (lowercaseCountryCode === "aa") {
                     console.log(`WARNING: unrecognized country '${match.groups.country}'`)
                 }
                 const texifiedName = name.replace(/\. /g, ".~")
-                const define = `\\ifdefined${authorCmd} \\BrochureFlag{${lowercaseCountryCode}}{} ${texifiedName}\\fi`
-                const marker = `\\def${authorCmd}{}`
-                authorLines.push(`${marker} % ${define}`)
+                authorLines.push(`\\BrochureAddTaskAuthor{key={${authorKey}}, name={${texifiedName}}, email={${match.groups.email}}, country=${lowercaseCountryCode}}`)
             }
         })
         return authorLines.join("\n")
@@ -1204,9 +1210,8 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
     function sectionTexFor(secName: string, fallbackSecName?: string): string {
 
         function defaultContents() {
-            console.log(`WARNING: No content for section '${secName}'` + (isUndefined(fallbackSecName) ? "" : ` (fallback name: '${fallbackSecName}')`))
-            console.log(Object.keys(sectionStrs))
-            return ["TODO"]
+            console.log(`WARNING: In file ${taskFile}, no content was found for section '${secName}'` + (isUndefined(fallbackSecName) ? "" : ` (fallback name: '${fallbackSecName}'); using TODO placeholder`))
+            return [`TODO -- section '${secName}'`]
         }
 
         sectionStrs
@@ -1247,6 +1252,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 % task body
 ${sectionTexFor("Body")}
 
+\\wrapfill
 \\begin{BrochureNoBreak}
 
 % question (as \\emph{})
@@ -1261,7 +1267,7 @@ ${isInteractiveTask ? '' : sectionTexFor("Answer Options/Interactivity Descripti
 
 % from here on this is only included if solutions are processed
 \\ifthenelse{\\boolean{solutions}}{
-\\newpage
+\\clearpage
 
 % answer explanation
 \\section*{\\BrochureSolution}
@@ -1291,7 +1297,6 @@ ${sectionTexFor("Computational Thinking Keywords and Websites")}
 }{}
 
 % all authors
-% Note: there has to be a corresponding entry is in ../main/authors.tex.
 ${authorDefs()}
 
 \\newpage}{}
@@ -1314,20 +1319,6 @@ ${babel}
 
 \\usepackage[margin=2.1cm]{geometry}
 \\usepackage{changepage}
-\\makeatletter
-\\renewenvironment{adjustwidth}[2]{%
-    \\begin{list}{}{%
-    \\partopsep\\z@%
-    \\topsep\\z@%
-    \\listparindent\\parindent%
-    \\parsep\\parskip%
-    \\@ifmtarg{#1}{\\setlength{\\leftmargin}{\\z@}}%
-                 {\\setlength{\\leftmargin}{#1}}%
-    \\@ifmtarg{#2}{\\setlength{\\rightmargin}{\\z@}}%
-                 {\\setlength{\\rightmargin}{#2}}%
-    }
-    \\item[]}{\\end{list}}
-\\makeatother
 
 \\newcommand{\\BrochureUrlText}[1]{\\texttt{#1}}
 \\usepackage{setspace}
@@ -1336,6 +1327,7 @@ ${babel}
 \\usepackage{tabularx}
 \\usepackage{tabularray}
 \\UseTblrLibrary{booktabs}
+\\UseTblrLibrary{varwidth}
 \\SetTblrInner{rowsep=0.5pt}
 \\usepackage{booktabs}
 \\usepackage{makecell}
@@ -1395,12 +1387,58 @@ ${babel}
 \\usepackage{svg}
 \\svgsetup{inkscapeversion=1,inkscapearea=page}
 \\usepackage{wrapfig}
+\\makeatletter
+\\newdimen\\BrochureWrapStart
+\\newdimen\\BrochureWrapBaseline
+\\newdimen\\BrochureWrapFillSkip
+\\newcount\\BrochureWrapStartLines
+\\newcount\\BrochureWrapStartPage
+\\newif\\ifBrochureWrapMeasurable
+\\g@addto@macro\\WF@startwrapping{%
+  \\global\\BrochureWrapMeasurablefalse
+  \\ifinner\\else
+    \\global\\BrochureWrapMeasurabletrue
+    \\global\\BrochureWrapStart=\\dimexpr\\pagetotal+\\pagedepth\\relax
+    \\global\\BrochureWrapBaseline=\\baselineskip
+    \\global\\BrochureWrapStartLines=\\c@WF@wrappedlines
+    \\global\\BrochureWrapStartPage=\\c@page
+  \\fi
+}
+\\newcommand{\\wrapfill}{\\par\\ifnum\\value{WF@wrappedlines}>0
+  \\BrochureWrapFillSkip=\\baselineskip
+  \\multiply\\BrochureWrapFillSkip by \\numexpr\\c@WF@wrappedlines-1\\relax
+  % The line counter does not account for paragraph and list spacing.
+  \\ifBrochureWrapMeasurable
+    \\ifinner\\else
+      \\ifnum\\c@page=\\BrochureWrapStartPage
+        \\ifdim\\pagetotal>\\BrochureWrapStart
+          \\@tempcnta=\\numexpr\\BrochureWrapStartLines-\\c@WF@wrappedlines\\relax
+          \\ifnum\\@tempcnta>0
+            \\@tempdima=\\dimexpr\\pagetotal+\\pagedepth-\\BrochureWrapStart
+              -\\BrochureWrapBaseline*\\@tempcnta\\relax
+            \\ifdim\\@tempdima>0pt
+              \\advance\\BrochureWrapFillSkip by -\\@tempdima
+              \\ifdim\\BrochureWrapFillSkip<0pt \\BrochureWrapFillSkip=0pt\\fi
+            \\fi
+          \\fi
+        \\fi
+      \\fi
+    \\fi
+  \\fi
+  \\WFclear
+  \\vspace{\\BrochureWrapFillSkip}%
+\\fi}
+\\makeatother
+\\pretocmd{\\subsection}{\\wrapfill}{}{}
+\\pretocmd{\\section}{\\wrapfill}{}{}
 
 \\usepackage[shortlabels]{enumitem}
 % have nicer lists closer to the previous paragraph, when nested
 \\setlist{nosep,before=\\vspace{0.3\\BrochureParSkip},after=\\vspace{0.2\\BrochureParSkip},itemsep=0.4ex}
 % similar list settings for top-level lists
 \\setlist[1]{nosep,before=\\vspace{-0.5\\BrochureParSkip},itemsep=0.5ex}
+% tblr already modifies some vertical space,
+\\AtBeginEnvironment{tblr}{\\setlist[1]{before=\\vspace{0.3\\BrochureParSkip}}}
 
 \\setlength{\\parindent}{0pt}
 \\newlength{\\BrochureParSkip}

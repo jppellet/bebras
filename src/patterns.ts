@@ -473,8 +473,8 @@ export const texInlineNumbersPattern = capturing<{
     n: always,
     post: always,
 }>(
-    // any number not followed by '-' or '_' ('_' will have been prefixed by \ by now)
-    "(?<pre>\\b)(?<n>([\\+\\-])?[\\d]+(?:\\.[\\d]+)?)(?=[^\\-\\\\])(?<post>\\b)", "g"
+    // any number not prefixed by a letter and not followed by '-' or '_' ('_' will have been prefixed by \ by now)
+    "(?<![A-Za-z])(?<pre>\\b)(?<n>([\\+\\-])?\\d+(?:\\.\\d+)?)(?=[^\\-\\\\])(?<post>\\b)", "g"
 )
 
 
