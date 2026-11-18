@@ -4,8 +4,8 @@ import * as path from 'path'
 import { Command } from 'commander'
 
 import { parseQuotes, PluginOptions } from '../convert_html'
-import { findTasksFilesOrEnsureIsTaskFile, modificationDateIsLater } from '../fsutil'
-import { defaultOutputFile, defaultOutputFilename, fatalError, isString, mkStringCommaAnd, OutputFormat, OutputFormats } from '../util'
+import { findTasksFilesOrEnsureIsTaskFile, logWriteResult, modificationDateIsLater, WriteResult } from '../fsutil'
+import { BottomProgressBar, defaultOutputFile, defaultOutputFilename, fatalError, isArray, isString, mkStringCommaAnd, OutputFormat, OutputFormats } from '../util'
 
 export function makeCommand_convert() {
     return new Command()
@@ -59,24 +59,43 @@ async function convert(format: string, source: string, options: any): Promise<vo
     }
 
     const convModule: any = require('../convert_' + format)
+    let numWritten = 0
+    let numUpToDate = 0
+    const immediateLog = taskFiles.length === 1
 
-    for (const taskFile of taskFiles) {
-        const output = getOutputDestination(options.output, taskFile, isRecursive, format)
+    await BottomProgressBar.showWhile(taskFiles.length, async pbar => {
+        for (const taskFile of taskFiles) {
+            const output = getOutputDestination(options.output, taskFile, isRecursive, format)
 
-        if (isString(output)) {
-            // const outputFileDir = path.dirname(output)
+            if (isString(output)) {
+                // const outputFileDir = path.dirname(output)
 
-            if (!force && (fs.existsSync(output)) && !(await modificationDateIsLater(taskFile, output))) {
-                console.log(`Output file '${output}' seems up to date.`)
-                continue
+                if (!force && (fs.existsSync(output)) && !(await modificationDateIsLater(taskFile, output))) {
+                    if (immediateLog) {
+                        console.log(`Output file '${output}' seems up to date.`)
+                    }
+                    numUpToDate++
+                    continue
+                }
             }
+
+            // console.log(`Converting '${taskFile}' to '${outputFile}'...`)
+
+            const methodName = "convertTask_" + format
+            const result: WriteResult = await convModule[methodName](taskFile, output, pluginOptions)
+            numWritten += isArray(result) ? result.length : result.type === "stdout" ? 0 : 1
+
+            if (immediateLog) {
+                logWriteResult(result)
+            } else {
+                pbar.update(taskFile)
+            }
+
         }
+    })
 
-        // console.log(`Converting '${taskFile}' to '${outputFile}'...`)
-
-        const methodName = "convertTask_" + format
-        const pathOrTrue: string | true = await convModule[methodName](taskFile, output, pluginOptions)
-
+    if (taskFiles.length > 1) {
+        console.log(`Wrote ${numWritten} file${numWritten > 1 ? "s" : ""}${numUpToDate === 0 ? '' : `; ${numUpToDate} up to date`}.`)
     }
 
 }

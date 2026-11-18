@@ -14,7 +14,7 @@ import patterns = require('./patterns')
 
 import { exec } from 'child_process'
 import { PluginOptions } from './convert_html'
-import { loadBebrasConfig, readFileStrippingBom, siblingWithExtension, toFileUrl, writeData } from './fsutil'
+import { loadBebrasConfig, readFileStrippingBom, siblingWithExtension, toFileUrl, writeData, WriteResultSingle } from './fsutil'
 import { PdfBookmarkMetadata } from './json_schemas'
 import templates from './templates'
 import { TaskMetadata } from './util'
@@ -22,7 +22,7 @@ import { TaskMetadata } from './util'
 // const PDFJSWorker = '../../../node_modules/pdfjs-dist/build/pdf.worker.js'
 // pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJSWorker
 
-export async function convertTask_pdf(taskFile: string, output: string | true, options: Partial<PluginOptions> = {}): Promise<string | true> {
+export async function convertTask_pdf(taskFile: string, output: string | true, options: Partial<PluginOptions> = {}): Promise<WriteResultSingle> {
 
     const [pdfData, metadata, sectionTitles] = await renderPdf(taskFile, options)
 

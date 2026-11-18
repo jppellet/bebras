@@ -3,6 +3,7 @@ import patterns = require('./patterns')
 import codes = require("./codes")
 import hasbin = require('hasbin')
 import { BinaryLike, createHash } from 'crypto'
+import { performance } from 'perf_hooks'
 import { ServerSyncField } from './convert_html'
 
 
@@ -179,8 +180,29 @@ type BottomProgressBarInterface = {
     update(description?: string, by?: number): void
 }
 
+export function formatDuration(ms: number): string {
+    if (ms < 1000) {
+        return `${ms} ms`
+    }
+    let s = Math.floor(ms / 1000)
+    ms = ms % 1000
+    if (s < 60) {
+        return `${s} s ${ms} ms`
+    }
+    let m = Math.floor(s / 60)
+    s = s % 60
+    if (m < 60) {
+        return `${m} min ${s} s`
+    }
+    let h = Math.floor(m / 60)
+    m = m % 60
+    return `${h} h ${m} min ${s} s`
+}
+
+
 export class BottomProgressBar implements BottomProgressBarInterface {
 
+    private readonly _startTime: number
     private _current = 0
     private _msg: string = ""
     private _rendered = false
@@ -202,6 +224,7 @@ export class BottomProgressBar implements BottomProgressBarInterface {
         public readonly numSteps: number,
         public readonly charWidth = 40
     ) {
+        this._startTime = performance.now()
         // Patch console.log
         this.originalConsoleLog = console.log
         console.log = (...args: unknown[]) => {
@@ -218,7 +241,9 @@ export class BottomProgressBar implements BottomProgressBarInterface {
     }
 
     private _finish(description?: string): void {
-        this.update(description ?? "", this.numSteps - this._current)
+        const duration = Math.round(performance.now() - this._startTime)
+        const durationStr = formatDuration(duration)
+        this.update((description ?? "") + `-  ${durationStr}`, this.numSteps - this._current)
         process.stdout.write("\n")
         this._rendered = false
         console.log = this.originalConsoleLog

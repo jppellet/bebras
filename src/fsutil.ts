@@ -4,7 +4,7 @@ import * as json5 from "json5"
 import fetch from "node-fetch"
 import * as path from "path"
 import { taskFileExtension } from "./patterns"
-import { BebrasConfig, deepMerge, defaultBebrasConfig, fatalError, isRecord, isString } from "./util"
+import { BebrasConfig, deepMerge, defaultBebrasConfig, fatalError, isArray, isRecord, isString } from "./util"
 import hasbin = require("hasbin")
 
 export function isTaskFile(path: string, ensureExistenceToo: boolean): boolean {
@@ -100,18 +100,43 @@ export async function mkdirsOf(child: string): Promise<void> {
     }
 }
 
-export async function writeData(data: string | Buffer | Uint8Array, output: string | true, desc: string): Promise<string | true> {
+export type WriteResultFile = { type: "file", file: string, desc: string }
+
+export type WriteResult =
+    | { type: "stdout" }
+    | WriteResultFile
+    | WriteResultFile[]
+
+export type WriteResultSingle = Extract<WriteResult, { type: any }>
+
+type WriteResultFor<O extends string | true> = O extends string ?
+    Extract<WriteResult, { type: "file" }> :
+    Extract<WriteResult, { type: "stdout" }>
+
+export async function writeData<O extends string | true>(data: string | Buffer | Uint8Array, output: O, desc: string): Promise<WriteResultFor<O>> {
     if (isString(output)) {
         // file
         await mkdirsOf(output)
         await fs.promises.writeFile(output, data)
-        console.log(`${desc} written on ${output}`)
-        return output
+        return { type: "file", file: output, desc } satisfies WriteResultFor<string> as WriteResultFor<O>
     } else {
         // stdout
         console.log(data)
-        return true
+        return { type: "stdout" } satisfies WriteResultFor<true> as WriteResultFor<O>
     }
+}
+
+export function logWriteResult<R extends WriteResult>(result: R): R {
+    if (isArray(result)) {
+        for (const r of result) {
+            logWriteResult(r)
+        }
+    } else if (result.type === "stdout") {
+        // don't pollute stdout, nothing
+    } else {
+        console.log(`${result.desc} written on ${result.file}`)
+    }
+    return result
 }
 
 export function isBinaryAvailable(binName: string): Promise<boolean> {

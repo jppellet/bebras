@@ -9,12 +9,11 @@ import codes = require("./codes")
 import { isString, isUndefined } from 'lodash'
 import { parseTask, PluginOptions } from './convert_html'
 import { ImageTokenMeta, linearizeTokens } from './convert_html_markdownit'
-import { loadBebrasConfig, siblingWithExtension, writeData } from './fsutil'
+import { loadBebrasConfig, siblingWithExtension, writeData, WriteResult, WriteResultFile } from './fsutil'
 import { lineStretchPattern } from './patterns'
 
 
-
-export async function convertTask_tex(taskFile: string, output: string | true, options: Partial<PluginOptions> = {}): Promise<string | true> {
+export async function convertTask_tex(taskFile: string, output: string | true, options: Partial<PluginOptions> = {}): Promise<WriteResult> {
 
     const { tokens, metadata, langCode } = await parseTask(taskFile, {
         ...options,
@@ -25,23 +24,27 @@ export async function convertTask_tex(taskFile: string, output: string | true, o
     const linealizedTokens = linearizeTokens(tokens)
 
     const texDataStandalone = renderTex(linealizedTokens, langCode, metadata, taskFile, true)
-    const result = await writeData(texDataStandalone.tex, output, "Standalone TeX")
+    const standaloneResult = await writeData(texDataStandalone.tex, output, "Standalone TeX")
     if (texDataStandalone.verbatims.length > 0) {
-        console.log(`Standalone TeX generated separate verbatims which should have been inlined: ${texDataStandalone.verbatims.map(v => v.name).join(", ")}`)
+        console.log(`Standalone TeX generated separate verbatims which should have been inlined for file ${taskFile}: ${texDataStandalone.verbatims.map(v => v.name).join(", ")}`)
     }
 
-    if (output !== true) {
-        // write the brochure version
-        const texDataBrochure = renderTex(linealizedTokens, langCode, metadata, taskFile, false)
-        const fileOutBrochure = siblingWithExtension(output, "_brochure.tex")
-        await writeData(texDataBrochure.tex, fileOutBrochure, "Brochure TeX")
-        for (const v of texDataBrochure.verbatims) {
-            const verbatimFile = siblingWithExtension(fileOutBrochure, `_${v.name}.tex`)
-            await writeData(v.content, verbatimFile, `Brochure TeX ${v.name}`)
-        }
+    if (output === true) {
+        return standaloneResult
     }
 
-    return result
+    const allResults = [standaloneResult as WriteResultFile]
+
+    // write the brochure version
+    const texDataBrochure = renderTex(linealizedTokens, langCode, metadata, taskFile, false)
+    const fileOutBrochure = siblingWithExtension(output, "_brochure.tex")
+    allResults.push(await writeData(texDataBrochure.tex, fileOutBrochure, "Brochure TeX"))
+    for (const v of texDataBrochure.verbatims) {
+        const verbatimFile = siblingWithExtension(fileOutBrochure, `_${v.name}.tex`)
+        allResults.push(await writeData(v.content, verbatimFile, `Brochure TeX ${v.name}`))
+    }
+
+    return allResults
 }
 
 type TexRender = {
@@ -62,7 +65,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
     let _currentSection: string = "prologue"
 
     function warn(msg: string) {
-        console.log(`Warning: ${msg}`)
+        console.log(`[WARNING] In file ${taskFile}: ${msg}`)
         console.log(`  while procesing following token:`)
         console.log(_currentToken)
     }
@@ -557,11 +560,12 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
             const DEBUG_IMAGE_PLACEMENT = false
             const debugPlacement = !DEBUG_IMAGE_PLACEMENT ? () => { } : (msg: string) => {
-                console.log(`For image '${meta.imgId}': ${msg}`)
+                console.log(`In file ${taskFile}, for image '${meta.imgId}': ${msg}`)
             }
 
             // this is used when the image is alone in a table cell
-            function useInCellMarkup(cell: RendererStateCell) {
+            function useSoleImgInCellMarkup(cell: RendererStateCell) {
+
                 const raiseboxDim =
                     cell.valign === "top" ? "-\\height+\\ht\\strutbox" :
                         cell.valign === "bottom" ? "-\\dp\\strutbox" :

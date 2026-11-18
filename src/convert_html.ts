@@ -8,14 +8,14 @@ import { ChildNode, Comment } from 'domhandler'
 import { isString, isUndefined } from 'lodash'
 import { defaultLanguageCode, languageNameAndShortCodeByLongCode } from './codes'
 import { plugin, PluginContext } from './convert_html_markdownit'
-import { readFileStrippingBom, writeData } from './fsutil'
+import { readFileStrippingBom, writeData, WriteResultSingle } from './fsutil'
 import { BebrasConfig, ExtractPlaceholders, md5, parseLanguageCodeFromTaskPath, TaskMetadata } from './util'
 
-export async function convertTask_html(taskFile: string, outputFile: string, options: Partial<PluginOptions> = {}): Promise<string | true> {
+export async function convertTask_html(taskFile: string, outputFile: string, options: Partial<PluginOptions> = {}): Promise<WriteResultSingle> {
    return convertTask_html_impl(taskFile, outputFile, true, options)
 }
 
-export async function convertTask_html_impl(taskFile: string, output: string | true, fullHtml: boolean, options: Partial<PluginOptions>): Promise<string | true> {
+export async function convertTask_html_impl(taskFile: string, output: string | true, fullHtml: boolean, options: Partial<PluginOptions>): Promise<WriteResultSingle> {
    const mdText = await readFileStrippingBom(taskFile)
    const langCode = parseLanguageCodeFromTaskPath(taskFile)
    const [htmlText, metadata] = renderMarkdown(mdText, taskFile, path.dirname(taskFile), fullHtml, langCode, options)

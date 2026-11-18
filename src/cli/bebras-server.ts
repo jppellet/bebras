@@ -10,7 +10,7 @@ import * as path from "path"
 import { warn } from "console"
 import { languageNameAndShortCodeByLongCode } from "../codes"
 import { convertImageFilename, cuttleImagePathForImage, emptyServerHTMLParts, makeServerHTMLFile, ParseResult, parseServerHTMLFile, parseTask, postprocessHtmlDecodingEntities, ServerHTMLParts, ServerHtmlTemplatePlaceholders, ServerHtmlTemplatePlaceholdersChecked, ServerHtmlTemplatePlaceholdersDirect } from "../convert_html"
-import { findTasksFilesOrEnsureIsTaskFile, loadBebrasConfig, siblingWithExtension, urlExists, writeData } from "../fsutil"
+import { findTasksFilesOrEnsureIsTaskFile, loadBebrasConfig, logWriteResult, siblingWithExtension, urlExists, writeData, WriteResultSingle } from "../fsutil"
 import { patterns } from "../main"
 import { answerTypesFor } from "../patterns"
 import { BebrasConfig, BottomProgressBar, fatalError, isRecord, isString, md5, md5Matches, TaskMetadata } from "../util"
@@ -216,8 +216,8 @@ export function makeCommand_server() {
     addCommand("new", "Creates a new task on the Cuttle server", false, cmd, cmd => cmd
         .option('-f, --force', 'force creation of a server task even if one with the same ID exists', false)
         .option('-u, --upload', 'also run the full upload process', false)
-        .option("-g, --grader <id>", "specify the grader ID to use for new tasks", "")
-        .option("-F, --folder <id>", "specify the folder ID to use for new tasks", "")
+        .option("--grader <id>", "specify the grader ID to use for new tasks", "")
+        .option("--folder <id>", "specify the folder ID to use for new tasks", "")
     )
 
     addCommand("upload", "Uploads tasks to the Cuttle server", true, cmd, cmd => cmd
@@ -881,7 +881,7 @@ async function writeOrMerge(targetFile: string, taskMetadata: TaskMetadata, newC
     }
 
     // called to write content and verify by parsing back, useful during development
-    async function writeAndCheck(content: ServerHTMLParts): Promise<void> {
+    async function writeAndCheck(content: ServerHTMLParts): Promise<WriteResultSingle> {
         const serverHtml = makeServerHTMLFile(context.config, content)
         // verify by parsing back
         const parsedContent = parseServerHTMLFile(serverHtml)
@@ -891,7 +891,7 @@ async function writeOrMerge(targetFile: string, taskMetadata: TaskMetadata, newC
             warn("Parsed fields from saved HTML:", parsedContent)
         }
 
-        await writeData(serverHtml, targetFile, `Server HTML`)
+        return logWriteResult(await writeData(serverHtml, targetFile, "Server HTML"))
     }
 
     const fileExists = fs.existsSync(targetFile)
