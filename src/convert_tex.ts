@@ -275,7 +275,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         return false
     }
 
-    function closeLineIfNeeded(env: RendererEnv) {
+    function closeLineIfNeeded(env: RendererEnv, isTableClose: boolean) {
         env.setState({ currentTableColumnIndex: -1 })
         const { latestTableCellType, latestTableRowToken, currentTable } = env.state()
         if (latestTableCellType) {
@@ -285,9 +285,14 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             const needsLine = latestTableCellType === "header" || lineBelow
             const lineIfNeeded = needsLine ? `\\specialrule{\\lightrulewidth}${additionalRowSpace ? "{2pt}{3pt}" : "{0.5pt}{2pt}"}\n` : "" // \topstrut doesn't work if followed by \muticolumn...
             // const lineIfNeeded = needsLine ? "\\midrule\n" : "" // \topstrut doesn't work if followed by \muticolumn...
-            return ` \\\\ \n${lineIfNeeded}`
+            const lineEnd = ` \\\\ \n${lineIfNeeded}`
+            if (!isTableClose) {
+                return lineEnd
+            } else {
+                return needsLine ? lineEnd : "\n"
+            }
         }
-        return ""
+        return isTableClose ? "\\n" : ""
     }
 
     function horizontalAlignmentChar(halignStr: TableHAlign, hresize: boolean): string {
@@ -331,8 +336,8 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
 
         function isSpannedByMultirowOrMulticol(): boolean {
             for (const multi of state.multirowsMulticols) {
-                if (colIndex > multi.colIndex && colIndex < multi.colIndex + multi.colspan
-                    && rowIndex > multi.rowIndex && rowIndex < multi.rowIndex + multi.rowspan) {
+                if (colIndex >= multi.colIndex && colIndex < multi.colIndex + multi.colspan
+                    && rowIndex >= multi.rowIndex && rowIndex < multi.rowIndex + multi.rowspan) {
                     return true
                 }
             }
@@ -562,8 +567,20 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                         cell.valign === "bottom" ? "-\\dp\\strutbox" :
                 /* else, middle */ "-\\height/2+\\dp\\strutbox/2"
 
+                // first raisebox adjusts padding, second raisebox adjusts vertical alignment
                 before = `\\raisebox{\\dimexpr ${raiseboxDim} \\relax}{`
                 after = `}`
+
+                // if we are a picture alone in a cell and there is no "paragraph cell" in the table,
+                // we add a bit of vertical padding
+                const addVerticalPadding = !tableHasAdditionalRowSpace(cell.table)
+                if (addVerticalPadding) {
+                    const topBottomPadding = "2.5px"
+                    const sizeOptions =
+                        `[\\dimexpr\\height+${topBottomPadding}\\relax][\\dimexpr\\depth+${topBottomPadding}\\relax]`
+                    before = `\\raisebox{0pt}${sizeOptions}{` + before
+                    after += `}`
+                }
             }
 
             // this is used when the image is alone in a paragraph
@@ -573,7 +590,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
             }
 
             // this is used when the image is inline
-            function useRaisebox(ignoreHeight: boolean, vAdjust?: string) {
+            function useInlineRaisebox(ignoreHeight: boolean, vAdjust?: string) {
                 const baseOffset = "-0.5ex"
                 const raiseboxParam = isUndefined(vAdjust)
                     ? baseOffset
@@ -590,23 +607,23 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
                 if (isSurrounded(tokens, idx, 1, "paragraph")) {
                     if (isSurrounded(tokens, idx, 2, "td")) {
                         debugPlacement("use in-cell markup")
-                        useInCellMarkup(state.currentTableCell!)
+                        useSoleImgInCellMarkup(state.currentTableCell!)
                     } else if (!isInTable && plcmt.placement !== "nocenter") {
                         debugPlacement("use center env")
                         useCenterEnv()
                     } else {
                         // inline in table cell
                         debugPlacement("use raisebox1")
-                        useRaisebox(false, plcmt.voffset)
+                        useInlineRaisebox(false, plcmt.voffset)
                     }
                 } else if (isSurrounded(tokens, idx, 1, "td")) {
                     debugPlacement("use in-cell markup")
-                    useInCellMarkup(state.currentTableCell!)
+                    useSoleImgInCellMarkup(state.currentTableCell!)
                 } else if (plcmt.shouldInline) {
                     // inline in paragraph
                     const ignoreHeight = plcmt.heuristicSaysIgnoreHeightWhenInline && !plcmt.forceFullHeightWhenInline
                     debugPlacement("use raisebox2, ignoreHeight=" + ignoreHeight + ", voffset=" + plcmt.voffset)
-                    useRaisebox(ignoreHeight, plcmt.voffset)
+                    useInlineRaisebox(ignoreHeight, plcmt.voffset)
                 } else {
                     debugPlacement("use raw")
                     // console.log(tokens.slice(idx - 5, idx + 5))
@@ -847,8 +864,9 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         },
 
         "table_close": (tokens, idx, env) => {
+            const closeIfNeeded = closeLineIfNeeded(env, true)
             env.popState()
-            return `\n\\end{tblr}\n\n`
+            return closeIfNeeded + `\\end{tblr}\n\n`
         },
 
         "thead_open": skip,
@@ -857,7 +875,7 @@ export function renderTex(linealizedTokens: Token[], langCode: string, metadata:
         "tbody_close": skip,
 
         "tr_open": (tokens, idx, env) => {
-            const closeIfNeeded = closeLineIfNeeded(env)
+            const closeIfNeeded = closeLineIfNeeded(env, false)
             env.setState({
                 currentTableRowIndex: env.state().currentTableRowIndex + 1,
                 latestTableRowToken: tokens[idx],
