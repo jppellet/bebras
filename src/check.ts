@@ -312,7 +312,7 @@ export async function check(text: string, taskFile: string, strictChecks: boolea
             }
 
             const countryCode = match.groups.country_code ?? "ZZ"
-            mainCountry = codes.countryNameByCountryCodes[countryCode]
+            mainCountry = codes.countryNamesByCountryCode[countryCode]?.[0]
             if (isUndefined(mainCountry)) {
                 let [start, _] = fmRangeForValueInDef("id", idPlain)
                 start += 5

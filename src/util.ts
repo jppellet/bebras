@@ -399,7 +399,7 @@ export namespace TaskMetadata {
             id_plain: match.groups.id_plain,
             year: parseInt(match.groups.year),
             country_code: match.groups.country_code,
-            country: codes.countryNameByCountryCodes[match.groups.country_code] ?? "((unknown))",
+            country: codes.countryNamesByCountryCode[match.groups.country_code]?.[0] ?? "((unknown))",
             num: parseInt(match.groups.num),
             variant: match.groups.variant,
             usage_year: match.groups.usage_year ? parseInt(match.groups.usage_year) : undefined,
