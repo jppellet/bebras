@@ -1041,6 +1041,43 @@ export function plugin(getCurrentPluginContext: () => PluginContext) {
       }
     }
 
+    // Keep a lead-in paragraph together with the paragraph that follows it when
+    // the lead-in ends in a colon.
+    md.core.ruler.push('wrap_colon_paragraphs_in_nobreak', (state: StateCore) => {
+      const tokensIn = state.tokens
+      const tokensOut: Token[] = []
+
+      for (let i = 0; i < tokensIn.length - 5; i++) {
+        const firstOpen = tokensIn[i]
+        const firstInline = tokensIn[i + 1]
+        const firstClose = tokensIn[i + 2]
+        const nextOpen = tokensIn[i + 3]
+        const nextInline = tokensIn[i + 4]
+        const nextClose = tokensIn[i + 5]
+
+        if (
+          firstOpen?.type === 'paragraph_open' &&
+          firstInline?.type === 'inline' &&
+          firstClose?.type === 'paragraph_close' &&
+          nextOpen?.type === 'paragraph_open' &&
+          nextInline?.type === 'inline' &&
+          nextClose?.type === 'paragraph_close' &&
+          /:\s*$/.test(firstInline.content)
+        ) {
+          // console.log(`Wrapping colon-ending paragraph and its next paragraph in nobreak:\n${firstInline.content}\n${nextInline.content}`)
+          tokensOut.push(new state.Token('container_nobreak_open', 'div', 1))
+          tokensOut.push(firstOpen, firstInline, firstClose, nextOpen, nextInline, nextClose)
+          tokensOut.push(new state.Token('container_nobreak_close', 'div', -1))
+          i += 5
+        } else {
+          tokensOut.push(firstOpen)
+        }
+      }
+
+      state.tokens = tokensOut
+      return true
+    })
+
 
   }
 
