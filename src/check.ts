@@ -221,7 +221,14 @@ export async function check(text: string, taskFile: string, strictChecks: boolea
 
         const imageDefs: Record<string, string> = {}
 
-        function checkImageDef(ref: string, range: () => [number, number]) {
+        function checkImageDef(ref: string, title: string | undefined, range: (value: string) => [number, number]) {
+            const parenPos = title?.indexOf("(")
+            if (parenPos !== undefined && parenPos !== -1 && !patterns.imageOptions.test(title!.substring(parenPos))) {
+                const titleRange = range(title!)
+                const optionsRange = [titleRange[0] + parenPos, titleRange[1]] as const
+                warn(optionsRange, `Image title contains '(' but does not match the image options pattern.\n\nSyntax: (<width>[x<height>] [${patterns.imagePlacements}[(<voffset>[,full])]])\n\nPattern:\n${patterns.imageOptions.source}`)
+            }
+
             const refPath = path.join(parentFolder, ref)
             if (!fs.existsSync(refPath)) {
                 let suggStr = ""
@@ -234,7 +241,7 @@ export async function check(text: string, taskFile: string, strictChecks: boolea
                     }
                 }
 
-                error(range(), "Referenced file not found." + suggStr, QuickFixReplacements(sugg.map(s => s.replacement)))
+                error(range(ref), "Referenced file not found." + suggStr, QuickFixReplacements(sugg.map(s => s.replacement)))
             }
         }
 
@@ -250,7 +257,7 @@ export async function check(text: string, taskFile: string, strictChecks: boolea
                     imageDefs[label] = ref
                 }
                 const _match = match // make compiler happy
-                checkImageDef(ref, () => mdRangeForValueInMatch(ref, _match))
+                checkImageDef(ref, match.groups.title, value => mdRangeForValueInMatch(value, _match))
             }
         }
 
@@ -678,7 +685,7 @@ export async function check(text: string, taskFile: string, strictChecks: boolea
                         error(fmRangeForValueInDef("preview", preview), `The preview text should start with '${patterns.previewTextPrefix}' and end with '${patterns.previewTextSuffix}'`)
                     }
                 } else {
-                    checkImageDef(preview, () => fmRangeForValueInDef("preview", preview))
+                    checkImageDef(preview, undefined, () => fmRangeForValueInDef("preview", preview))
                 }
                 // }
             }

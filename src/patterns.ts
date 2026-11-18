@@ -443,8 +443,9 @@ export const supportFileStarCorrection = capturing<{
     /^(?<pre>\s*-\s*)\*(?<post>.*)$/gm
 )
 
+export const imagePlacements = ["left", "right", "inline", "nocenter"].join("|")
 
-const imageOptionsContent = (prefix: string) => `(?:(?<${prefix}width_abs>${decimal.source}?)(?:px)?|(?<${prefix}width_rel>${decimal.source}%)(?: min (?<${prefix}width_min>${decimal.source})(?:px)?)?(?: max (?<${prefix}width_max>${decimal.source})(?:px)?)?)?(?: ?x ?(?<${prefix}height_abs>${decimal.source})(?:px)?)?(?: *(?:(?<${prefix}placement>left|right|inline|nocenter) *?(?:\\((?<${prefix}placement_args>.*?)\\))?))?`
+const imageOptionsContent = (prefix: string) => `(?:(?<${prefix}width_abs>${decimal.source}?)(?:px)?|(?<${prefix}width_rel>${decimal.source}%)(?: min (?<${prefix}width_min>${decimal.source})(?:px)?)?(?: max (?<${prefix}width_max>${decimal.source})(?:px)?)?)?(?: ?x ?(?<${prefix}height_abs>${decimal.source})(?:px)?)?(?: *(?:(?<${prefix}placement>${imagePlacements}) *?(?:\\((?<${prefix}placement_args>.*?)\\))?))?`
 
 export const imageOptions = capturing<{
     width_abs: maybe,
@@ -475,6 +476,7 @@ export const texInlineNumbersPattern = capturing<{
     // any number not followed by '-' or '_' ('_' will have been prefixed by \ by now)
     "(?<pre>\\b)(?<n>([\\+\\-])?[\\d]+(?:\\.[\\d]+)?)(?=[^\\-\\\\])(?<post>\\b)", "g"
 )
+
 
 
 export const lineStretchPattern = capturing<{
