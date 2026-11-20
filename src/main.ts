@@ -6,6 +6,7 @@ export * as templates from './templates'
 export * as util from './util'
 
 export * as check from './check'
+export * as prettify from './prettify'
 
 export * as convert_cuttle from './convert_cuttle'
 export * as convert_html from './convert_html'

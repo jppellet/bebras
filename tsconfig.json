@@ -21,6 +21,7 @@
 		"esModuleInterop": true
 	},
 	"exclude": [
+		"test",
 		"out",
 		"node_modules",
 		".vscode-test"

@@ -9,11 +9,20 @@
   },
   "scripts": {
     "compile": "tsc -p tsconfig.json",
+    "test": "for file in test/*.ts; do ts-node --transpile-only \"$file\" || exit 1; done",
+    "test-watch": "npm-watch test",
     "compile-watch": "tsc -p tsconfig.json --watch",
     "lint": "eslint src --ext .ts",
     "lint-watch": "npm-watch lint"
   },
   "watch": {
+    "test": {
+      "patterns": [
+        "src",
+        "test"
+      ],
+      "extensions": "ts"
+    },
     "lint": {
       "patterns": [
         "src",
@@ -49,7 +58,8 @@
     "@typescript-eslint/parser": "^4.30.0",
     "eslint": "^7.32.0",
     "npm-watch": "^0.13.0",
-    "typescript": "^5.5.3"
+    "typescript": "^5.5.3",
+    "ts-node": "^10.9.2"
   },
   "dependencies": {
     "abort-controller": "^3.0.0",

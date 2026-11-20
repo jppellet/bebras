@@ -5,6 +5,7 @@ import { BebrasCommandError } from '../util'
 import { makeCommand_check } from './bebras-check'
 import { makeCommand_convert } from './bebras-convert'
 import { makeCommand_find } from './bebras-find'
+import { makeCommand_prettify } from './bebras-prettify'
 import { makeCommand_server } from './bebras-server'
 
 async function main(): Promise<void> {
@@ -16,6 +17,7 @@ async function main(): Promise<void> {
 
     program
         .addCommand(makeCommand_convert().showHelpAfterError())
+        .addCommand(makeCommand_prettify().showHelpAfterError())
         .addCommand(makeCommand_check().showHelpAfterError())
         .addCommand(makeCommand_find().showHelpAfterError())
         .addCommand(makeCommand_server().showHelpAfterError())

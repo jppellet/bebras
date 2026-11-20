@@ -32,6 +32,8 @@ function capturing<T>(patOrRegexp: RegExp | string, flags?: string): RichRegExp<
     return (isString(patOrRegexp) ? new RegExp(patOrRegexp, flags) : patOrRegexp) as RichRegExp<Captures<T>>
 }
 
+export type CapturesOf<T> = T extends RichRegExp<infer H> ? H : never
+
 
 // Some useful metadata-related functions
 
@@ -487,7 +489,7 @@ export const lineStretchPattern = capturing<{
 
 
 export const tableHeaderOrSepPattern = capturing<{
-    sepchars: always
+    sepchar: always
 }>(
     // 1. optional leading space
     // 2. optional pipe or double pipe
@@ -495,5 +497,17 @@ export const tableHeaderOrSepPattern = capturing<{
     // 4. optional caret, vee, colon
     // 5. separator, either -- or ==
     // 6. optional other header characters are tolerated
-    /^ *[\|‖]? ?[\^vV:]{0,2}(?<sepchars>--|==)[\^vV: \-=\|‖\+]*$/g
+    /^ *[\|‖]? ?[\^vV:]{0,2}(?<sepchar>\-|=)[\^vV: \-=\|‖\+]*$/
+)
+
+
+export const imageDefinitionPattern = capturing<{
+    label: always,
+    id: always,
+    path: always,
+    alt: maybe,
+    name: maybe,
+    placement: maybe
+}>(
+    /^(?<label>\[(?<id>[^\]]+)\]:)\s+(?<path>\S+)(?:\s+(?<alt>"(?<name>.*?)(?:\s+\((?<placement>.*)\)\s*)?"))?\s*$/
 )
