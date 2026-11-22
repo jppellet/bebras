@@ -21,7 +21,7 @@
         "src",
         "test"
       ],
-      "extensions": "ts"
+      "extensions": "ts,txt"
     },
     "lint": {
       "patterns": [

@@ -178,7 +178,11 @@ function getFields(fieldSpec: readonly string[]): { htmlFields: (keyof typeof Ht
             fatalError(`Invalid field: ${fieldSpec[i]}. Valid fields are: ${[ServerFieldSpecAll, ...ServerFieldsHtml, ServerFieldSpecMetadata, ...ServerFieldsMetadata].join(", ")}; prefix matching is allowed.`)
         }
     }
-    console.log(`Fields to process: ${htmlFields.join(", ")} (HTML), ${metadataFields.join(", ")} (metadata)`)
+    const fieldDesc = [
+        ...(htmlFields.length === 0 ? [] : [`${htmlFields.join(", ")} (HTML)`]),
+        ...(metadataFields.length === 0 ? [] : [`${metadataFields.join(", ")} (metadata)`]),
+    ]
+    console.log(`Fields to process: ${fieldDesc.join("; ")}`)
     return { htmlFields, metadataFields }
 }
 
