@@ -4,109 +4,151 @@ import { parseMarkdown } from './convert_html'
 import { CapturesOf, imageDefinitionPattern, tableHeaderOrSepPattern } from './patterns'
 import MarkdownIt = require('markdown-it')
 
-export function prettifyTask(taskFile: string, contents: string, eol: string, opts?: { skipTables?: boolean }): string {
+export function defaultPrettifyOptions() {
+    const True = true as boolean
+    return {
+        preamble: True,
+        tables: True,
+        imageDefs: True,
+        sections: True,
+        emptyLines: True,
+    } satisfies Record<string, boolean> // boolean needed for assumptions in command line options
+}
 
+export type PrettifyOptions = ReturnType<typeof defaultPrettifyOptions>
+
+export function prettityOptionsDescription(): { [K in keyof PrettifyOptions]: string } {
+    return {
+        preamble: "Remove empty lines in the preamble and ensure proper indentation",
+        tables: "Align table cells and separators",
+        imageDefs: "Align image definitions in blocks",
+        sections: "Ensure proper spacing around section titles",
+        emptyLines: "Remove excessive empty lines",
+    }
+}
+
+export function prettifyTask(taskFile: string, contents: string, eol: string, _options?: Partial<PrettifyOptions>): string {
+
+    const options = { ...defaultPrettifyOptions(), ..._options }
     const basePath = path.dirname(taskFile)
-    const skipTables = opts?.skipTables ?? false
 
-    const prettified1 = contents
+    let prettified = contents
+
+    if (options.emptyLines) {
         // replace all more than 2 empty lines with exactly 2 empty lines
-        .replace(/(?:\r?\n){4,}/g, eol.repeat(3))
-        // ensure we always have three eols before sections titles with ##
-        .replace(/(?:\r?\n){1,}##/g, eol.repeat(3) + "##")
-        // normalize end of file
-        .trim()
+        prettified = prettified
+            .replace(/(?:\r?\n){4,}/g, eol.repeat(3))
+    }
 
-    const lines = prettified1.split(/\r?\n/)
+    if (options.sections) {
+        // ensure we always have three eols before sections titles with ##
+        prettified = prettified
+            .replace(/(?:\r?\n){1,}##/g, eol.repeat(3) + "##")
+    }
+
+    // normalize end of file
+    prettified = prettified.trim()
+
+    const lines = prettified.split(/\r?\n/)
 
     let lastPreambleLineIndex = lines.indexOf("---", 1)
-    for (let i = 1; i < lastPreambleLineIndex; i++) {
-        // if indented, then at least 2 spaces
-        if (lines[i].startsWith(" ") && !lines[i].startsWith("  ")) {
-            lines[i] = "  " + lines[i].substring(1)
+    if (options.preamble && lastPreambleLineIndex > 0) {
+        for (let i = 1; i < lastPreambleLineIndex; i++) {
+            // if indented, then at least 2 spaces
+            if (lines[i].startsWith(" ") && !lines[i].startsWith("  ")) {
+                lines[i] = "  " + lines[i].substring(1)
+            }
+
+            // if list, then indented
+            if (lines[i].startsWith("-")) {
+                lines[i] = "  " + lines[i]
+            }
+
+            // remove all empty lines in the preamble
+            if (lines[i].trim().length === 0) {
+                lines.splice(i, 1)
+                i--
+                lastPreambleLineIndex--
+            }
         }
 
-        // if list, then indented
-        if (lines[i].startsWith("-")) {
-            lines[i] = "  " + lines[i]
+        // ensure two empty lines after the preamble
+        if (lines[lastPreambleLineIndex + 1]?.trim().length !== 0) {
+            lines.splice(lastPreambleLineIndex + 1, 0, "")
         }
-
-        // remove all empty lines in the preamble
-        if (lines[i].trim().length === 0) {
-            lines.splice(i, 1)
-            i--
-            lastPreambleLineIndex--
+        if (lines[lastPreambleLineIndex + 2]?.trim().length !== 0) {
+            lines.splice(lastPreambleLineIndex + 2, 0, "")
         }
-    }
-
-    // ensure two empty lines after the preamble
-    if (lines[lastPreambleLineIndex + 1]?.trim().length !== 0) {
-        lines.splice(lastPreambleLineIndex + 1, 0, "")
-    }
-    if (lines[lastPreambleLineIndex + 2]?.trim().length !== 0) {
-        lines.splice(lastPreambleLineIndex + 2, 0, "")
     }
 
     // exactly one empty line after each section title
-    for (let i = lastPreambleLineIndex; i < lines.length; i++) {
-        if (lines[i].startsWith("##")) {
-            if (lines[i + 1]?.trim().length !== 0) {
-                lines.splice(i + 1, 0, "")
-            }
-            if ((lines[i + 2]?.trim()?.length ?? -1) === 0) {
-                lines.splice(i + 2, 1)
+    if (options.sections) {
+        for (let i = lastPreambleLineIndex; i < lines.length; i++) {
+            if (lines[i].startsWith("##")) {
+                if (lines[i + 1]?.trim().length !== 0) {
+                    lines.splice(i + 1, 0, "")
+                }
+                if ((lines[i + 2]?.trim()?.length ?? -1) === 0) {
+                    lines.splice(i + 2, 1)
+                }
             }
         }
     }
 
-    const imageDefs: Array<CapturesOf<typeof imageDefinitionPattern>> = []
-    for (let i = lastPreambleLineIndex; i < lines.length; i++) {
-        // consecutive picture definitions
-        const match = imageDefinitionPattern.exec(lines[i])
-        if (match) {
-            imageDefs.push(match.groups)
-        } else if (imageDefs.length > 1) {
-            // we have a block of image definitions
-            for (const field of ["label", "path"] as const) {
-                const maxLen = imageDefs.reduce((max, def) => Math.max(max, def[field]?.length ?? 0), 0)
-                for (const def of imageDefs) {
-                    if (def[field]) {
-                        const padding = " ".repeat(maxLen - def[field]!.length)
-                        def[field] = def[field]! + padding
+    if (options.imageDefs) {
+        type ImageDef = CapturesOf<typeof imageDefinitionPattern>
+        const imageDefs: Array<ImageDef> = []
+        for (let i = lastPreambleLineIndex; i < lines.length; i++) {
+            // consecutive picture definitions
+            const match = imageDefinitionPattern.exec(lines[i])
+            if (match) {
+                imageDefs.push(match.groups)
+            } else if (imageDefs.length > 1) {
+                // we have a block of image definitions
+                for (const [field, shouldPad] of [
+                    ["label", () => true],
+                    ["path", (def: ImageDef) => def.alt !== undefined],
+                ] as const) {
+                    const maxLen = imageDefs.reduce((max, def) => Math.max(max, def[field]?.length ?? 0), 0)
+                    for (const def of imageDefs) {
+                        if (def[field] && shouldPad(def)) {
+                            const padding = " ".repeat(maxLen - def[field]!.length)
+                            def[field] = def[field]! + padding
+                        }
                     }
                 }
-            }
 
-            // replace the lines with the prettified version
-            for (let j = 0; j < imageDefs.length; j++) {
-                const def = imageDefs[j]
-                let line = `${def.label} ${def.path}`
-                if (def.alt) {
-                    line += ` ${def.alt}`
+                // replace the lines with the prettified version
+                for (let j = 0; j < imageDefs.length; j++) {
+                    const def = imageDefs[j]
+                    let line = `${def.label} ${def.path}`
+                    if (def.alt) {
+                        line += ` ${def.alt}`
+                    }
+                    lines[i - imageDefs.length + j] = line
                 }
-                lines[i - imageDefs.length + j] = line
-            }
 
-            imageDefs.length = 0 // reset for next block
+                imageDefs.length = 0 // reset for next block
+            }
         }
     }
 
     // some actions which require parsing the markdown now
-    const prettified2 = lines.join(eol)
-    const { tokens } = parseMarkdown(prettified2, taskFile, basePath, {})
+    prettified = lines.join(eol)
+    const { tokens } = parseMarkdown(prettified, taskFile, basePath, {})
 
     const magicOffset = 5 // wtf
     let replacementOffset = 0
 
     for (let i = 0; i < tokens.length; i++) {
         const token = tokens[i]
-        if (!skipTables && token.type === "table_open") {
+        if (options.tables && token.type === "table_open") {
             const lineFrom = replacementOffset + token.map![0] - magicOffset
             const lineTo = replacementOffset + token.map![1] - magicOffset
             const tableLines = lines.slice(lineFrom, lineTo)
             const origNumTableLines = tableLines.length
             const origTable = tableLines.join(eol)
-            const prettifiedTable = prettifyTable(origTable, eol, true)
+            const prettifiedTable = prettifyTable(origTable, eol, false)
             // console.log({ origTable, prettifiedTable })
             const newTableLines = prettifiedTable.split(/\r?\n/)
             lines.splice(lineFrom, origNumTableLines, ...newTableLines)
@@ -114,8 +156,8 @@ export function prettifyTask(taskFile: string, contents: string, eol: string, op
         }
     }
 
-    const prettified3 = lines.join(eol) + eol
-    return prettified3
+    prettified = lines.join(eol) + eol
+    return prettified
 }
 
 export function prettifyTable(orig: string, eol: string, _debug: boolean = false): string {
@@ -219,9 +261,9 @@ export function prettifyTable(orig: string, eol: string, _debug: boolean = false
                 numTrailingBackslash = lastCell.text.length
             } else if (lastCell.text.endsWith("\\")) {
                 // how many?
-                const match = lastCell.text.match(/(\\+)$/)
+                const match = lastCell.text.match(/(?<bk>\\+)$/)
                 if (match) {
-                    numTrailingBackslash = match[1].length
+                    numTrailingBackslash = match.groups?.bk.length ?? 0
                     lastCell.text = lastCell.text.substring(0, lastCell.text.length - numTrailingBackslash).trimEnd()
                 }
             }
@@ -265,6 +307,15 @@ export function prettifyTable(orig: string, eol: string, _debug: boolean = false
         return orig
     }
     debug(`prettifyTable: ${numCols} columns in table`)
+
+    // Pad the number of cells in each row to match the number of columns
+    for (const row of rows) {
+        if (row.type !== "text") { continue }
+        while (row.cells.length < numCols) {
+            row.cells.push({ type: "text", text: "", colspan: 1 })
+            row.seps.push(SEP_BAR)
+        }
+    }
 
     // Determine first separation row
     const firstSepRowIndex = rows.findIndex(row => row.type === "sepline")
@@ -335,10 +386,14 @@ export function prettifyTable(orig: string, eol: string, _debug: boolean = false
         if (row.cells[0].type === "text" && row.cells[0].text.startsWith("[")) {
             insertFirstBar = true
         }
+        const lastCell = row.cells[row.cells.length - 1]
         // any row that ends with a collapsed cell requires the last sep to be inserted
-        if (row.cells[row.cells.length - 1].type === "collapsed") {
+        if (lastCell.type === "collapsed") {
             insertLastBar = true
-            break
+        }
+        // any last cell that is empty requires the last sep to be inserted
+        if (lastCell.type === "text" && lastCell.text.trim().length === 0) {
+            insertLastBar = true
         }
     }
     if (insertFirstBar && referenceSepRow.seps[0] === "") {

@@ -22,7 +22,7 @@ export function ensureIsTaskFile(path: string, ensureExistenceToo: boolean): str
 }
 
 
-export async function findTasksFilesOrEnsureIsTaskFile(source: string, recursive: boolean, pattern: string | undefined): Promise<{ taskFiles: string[], commonFolder: string }> {
+export async function findTasksFilesOrEnsureIsTaskFile(source: string, recursive: boolean, pattern: string | false | undefined): Promise<{ taskFiles: string[], commonFolder: string }> {
     // returns an error or a list of task files
     if (recursive) {
         if (!fs.existsSync(source)) {
@@ -31,7 +31,7 @@ export async function findTasksFilesOrEnsureIsTaskFile(source: string, recursive
         if (!fs.lstatSync(source).isDirectory()) {
             fatalError("source folder is not a directory: " + source)
         }
-        const taskFiles = await findTaskFilesRecursively(source, pattern)
+        const taskFiles = await findTaskFilesRecursively(source, isString(pattern) ? pattern.toLowerCase() : undefined)
         return { taskFiles, commonFolder: source }
     } else {
         ensureIsTaskFile(source, true)
@@ -39,14 +39,14 @@ export async function findTasksFilesOrEnsureIsTaskFile(source: string, recursive
     }
 }
 
-export async function findTaskFilesRecursively(folder: string, pattern: string | undefined): Promise<string[]> {
+async function findTaskFilesRecursively(folder: string, patternLower: string | undefined): Promise<string[]> {
     const res: string[] = []
     for (const f of fs.readdirSync(folder)) {
         const fullPath = path.join(folder, f)
         if (fs.lstatSync(fullPath).isDirectory()) {
-            res.push(...await findTaskFilesRecursively(fullPath, pattern))
+            res.push(...await findTaskFilesRecursively(fullPath, patternLower))
         } else {
-            if (isTaskFile(fullPath, true) && (!pattern || fullPath.includes(pattern))) {
+            if (isTaskFile(fullPath, true) && (!patternLower || fullPath.toLowerCase().includes(patternLower))) {
                 res.push(fullPath)
             }
         }

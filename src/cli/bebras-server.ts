@@ -677,10 +677,11 @@ export async function runUploadTaskOn(tasks: TaskSpec[], fieldSpec: string[], sk
 
                 const resp = await apiCall("POST", `question/${serverTaskId}/image`, context, ['image', imgFile])
 
-                const ok = isRecord(resp) && "url" in resp && resp.url === imgHtmlPath
+                const respUrl = isRecord(resp) && "url" in resp ? resp.url : undefined
 
-                if (!ok) {
-                    console.error(`Failed to upload image ${imgHtmlPath} from local file ${imgFile} for task ${task.idWithLang}: server response: ${JSON.stringify(resp, null, 2)}`)
+                if (respUrl !== imgHtmlPath) {
+                    const details = respUrl === undefined ? `server response: ${JSON.stringify(resp, null, 2)}` : `\n  server returned: ${respUrl}\n    was expecting: ${imgHtmlPath}`
+                    console.error(`Failed to upload image ${imgHtmlPath} from local file ${imgFile} for task ${task.idWithLang}: ${details}`)
                     continue
                 }
 
