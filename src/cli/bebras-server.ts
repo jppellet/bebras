@@ -440,10 +440,6 @@ async function serverAction(subcommand: Subcommand, hasFields: boolean, ...varar
 
     const { taskFiles, commonFolder } = await findTasksFilesOrEnsureIsTaskFile(source, isRecursive, filter)
 
-    if (taskFiles.length === 0) {
-        fatalError("No task file found in " + source)
-    }
-
     const config = await loadBebrasConfig(commonFolder)
     if (debug) {
         console.log(`config = ${JSON.stringify(config, null, 2)} `)

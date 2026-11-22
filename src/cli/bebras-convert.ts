@@ -35,9 +35,6 @@ async function convert(format: string, source: string, options: any): Promise<vo
     }
 
     const { taskFiles } = await findTasksFilesOrEnsureIsTaskFile(source, isRecursive, filter)
-    if (taskFiles.length === 0) {
-        fatalError("No task file found in " + source)
-    }
 
     const toStdOut = options.output === '-'
     if (toStdOut && taskFiles.length > 1) {

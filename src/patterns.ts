@@ -506,8 +506,9 @@ export const imageDefinitionPattern = capturing<{
     id: always,
     path: always,
     alt: maybe,
+    alt_quoted: maybe,
     name: maybe,
     placement: maybe
 }>(
-    /^(?<label>\[(?<id>[^\]]+)\]:)\s+(?<path>\S+)(?:\s+(?<alt>"(?<name>.*?)(?:\s+\((?<placement>.*)\)\s*)?"))?\s*$/
+    /^(?<label>\[(?<id>[^\]]+)\]:)\s+(?<path>\S+)(?:\s+(?<alt_quoted>["'](?<alt>(?<name>.*?)(?:\s+\((?<placement>.*)\)\s*)?)["']))?\s*$/
 )

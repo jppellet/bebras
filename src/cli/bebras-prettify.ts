@@ -4,7 +4,7 @@ import { Command } from 'commander'
 
 import { findTasksFilesOrEnsureIsTaskFile, readFileStrippingBom } from '../fsutil'
 import { defaultPrettifyOptions, prettifyTask, prettityOptionsDescription } from '../prettify'
-import { BottomProgressBar, fatalError } from '../util'
+import { BottomProgressBar } from '../util'
 
 export function makeCommand_prettify() {
     let cmd = new Command()
@@ -34,9 +34,6 @@ async function prettify(source: string, options: any): Promise<void> {
     const filter: string | undefined = options.filter
 
     const { taskFiles } = await findTasksFilesOrEnsureIsTaskFile(source, isRecursive, filter)
-    if (taskFiles.length === 0) {
-        fatalError("No task file found in " + source)
-    }
 
     const prettifyOptions = defaultPrettifyOptions()
     for (const key of Object.keys(prettifyOptions)) {

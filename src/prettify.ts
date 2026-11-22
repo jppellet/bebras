@@ -18,6 +18,7 @@ export function defaultPrettifyOptions() {
 export type PrettifyOptions = ReturnType<typeof defaultPrettifyOptions>
 
 export function prettityOptionsDescription(): { [K in keyof PrettifyOptions]: string } {
+    // also update them in the vscode extension settings
     return {
         preamble: "Remove empty lines in the preamble and ensure proper indentation",
         tables: "Align table cells and separators",
@@ -102,9 +103,10 @@ export function prettifyTask(taskFile: string, contents: string, eol: string, _o
             // consecutive picture definitions
             const match = imageDefinitionPattern.exec(lines[i])
             if (match) {
+                // enqueue
                 imageDefs.push(match.groups)
             } else if (imageDefs.length > 1) {
-                // we have a block of image definitions
+                // we have a block of image definitions to prettify
                 for (const [field, shouldPad] of [
                     ["label", () => true],
                     ["path", (def: ImageDef) => def.alt !== undefined],
@@ -123,7 +125,7 @@ export function prettifyTask(taskFile: string, contents: string, eol: string, _o
                     const def = imageDefs[j]
                     let line = `${def.label} ${def.path}`
                     if (def.alt) {
-                        line += ` ${def.alt}`
+                        line += ` "${def.alt}"`
                     }
                     lines[i - imageDefs.length + j] = line
                 }

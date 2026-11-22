@@ -32,6 +32,9 @@ export async function findTasksFilesOrEnsureIsTaskFile(source: string, recursive
             fatalError("source folder is not a directory: " + source)
         }
         const taskFiles = await findTaskFilesRecursively(source, isString(pattern) ? pattern.toLowerCase() : undefined)
+        if (taskFiles.length === 0) {
+            fatalError("No task file found in " + source + (pattern ? " matching filter '" + pattern + "'" : ""))
+        }
         return { taskFiles, commonFolder: source }
     } else {
         ensureIsTaskFile(source, true)
