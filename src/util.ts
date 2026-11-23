@@ -180,6 +180,16 @@ type BottomProgressBarInterface = {
     update(description?: string, by?: number): void
 }
 
+export function expandPlaceholders(template: string, placeholders: Record<string, string | number | boolean>): string {
+    return template.replace(/\{(?<key>[a-zA-Z_]+?)\}/g, (_, key) => {
+        if (key in placeholders) {
+            return String(placeholders[key as keyof typeof placeholders])
+        } else {
+            return `{${key}}`
+        }
+    })
+}
+
 export function formatDuration(ms: number): string {
     if (ms < 1000) {
         return `${ms} ms`

@@ -31,21 +31,33 @@ body>div::before {
     font-weight: bold;
 }
 
-#question {
+.question {
     background-color: white;
 }
 
-#answer {
+.answer {
     background-color: rgb(250, 255, 245);
 }
 
-#itsinformatics {
+.itsinformatics {
     background-color: rgb(245, 245, 255);
 }
 
-#task-container {
+.task-container {
     margin: 5px 0;
     min-height: 50px;
     border: 1px solid #ccc;
     background-image: repeating-linear-gradient(45deg, #f9f9f9, #f9f9f9 10px, #eee 10px, #eee 20px);
+}
+
+.task-heading {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: white;
+    padding: 0.5rem 1rem;
+}
+
+.task-section {
+    display: flow-root;
 }

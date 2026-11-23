@@ -9,17 +9,16 @@ import * as path from "path"
 
 import { warn } from "console"
 import { languageNameAndShortCodeByLongCode } from "../codes"
-import { convertImageFilename, cuttleImagePathForImage, emptyServerHTMLParts, makeServerHTMLFile, ParseResult, parseServerHTMLFile, parseTask, postprocessHtmlDecodingEntities, ServerHTMLParts, ServerHtmlTemplatePlaceholders, ServerHtmlTemplatePlaceholdersChecked, ServerHtmlTemplatePlaceholdersDirect } from "../convert_html"
+import { convertImageFilename, cuttleImagePathForImage, emptyServerHTMLParts, makeServerHtmlConcatFile, makeServerHTMLFile, ParseResult, parseServerHTMLFile, parseTask, postprocessHtmlDecodingEntities, ServerHTMLParts, ServerHtmlTemplatePlaceholders, ServerHtmlTemplatePlaceholdersChecked, ServerHtmlTemplatePlaceholdersDirect } from "../convert_html"
 import { findTasksFilesOrEnsureIsTaskFile, loadBebrasConfig, logWriteResult, siblingWithExtension, urlExists, writeData, WriteResultSingle } from "../fsutil"
 import { patterns } from "../main"
 import { answerTypesFor } from "../patterns"
-import { BebrasConfig, BottomProgressBar, fatalError, isRecord, isString, md5, md5Matches, TaskMetadata } from "../util"
+import { BebrasConfig, BottomProgressBar, expandPlaceholders, fatalError, isRecord, isString, md5, md5Matches, TaskMetadata } from "../util"
 import _ = require("lodash")
 import cheerio = require('cheerio')
 import Token = require("markdown-it/lib/token")
-import assert = require("assert")
 
-type Subcommand = "new" | "upload" | "download" | "insert" | "checkimages"
+type Subcommand = "new" | "upload" | "download" | "insert" | "checkimages" | "join"
 
 const FixedOutputWidthPx = 700
 
@@ -235,6 +234,10 @@ export function makeCommand_server() {
     addCommand("checkimages", "Reports missing images on the Cuttle server", false, cmd, cmd => cmd
         .option('--show-present', 'shows also images that are present on the server', false)
         .option('--unique', "don't mention images several times even if linked to multiple tasks", false)
+    )
+
+    addCommand("join", "Concatenates server HTML files into one", false, cmd, cmd => cmd
+        .option('-o, --out <file>', 'the output file to write the concatenated HTML to', 'joined.html')
     )
 
     return cmd
@@ -461,6 +464,9 @@ async function serverAction(subcommand: Subcommand, hasFields: boolean, ...varar
             return
         case "checkimages":
             await runCheckImagesOn(tasks, Boolean(options.showPresent), Boolean(options.unique), context)
+            return
+        case "join":
+            await runJoinOn(tasks, String(options.out), context)
             return
     }
 }
@@ -1070,7 +1076,7 @@ export async function runInsertTaskOn(tasks: TaskSpec[], fieldSpec: string[], ov
                     renderedHtml += `<div class="question-prompt">${question}</div>`
                     const isInteractive = metadata.answer_type.includes("interactive")
                     if (isInteractive) {
-                        renderedHtml += `<center><div id="task-container">&nbsp;</div></center>`
+                        renderedHtml += `<center><div class="task-container" id="task-container">&nbsp;</div></center>`
 
                         const interactivityInstr = sectionHtmlFor("Interactivity Instructions", "Interactivity Instructions - for the online challenge", "Interactivity instruction - for the online challenge")
                         renderedHtml += `<div class="interactivity-instructions">${interactivityInstr}</div>`
@@ -1219,6 +1225,41 @@ async function runCheckImagesOn(tasks: TaskSpec[], showPresent: boolean, unique:
 
     const dupesExpl = unique ? "each image mentioned only in the first task where it appears" : "images may be mentioned multiple times if they appear in multiple tasks"
     console.log(`Total missing: ${numMissing}; total present: ${numPresent} (checked ${numMissing + numPresent} images in ${tasks.length} tasks; ${dupesExpl})`)
+}
+
+async function runJoinOn(tasks: TaskSpec[], output: string, context: ServerTaskContext): Promise<void> {
+    const bodies: string[] = []
+    for (const task of tasks) {
+        const serverHtmlFile = serverFileForTaskFile(task.file)
+        if (!fs.existsSync(serverHtmlFile)) {
+            console.log(`Error: server HTML file does not exist for concatenation: ${serverHtmlFile}`)
+            continue
+        }
+
+        const content = fs.readFileSync(serverHtmlFile, 'utf-8')
+        const $ = cheerio.load(content)
+        const body = $('body')
+        // remove all id attributes
+        body.find('[id]').removeAttr('id')
+        const bodyStr = body.html()
+
+        if (bodyStr === null) {
+            console.log(`Error: server HTML file has no body to concatenate: ${serverHtmlFile}`)
+            continue
+        }
+
+        bodies.push(bodyStr)
+    }
+
+    const htmlJoiner = `\n\n<hr style="border: 3px solid #ccc; margin: 2em 0;">\n\n`
+    const outputFile = path.join(context.tasksFolder, output)
+    const template = makeServerHtmlConcatFile(context.config)
+    const finalContents = expandPlaceholders(template, {
+        htmlTitle: output,
+        body: bodies.join(htmlJoiner),
+    })
+    fs.writeFileSync(outputFile, finalContents, 'utf-8')
+    console.log(`Concatenated ${bodies.length} HTML bodies into ${outputFile}`)
 }
 
 function extractTokensForSection(sectionName: string, tokens: Token[]): Token[] {

@@ -9,7 +9,7 @@ import { isString, isUndefined } from 'lodash'
 import { defaultLanguageCode, languageNameAndShortCodeByLongCode } from './codes'
 import { plugin, PluginContext } from './convert_html_markdownit'
 import { readFileStrippingBom, writeData, WriteResultSingle } from './fsutil'
-import { BebrasConfig, ExtractPlaceholders, md5, parseLanguageCodeFromTaskPath, TaskMetadata } from './util'
+import { BebrasConfig, expandPlaceholders, ExtractPlaceholders, md5, parseLanguageCodeFromTaskPath, TaskMetadata } from './util'
 
 export async function convertTask_html(taskFile: string, outputFile: string, options: Partial<PluginOptions> = {}): Promise<WriteResultSingle> {
    return convertTask_html_impl(taskFile, outputFile, true, options)
@@ -172,9 +172,8 @@ export function emptyServerHTMLParts(metadata: TaskMetadata): ServerHTMLParts {
 }
 
 export function makeServerHTMLFile(config: BebrasConfig, parts: ServerHTMLParts): string {
-   return makeServerHtmlTemplate(config).replace(/\{(?<key>[a-zA-Z_]+)\}/g, (_, key) => {
-      return String(parts[key as keyof typeof parts])
-   })
+   const template = makeServerHtmlTemplate(config)
+   return expandPlaceholders(template, parts)
 }
 
 export function convertImageFilename(filename: string): string {
@@ -310,18 +309,32 @@ function getNamedHtmlComments(commentNodes: Comment[]): Record<string, string> {
    return comments
 }
 
-
-const makeServerHtmlTemplate = (config: BebrasConfig) => `<!DOCTYPE html>
-<html>
-
-<head>
+const makeServerHtmlHeader = (config: BebrasConfig) => `<head>
     <meta charset="UTF-8">
     <title>{htmlTitle}</title>
     <base href="https://${config.server.host}/">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.25/dist/katex.min.css">
 ${config.server.cssPaths.map(path => `    <link rel="stylesheet" href="${path}">`).join("\n")}
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jppellet/bebras/static/bebrasserverhtmlstyle.css" />
-</head>
+</head>` as const
+
+export const makeServerHtmlConcatFile = (config: BebrasConfig) => `
+<!DOCTYPE html>
+<html>
+
+${makeServerHtmlHeader(config)}
+
+<body id="page_content" style="margin: auto; border: 1px solid lightgrey;">
+
+{body}
+
+</body>
+</html>` as const
+
+const makeServerHtmlTemplate = (config: BebrasConfig) => `<!DOCTYPE html>
+<html>
+
+${makeServerHtmlHeader(config)}
 
 
 <!-- metadata
@@ -336,11 +349,13 @@ ${config.server.cssPaths.map(path => `    <link rel="stylesheet" href="${path}">
 
 <body id="page_content">
 
-    <h2 id="taskTitle">{taskTitle}</h2>
-    <tt id="taskId">{taskId}</tt>
+    <div class="task-heading">
+        <h2 id="taskTitle">{taskTitle}</h2>
+        <tt id="taskId">{taskId}</tt>
+    </div>
 
 
-    <div class="task-section" id="question">
+    <div class="task-section question" id="question">
         <!-- START QUESTION -->
 
         {questionHtml}
@@ -350,7 +365,7 @@ ${config.server.cssPaths.map(path => `    <link rel="stylesheet" href="${path}">
     <!-- hash: {questionHash}, source: {questionSource} -->
 
 
-    <div class="task-section" id="answer">
+    <div class="task-section answer" id="answer">
         <!-- START ANSWER -->
 
         {answerHtml}
@@ -360,7 +375,7 @@ ${config.server.cssPaths.map(path => `    <link rel="stylesheet" href="${path}">
     <!-- hash: {answerHash}, source: {answerSource} -->
 
 
-    <div class="task-section" id="itsinformatics">
+    <div class="task-section itsinformatics" id="itsinformatics">
         <!-- START ITSINFORMATICS -->
 
         {itsinformaticsHtml}
