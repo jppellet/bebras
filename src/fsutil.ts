@@ -31,10 +31,12 @@ export async function findTasksFilesOrEnsureIsTaskFile(source: string, recursive
         if (!fs.lstatSync(source).isDirectory()) {
             fatalError("source folder is not a directory: " + source)
         }
-        const taskFiles = await findTaskFilesRecursively(source, isString(pattern) ? pattern.toLowerCase() : undefined)
+        const hasFilter = isString(pattern) && pattern.length > 0
+        const taskFiles = await findTaskFilesRecursively(source, hasFilter ? pattern.toLowerCase() : undefined)
         if (taskFiles.length === 0) {
-            fatalError("No task file found in " + source + (pattern ? " matching filter '" + pattern + "'" : ""))
+            fatalError("no task file found in " + source + (hasFilter ? " matching filter '" + pattern + "'" : ""))
         }
+        console.log(`Processing ${taskFiles.length} task file${taskFiles.length === 1 ? "" : "s"} from folder '${path.resolve(source)}'${hasFilter ? " matching filter '" + pattern + "'" : ""}...`)
         return { taskFiles, commonFolder: source }
     } else {
         ensureIsTaskFile(source, true)
@@ -103,7 +105,7 @@ export async function mkdirsOf(child: string): Promise<void> {
     }
 }
 
-export type WriteResultFile = { type: "file", file: string, desc: string }
+export type WriteResultFile = { type: "file", file: string, wasUpToDate: boolean, desc: string }
 
 export type WriteResult =
     | { type: "stdout" }
@@ -120,8 +122,19 @@ export async function writeData<O extends string | true>(data: string | Buffer |
     if (isString(output)) {
         // file
         await mkdirsOf(output)
-        await fs.promises.writeFile(output, data)
-        return { type: "file", file: output, desc } satisfies WriteResultFor<string> as WriteResultFor<O>
+        // if file exists, check if it is up to date
+        let wasUpToDate = false
+        if (fs.existsSync(output)) {
+            const dataAsBuffer = Buffer.isBuffer(data) ? data : Buffer.from(data)
+            const existingData = await fs.promises.readFile(output)
+            if (Buffer.compare(dataAsBuffer, existingData) === 0) {
+                wasUpToDate = true
+            }
+        }
+        if (!wasUpToDate) {
+            await fs.promises.writeFile(output, data)
+        }
+        return { type: "file", file: output, wasUpToDate, desc } satisfies WriteResultFor<string> as WriteResultFor<O>
     } else {
         // stdout
         console.log(data)
@@ -136,6 +149,8 @@ export function logWriteResult<R extends WriteResult>(result: R): R {
         }
     } else if (result.type === "stdout") {
         // don't pollute stdout, nothing
+    } else if (result.wasUpToDate) {
+        console.log(`${result.desc} unchanged in ${result.file}`)
     } else {
         console.log(`${result.desc} written on ${result.file}`)
     }

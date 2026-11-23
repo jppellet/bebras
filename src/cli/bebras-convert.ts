@@ -80,7 +80,9 @@ async function convert(format: string, source: string, options: any): Promise<vo
 
             const methodName = "convertTask_" + format
             const result: WriteResult = await convModule[methodName](taskFile, output, pluginOptions)
-            numWritten += isArray(result) ? result.length : result.type === "stdout" ? 0 : 1
+            numWritten += isArray(result) ? result.filter(r => !r.wasUpToDate).length : result.type === "file" && !result.wasUpToDate ? 1 : 0
+            numUpToDate += isArray(result) ? result.filter(r => r.wasUpToDate).length : result.type === "file" && result.wasUpToDate ? 1 : 0
+
 
             if (immediateLog) {
                 logWriteResult(result)
