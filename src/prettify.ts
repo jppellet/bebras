@@ -1,7 +1,9 @@
 
 import * as path from 'path'
 import { parseMarkdown } from './convert_html'
+import { patterns } from './main'
 import { CapturesOf, imageDefinitionPattern, tableHeaderOrSepPattern } from './patterns'
+import { TaskMetadata } from './util'
 import MarkdownIt = require('markdown-it')
 
 export function defaultPrettifyOptions() {
@@ -53,39 +55,78 @@ export function prettifyTask(taskFile: string, contents: string, eol: string, _o
     const lines = prettified.split(/\r?\n/)
 
     let lastPreambleLineIndex = lines.indexOf("---", 1)
-    if (options.preamble && lastPreambleLineIndex > 0) {
-        for (let i = 1; i < lastPreambleLineIndex; i++) {
-            // if indented, then at least 2 spaces
-            if (lines[i].startsWith(" ") && !lines[i].startsWith("  ")) {
-                lines[i] = "  " + lines[i].substring(1)
+    if (options.preamble) {
+        if (lastPreambleLineIndex > 0) {
+            for (let i = 1; i < lastPreambleLineIndex; i++) {
+                // if indented, then at least 2 spaces
+                if (lines[i].startsWith(" ") && !lines[i].startsWith("  ")) {
+                    lines[i] = "  " + lines[i].substring(1)
+                }
+
+                // if list, then indented
+                if (lines[i].startsWith("-")) {
+                    lines[i] = "  " + lines[i]
+                }
+
+                // remove all empty lines in the preamble
+                if (lines[i].trim().length === 0) {
+                    lines.splice(i, 1)
+                    i--
+                    lastPreambleLineIndex--
+                }
             }
 
-            // if list, then indented
-            if (lines[i].startsWith("-")) {
-                lines[i] = "  " + lines[i]
+            // ensure two empty lines after the preamble
+            if (lines[lastPreambleLineIndex + 1]?.trim().length !== 0) {
+                lines.splice(lastPreambleLineIndex + 1, 0, "")
+            }
+            if (lines[lastPreambleLineIndex + 2]?.trim().length !== 0) {
+                lines.splice(lastPreambleLineIndex + 2, 0, "")
             }
 
-            // remove all empty lines in the preamble
-            if (lines[i].trim().length === 0) {
-                lines.splice(i, 1)
-                i--
-                lastPreambleLineIndex--
+        } else {
+            // no preamble, generate one with sensible helpful defaults
+            const filename = path.basename(taskFile)
+            const idMatch = patterns.taskFileName.exec(filename)
+            const metadata: Partial<TaskMetadata> = TaskMetadata.defaultValue(taskFile, idMatch?.groups.id)
+            delete metadata.filePath
+            delete metadata.equivalent_tasks
+            delete metadata.keywords
+            delete metadata.computational_thinking_skills
+            const folderName = path.basename(path.dirname(path.resolve(taskFile)))
+            if (folderName.startsWith(metadata.id!)) {
+                const taskName = folderName.substring(metadata.id!.length).replace(/[\-_]/g, " ").trim()
+                if (taskName.length > 0) {
+                    metadata.name = taskName
+                }
             }
-        }
-
-        // ensure two empty lines after the preamble
-        if (lines[lastPreambleLineIndex + 1]?.trim().length !== 0) {
-            lines.splice(lastPreambleLineIndex + 1, 0, "")
-        }
-        if (lines[lastPreambleLineIndex + 2]?.trim().length !== 0) {
-            lines.splice(lastPreambleLineIndex + 2, 0, "")
+            // local beautification of the default yaml
+            const preambleYaml = TaskMetadata.toYaml(metadata)
+                .replace(/: \[\]\n/g, ":\n  - ((unspecified))\n")
+                .replace(/: '\-\-'/g, ": --")
+            const preambleLines = preambleYaml.split(/\r?\n/).filter(line => line.trim().length > 0)
+            if (lines[0].trim() !== "---") {
+                lines.unshift("---")
+                lastPreambleLineIndex++
+            }
+            lines.splice(1, 0, ...preambleLines, "---", "", "")
+            lastPreambleLineIndex += preambleLines.length + 1
         }
     }
 
     // exactly one empty line after each section title
     if (options.sections) {
+
+        const neededSections: string[] = [...patterns.markdownSectionNamesFor("latest")]
+
         for (let i = lastPreambleLineIndex; i < lines.length; i++) {
             if (lines[i].startsWith("##")) {
+                const sectionName = lines[i].substring(2).trim()
+                const neededSectionsIndex = neededSections.indexOf(sectionName)
+                if (neededSectionsIndex >= 0) {
+                    neededSections.splice(neededSectionsIndex, 1)
+                }
+
                 if (lines[i + 1]?.trim().length !== 0) {
                     lines.splice(i + 1, 0, "")
                 }
@@ -94,6 +135,23 @@ export function prettifyTask(taskFile: string, contents: string, eol: string, _o
                 }
             }
         }
+
+        // add missing sections if needed
+        if (neededSections.length > 0) {
+            // remove empty lines at the end of the file
+            for (let i = lines.length - 1; i >= 0; i--) {
+                if (lines[i].trim().length === 0) {
+                    lines.splice(i, 1)
+                } else {
+                    break
+                }
+            }
+            // section titles
+            for (const missingSection of neededSections) {
+                lines.push("", "", "## " + missingSection, "", "...")
+            }
+        }
+
     }
 
     if (options.imageDefs) {

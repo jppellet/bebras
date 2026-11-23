@@ -1,8 +1,8 @@
 import path = require('path')
 import patterns = require('./patterns')
 import codes = require("./codes")
-import hasbin = require('hasbin')
 import { BinaryLike, createHash } from 'crypto'
+import * as yaml from "js-yaml"
 import { performance } from 'perf_hooks'
 import { ServerSyncField } from './convert_html'
 
@@ -506,12 +506,13 @@ export namespace TaskMetadata {
 
     }
 
-    export function defaultValue(filePath: string): TaskMetadata {
+    export function defaultValue(filePath: string, id_?: string | undefined): TaskMetadata {
+        const id = id_ ?? "0000-AA-01"
         return {
             filePath,
-            id: "0000-AA-01",
-            title: "((Untitled Task))",
+            id,
             name: "((Untitled Task))",
+            title: "((Untitled Task))",
             ages: {
                 "6-8": "--",
                 "8-10": "--",
@@ -520,12 +521,12 @@ export namespace TaskMetadata {
                 "14-16": "--",
                 "16-19": "--",
             } as const,
+            answer_type: "((unspecified))",
             categories: [],
             computational_thinking_skills: [],
-            answer_type: "((unspecified))",
-            keywords: [],
-            support_files: [],
             contributors: ["((unspecified))"],
+            support_files: [],
+            keywords: [],
             equivalent_tasks: [],
             settings: undefined,
             summary: undefined,
@@ -553,6 +554,9 @@ export namespace TaskMetadata {
         return parsedId?.usage_year ?? parsedId?.year ?? "latest"
     }
 
+    export function toYaml(metadata: Partial<TaskMetadata>): string {
+        return yaml.dump(metadata, { lineWidth: 1000 })
+    }
 
 }
 
