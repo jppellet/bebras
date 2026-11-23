@@ -122,7 +122,7 @@ export function prettifyTask(taskFile: string, contents: string, eol: string, _o
         for (let i = lastPreambleLineIndex; i < lines.length; i++) {
             if (lines[i].startsWith("##")) {
                 const sectionName = lines[i].substring(2).trim()
-                const neededSectionsIndex = neededSections.indexOf(sectionName)
+                const neededSectionsIndex = neededSections.findIndex(s => sectionName.startsWith(s))
                 if (neededSectionsIndex >= 0) {
                     neededSections.splice(neededSectionsIndex, 1)
                 }
